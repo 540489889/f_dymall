@@ -25,19 +25,20 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
     {
     'id': 1,
   'list': [
-    { 'icon': 'assets/images/svg/order.svg', 'label': '我的订单', 'count': '待发货2' },
-    { 'icon': 'assets/images/svg/chongzhi.svg', 'label': '充值中心', 'count': '减10元' },
-    { 'icon': 'assets/images/svg/coupon.svg', 'label': '券红包' },
-    { 'icon': 'assets/images/svg/cart.svg', 'label': '购物车' }
+    { 'icon': 'assets/images/svg/huiyuan.svg', 'label': '每日签到' },
+    { 'icon': 'assets/images/svg/dianpu.svg', 'label': '刷短剧' },
+    { 'icon': 'assets/images/svg/shoucang.svg', 'label': '看小说' },
+    { 'icon': 'assets/images/svg/shiyong.svg', 'label': '看直播' }
+
   ]
 },
 {
   'id': 2,
   'list': [
-    { 'icon': 'assets/images/svg/huiyuan.svg', 'label': '品牌会员' },
-    { 'icon': 'assets/images/svg/dianpu.svg', 'label': '关注店铺' },
-    { 'icon': 'assets/images/svg/shoucang.svg', 'label': '收藏' },
-    { 'icon': 'assets/images/svg/shiyong.svg', 'label': '试用领取' }
+    { 'icon': 'assets/images/svg/order.svg', 'label': '我的订单', 'count': '待发货2' },
+    { 'icon': 'assets/images/svg/chongzhi.svg', 'label': '充值中心', 'count': '减10元' },
+    { 'icon': 'assets/images/svg/coupon.svg', 'label': '券红包' },
+    { 'icon': 'assets/images/svg/cart.svg', 'label': '购物车' }
   ]
 },
 {
@@ -199,10 +200,49 @@ void initState() {
               backgroundColor: Colors.transparent,
           foregroundColor: Colors.white,
           pinned: true,
-          expandedHeight: 200.0,
-          titleSpacing: 10.0,
-          // 搜索框(高斯模糊背景)
-          title: ClipRRect(
+          expandedHeight: 220.0,
+          toolbarHeight: 94.0,
+          titleSpacing: 0.0,
+          title: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              // 第一行: logo + 品牌名  |  去绑定门店 + 购物车
+              Padding(
+                padding: EdgeInsets.only(left: 12.0, right: 6.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Image.asset('assets/images/logo.png', width: 26.0, height: 26.0, fit: BoxFit.contain, isAntiAlias: true),
+                    SizedBox(width: 6.0),
+                    Text('乐惠生活', style: TextStyle(color: Colors.white, fontSize: 20.0, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    Spacer(),
+                    // 去绑定门店入口
+                    Material(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(15.0),
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(15.0),
+                        onTap: () {
+                          debugPrint('去绑定门店');
+                        },
+                        child: Container(
+                          padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                          child: Text('去绑定门店', style: TextStyle(color: Colors.white, fontSize: 13.0)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(height: 6.0),
+              // 搜索框(高斯模糊背景) + 右侧购物车
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: 10.0),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
             borderRadius: BorderRadius.circular(30.0),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: 10.0, sigmaY: 10.0),
@@ -238,10 +278,20 @@ void initState() {
                   ),
                 ),
               ),
-            ),
-            actions: [
-              IconButton(icon: Icon(Icons.shopping_cart_outlined), onPressed: () {},),
+                    ),
+                  ),
+                  SizedBox(width: 4.0),
+                  IconButton(
+                    padding: EdgeInsets.zero,
+                    constraints: BoxConstraints(minWidth: 30.0, minHeight: 30.0),
+                    icon: Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 22.0),
+                    onPressed: () { debugPrint('购物车'); },
+                  ),
+                ],
+              ),
+              ),
             ],
+          ),
             // 自定义伸缩区域(轮播图)
             flexibleSpace: Container(
               decoration: BoxDecoration(
