@@ -153,15 +153,20 @@ final videoStore = VideoStore.to;
               left: MediaQuery.of(context).size.width / 2 - 18,
                top: 0,
               bottom: 0,
-               child: InkWell(
-                child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-               children: [
-                 Image.asset('assets/images/logo.png', width: 36.0, isAntiAlias: true, fit: BoxFit.contain,),
-               ],
+               width: 36.0,
+              child: InkWell(
+                // 用 Center 让图片在可用高度内居中,父级高度不足时自动缩放,不会溢出报错
+                child: Center(
+                  child: Image.asset(
+                    'assets/images/live.png',
+                    width: 36.0,
+                    height: 36.0,
+                    isAntiAlias: true,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                onTap: () => onNavTap(2),
               ),
-              onTap: () => onNavTap(2),
-             ),
            ),
          ],
         );

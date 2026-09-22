@@ -5,11 +5,15 @@ import '../../../behavior/custom_scroll_behavior.dart';
 class PopupComment extends StatefulWidget {
   const PopupComment({
     super.key,
-    this.onChanged
+    this.onChanged,
+    this.prefill
   });
 
   // 输入框值改变
   final ValueChanged? onChanged;
+
+  // 输入框初始内容(福袋参与口令等需要预填并直接发送的场景)
+  final String? prefill;
 
   @override
   State<PopupComment> createState() => _PopupCommentState();
@@ -18,15 +22,35 @@ class PopupComment extends StatefulWidget {
 class _PopupCommentState extends State<PopupComment> {
   List commentTags = ['这个好棒啊🔥', '根本抢不到', '这个多少钱', '怎么买最便宜', '太划算了👍', '好想要~', '已下单回购', '期待值拉满😎'];
   final TextEditingController textEditingController = TextEditingController();
+  // 输入框焦点: 点击快捷短语后保持输入框聚焦
+  final FocusNode commentFocusNode = FocusNode();
   @override
   void initState() {
     super.initState();
+    // 预填内容(如福袋参与口令): 直接填入输入框, 光标移到末尾(autofocus 已聚焦)
+    final String prefill = '${widget.prefill ?? ''}'.trim();
+    if (prefill.isNotEmpty) {
+      textEditingController.value = TextEditingValue(
+        text: prefill,
+        selection: TextSelection.collapsed(offset: prefill.length),
+      );
+    }
   }
 
   @override
   void dispose() {
     textEditingController.dispose();
+    commentFocusNode.dispose();
     super.dispose();
+  }
+
+  // 快捷短语: 点击后填入输入框(覆盖当前内容), 光标移到末尾并保持聚焦
+  void _fillComment(String text) {
+    textEditingController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+    commentFocusNode.requestFocus();
   }
 
   @override
@@ -67,6 +91,11 @@ class _PopupCommentState extends State<PopupComment> {
           itemCount: commentTags.length,
           itemBuilder: (context, index) {
         return UnconstrainedBox(
+          child: GestureDetector(
+          // 点击快捷短语: 填入输入框(样式保持不变)
+          onTap: () {
+            _fillComment('${commentTags[index]}');
+          },
           child: Container(
             alignment: Alignment.center,
             height: 30.0,
@@ -77,6 +106,7 @@ class _PopupCommentState extends State<PopupComment> {
             borderRadius: BorderRadius.circular(20.0),
           ),
           child: Text('${commentTags[index]}', style: const TextStyle(fontSize: 12.0),),
+          ),
           ),
         );
           },
@@ -110,6 +140,7 @@ class _PopupCommentState extends State<PopupComment> {
                 autofocus: true,
                 maxLines: null,
                 controller: textEditingController,
+                focusNode: commentFocusNode,
                 cursorColor: const Color(0xFFFF2C55),
                 onEditingComplete: () {
                   widget.onChanged!(textEditingController.text);

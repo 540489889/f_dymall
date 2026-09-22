@@ -15,8 +15,9 @@ double get minExtent => child.preferredSize.height;
 double get maxExtent => child.preferredSize.height;
 
 @override
-bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) {
-  return true;
+bool shouldRebuild(covariant CustomStickyHeader oldDelegate) {
+  // 只在高度(是否已吸顶)变化时重建,避免滚动中每帧都重建 header 子树(TabBar)
+  return oldDelegate.child.preferredSize.height != child.preferredSize.height;
 }
 
 @override

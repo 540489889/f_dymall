@@ -31,9 +31,6 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 获取AuthStore实例
-   final authStore = AuthStore.to;
-
    // 是否windows平台
   bool isWindows() {
     if (kIsWeb) return false;
@@ -42,20 +39,30 @@ class MyApp extends StatelessWidget {
     }
 
    return AnnotatedRegion(
-      value: SystemUiOverlayStyle(
-       systemNavigationBarColor: Colors.transparent,
-      systemNavigationBarIconBrightness: Brightness.dark,
-     ),
+   value: const SystemUiOverlayStyle(
+     // 状态栏透明,由各页面自己决定顶部背景;默认深色图标(适配白底页面)
+    statusBarColor: Colors.transparent,
+     statusBarIconBrightness: Brightness.dark, // Android 深色图标
+    statusBarBrightness: Brightness.light, // iOS 深色图标
+    systemNavigationBarColor: Colors.transparent,
+   systemNavigationBarIconBrightness: Brightness.dark,
+   ),
       child: GetMaterialApp(
        title: 'Flutter3 DYMALL',
         debugShowCheckedModeBanner: false,
+        // 排查路由跳转用: debug 下打印路由变化
+        routingCallback: (Routing? routing) {
+          if (kDebugMode) {
+            debugPrint('route -> current=${routing?.current} previous=${routing?.previous} isBack=${routing?.isBack} args=${routing?.args}');
+          }
+        },
        theme: ThemeData(
          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF2C55)),
          useMaterial3: true,
           fontFamily: isWindows() ? 'Microsoft YaHei' : null
       ),
-        // 初始化路由
-       initialRoute: authStore.isLogin ? '/' : '/login',
+        // 初始化路由(默认进入首页,不强制先登录)
+       initialRoute: '/',
         // 路由页面
        getPages: routePages,
       navigatorKey: MyDialog.navigatorKey,

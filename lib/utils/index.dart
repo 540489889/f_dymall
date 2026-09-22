@@ -73,6 +73,21 @@ static bool isUrl(dynamic path) {
   return false;
  }
 
+  /// 秒级时间戳转日期时间(对齐 H5 $util.timeStampTurnTime)
+  /// * [timestamp] 秒级时间戳(毫秒级会自动按毫秒处理)
+  /// * [withSecond] 是否带时分秒,false 只返回 yyyy-MM-dd
+  static String timeStampTurnTime(dynamic timestamp, {bool withSecond = true}) {
+    int time = int.tryParse('$timestamp') ?? 0;
+    if (time <= 0) return '';
+    // 毫秒级时间戳(13位)直接使用
+    if ('$timestamp'.length <= 10) time = time * 1000;
+    final DateTime date = DateTime.fromMillisecondsSinceEpoch(time);
+    String two(int value) => value.toString().padLeft(2, '0');
+    final String ymd = '${date.year}-${two(date.month)}-${two(date.day)}';
+    if (!withSecond) return ymd;
+    return '$ymd ${two(date.hour)}:${two(date.minute)}:${two(date.second)}';
+  }
+
   /// 秒数转换为时分秒
  static String secondsToHms(double seconds) {
     // String h = ((seconds / 3600) % 24).floor().toString().padLeft(2, '0');

@@ -20,9 +20,17 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
+  <!-- 移动端浏览器状态栏/地址栏配色:白底 + 深色图标,适配「个人资料」等白底页面 -->
+  <meta name="theme-color" content="#FFFFFF">
+
+  <!-- 页面底色兜底:未被 Flutter 绘制的区域(橡皮筋/安全区/加载中)不再露灰白 -->
+  <style>
+    html, body { margin: 0; padding: 0; background-color: #FFFFFF; overflow: hidden; }
+  </style>
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="flutter3_dymall">
   <link rel="apple-touch-icon" href="icons/Icon-192.png">
 

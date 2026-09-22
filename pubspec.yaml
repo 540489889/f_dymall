@@ -33,6 +33,14 @@ dependencies:
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
+  dio: ^5.11.1
+  flutter_html: ^3.0.0
+  # flutter_html 3.0.0 依赖 html 内部 API matches(), 0.15.7 已移除, 锁 0.15.6
+  html: 0.15.6
+  mobile_scanner: ^7.4.2
+  ai_barcode_scanner: ^8.2.0
+  # 直播间 WebSocket(与H5 Config.socketUrl 同一服务)
+  web_socket_channel: ^3.0.3
 
 dev_dependencies:
   flutter_test:

@@ -2,14 +2,13 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:card_swiper/card_swiper.dart';
 import 'package:get/get.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
 import '../../components/backtop.dart';
-import './mock/live_json.dart';
+import '../../api/live.dart';
 
 class LivePage extends StatefulWidget {
   const LivePage({super.key});
@@ -32,12 +31,21 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
   {'name': "生鲜"},
   {'name': "数码办公"},
 ];
-// 瀑布流列表
-List waterfallData = liveJson;
-// 列表
+// 直播列表(接口 /live/api/shop/roomPage)
 List dataList = [];
+// 分页: 当前页码 / 是否还有下一页; 列表筛选状态(接口 roomPage 的 status): 1 直播中 / 2 直播预告
+// * 用可空字段 + getter 兜底: hot reload 会保留旧的 State 实例, 新增字段在旧实例上还是 null,
+//   直接声明成非空 int/bool 再读取会抛 "Null is not a subtype of type int"
+int? pageValue;
+bool? hasMoreValue;
+int? roomStatusValue;
+int get page => pageValue ?? 1;
+bool get hasMore => hasMoreValue ?? true;
+int get roomStatus => roomStatusValue ?? 1;
 // 是否加载中
 bool isLoading = false;
+// 分类栏暂时不用: 置为 false 隐藏,后续要分类时改回 true 即可
+static const bool showCateTab = false;
 
 late ScrollController scrollController = ScrollController();
 late TabController tabController = TabController(initialIndex: 2, length: tabList.length, vsync: this);
@@ -45,28 +53,36 @@ late TabController cateController = TabController(initialIndex: 0, length: cateL
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 
-// 加载更多
-Future<void> loadMoreData() async {
+// 加载直播列表(/live/api/shop/roomPage)
+// * [refresh] 下拉刷新: 回到第一页并清空列表; 否则按当前页码追加下一页
+Future<void> loadRoomPage({bool refresh = false}) async {
   if(isLoading) return;
+  if(refresh) {
+    pageValue = 1;
+    hasMoreValue = true;
+    setState(() {
+      dataList.clear();
+    });
+  }
+  if(!hasMore) return;
   setState(() {
     isLoading = true;
   });
-  // 模拟网络请求或数据获取延迟
-  await Future.delayed(Duration(seconds: 1));
-setState(() {
-  dataList.addAll(waterfallData);
-  isLoading = false;
-});
+  final Map<String, dynamic> res = await LiveApi.roomPage(page: page, pageSize: 10, status: roomStatus);
+  if(!mounted) return;
+  final List<dynamic> list = res['list'] is List ? res['list'] as List<dynamic> : <dynamic>[];
+  setState(() {
+    isLoading = false;
+    dataList.addAll(list);
+    hasMoreValue = res['hasMore'] == true;
+    // 本次确实拿到数据才翻页,避免失败时空翻
+    if(list.isNotEmpty) pageValue = page + 1;
+  });
 }
 
 // 下拉刷新
 Future<void> handleRefresh() async {
-setState(() {
-  dataList.clear();
-  // 随机打乱数据
-  waterfallData = List.from(liveJson)..shuffle();
-});
-  loadMoreData();
+  await loadRoomPage(refresh: true);
 }
 
 @override
@@ -77,12 +93,12 @@ void initState() {
 
   if(scrollController.position.pixels == scrollController.position.maxScrollExtent) {
     debugPrint('[live]滚动到底部');
-    if(!isLoading) {
-      loadMoreData();
+    if(!isLoading && hasMore) {
+      loadRoomPage();
     }
     }
   });
-  handleRefresh();
+  loadRoomPage();
 }
 
 @override
@@ -186,30 +202,10 @@ body: ScrollConfiguration(
     child: ListView(
       controller: scrollController,
       children: [
-        // 广告图
-      SizedBox(
-        height: 100.0,
-        child: Swiper.children(
-          autoplay: true,
-          pagination: SwiperPagination(
-        alignment: Alignment.bottomRight,
-        builder: DotSwiperPaginationBuilder(
-          color: Colors.white70,
-          activeColor: Colors.white,
-          size: 5.0,
-          activeSize: 8.0
-        )
-      ),
-        children: [
-          CachedNetworkImage(imageUrl: 'https://m.360buyimg.com/babel/jfs/t20281113/358423/2/10091/112897/691719cbFad563282/195e4f93971e0507.jpg', fit: BoxFit.fill),
-          CachedNetworkImage(imageUrl: 'https://m.360buyimg.com/babel/jfs/t20281029/343297/32/20029/96879/69032eb1F4e907c04/5998529abf168fb1.jpg', fit: BoxFit.fill),
-        ],
-      ),
-      ),
-
+      // 分类栏: 暂时隐藏(showCateTab),数据全部取自 roomPage 接口
+      if (showCateTab)
       Container(
         color: Colors.white,
-        margin: EdgeInsets.only(top: 10.0),
         child: TabBar(
           controller: cateController,
             tabs: cateList.map((item) => Container(
@@ -243,15 +239,24 @@ body: ScrollConfiguration(
         child: Column(
         spacing: 10.0,
         children: [
-        dataList.isEmpty ? 
-        // 初始loading提示
-          Column(
+        // 状态筛选: 直播中(1) / 直播预告(2),切换后按新 status 重新拉列表
+        Row(
+          spacing: 8.0,
           children: [
+            _statusChip('直播中', 1),
+            _statusChip('直播预告', 2),
+          ],
+        ),
+        dataList.isEmpty ? 
+        // 首次加载转圈;加载完仍为空显示空态
+          Padding(
+          padding: EdgeInsets.symmetric(vertical: 60.0),
+          child: isLoading ?
             RefreshProgressIndicator(
               backgroundColor: Colors.white,
               color: Color(0xFFFF2C55),
-            ),
-          ],
+            )
+            : Text('暂无直播', style: TextStyle(color: Colors.grey, fontSize: 13.0),),
         )
           :
           MasonryGridView.count(
@@ -277,6 +282,30 @@ body: ScrollConfiguration(
   ),
   // 返回顶部
   floatingActionButton: Backtop(controller: scrollController, offset: scrollOffset),
+  );
+}
+
+// 状态筛选按钮: [value] 与接口 status 一致(1 直播中 / 2 直播预告)
+Widget _statusChip(String label, int value) {
+  final bool active = roomStatus == value;
+  return GestureDetector(
+    onTap: () {
+      // 加载中不切换: 避免上一页数据回填到新的筛选下
+      if(isLoading || roomStatus == value) return;
+      setState(() {
+        roomStatusValue = value;
+      });
+      loadRoomPage(refresh: true);
+    },
+    child: Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0),
+      decoration: BoxDecoration(
+        color: active ? Color(0xFFFF2C55) : Colors.white,
+        border: Border.all(color: active ? Color(0xFFFF2C55) : Colors.black12),
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      child: Text(label, style: TextStyle(color: active ? Colors.white : Colors.black87, fontSize: 13.0),),
+    ),
   );
 }
 }
@@ -308,7 +337,8 @@ class CardItem extends StatelessWidget {
     Stack(
       children: [
     CachedNetworkImage(
-    imageUrl: '${item['poster']}',
+    // 接口封面字段 feeds_img(兼容本地 mock 的 poster)
+    imageUrl: LiveApi.imageOf(item['feeds_img'] ?? item['poster']),
     placeholder: (context, url) => Container(
       height: 200.0,
     ),
@@ -339,7 +369,8 @@ class CardItem extends StatelessWidget {
               child: Image.asset('assets/images/wave.png', width: 15.0),
             )
           ),
-          Text('直播中', style: TextStyle(color: Colors.white, fontSize: 10.0),)
+          // 状态用接口 status_name(直播中/直播预告/已结束...)
+          Text(LiveApi.statusName(item is Map ? item.cast<String, dynamic>() : null), style: TextStyle(color: Colors.white, fontSize: 10.0),)
         ],
           ),
         ),
@@ -352,24 +383,7 @@ class CardItem extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 5.0,
       children: [
-        Text('${item['desc']}', style: TextStyle(fontSize: 14.0, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis,),
-        Visibility(
-        visible: item['topic'] != null,
-        child: Wrap(
-        spacing: 5.0,
-        runSpacing: 5.0,
-        children: item['topic']?.map<Widget>((item) {
-          return Container(
-            padding: EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
-            decoration: BoxDecoration(
-                color: Color(0xFFFFF5F5),
-                borderRadius: BorderRadius.circular(10.0),
-              ),
-              child: Text('$item', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 10.0),),
-            );
-          }).toList() ?? [],
-          ),
-        ),
+        Text('${item['name'] ?? item['desc'] ?? ''}', style: TextStyle(fontSize: 14.0, height: 1.2), maxLines: 2, overflow: TextOverflow.ellipsis,),
         Row(
       children: [
       Expanded(
@@ -377,16 +391,17 @@ class CardItem extends StatelessWidget {
         spacing: 5.0,
       children: [
       ClipOval(
-          child: Image.network('${item['logo']}', height: 20.0, width: 20.0, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) {
+          // 主播头像(接口 anchor_img,兼容本地 mock 的 logo)
+          child: Image.network(LiveApi.imageOf(item['anchor_img'] ?? item['logo']), height: 20.0, width: 20.0, fit: BoxFit.cover, errorBuilder: (context, error, stackTrace) {
             return Container(color: Colors.grey[50], height: 20.0, width: 20.0);
           }),
         ),
-        Text('${item['name']}', style: TextStyle(color: Colors.grey, fontSize: 12.0), maxLines: 1, overflow: TextOverflow.ellipsis,),
+        Text('${item['anchor_name'] ?? ''}', style: TextStyle(color: Colors.grey, fontSize: 12.0), maxLines: 1, overflow: TextOverflow.ellipsis,),
       ],
       ),
       ),
-      Icon(Icons.favorite, color: Colors.black54, size: 14.0,),
-      Text(' ${item['likeNum']}', style: TextStyle(color: Colors.grey, fontSize: 11.0),),
+      Icon(Icons.remove_red_eye_outlined, color: Colors.black54, size: 14.0,),
+      Text(' ${item['online'] ?? 0}', style: TextStyle(color: Colors.grey, fontSize: 11.0),),
       ],
         ),
         ],
@@ -396,7 +411,14 @@ class CardItem extends StatelessWidget {
     ),
   ),
   onTap: () {
-    Get.toNamed('/live', arguments: item);
+    // 带上直播间页需要的参数: sn 房间号 / src 拉流地址 / type 横竖屏 / cover 封面(与首页入口一致)
+    Get.toNamed('/live', arguments: <String, dynamic>{
+      'sn': '${item['sn'] ?? ''}',
+      'name': item['name'] ?? '',
+      'src': '${item['push_link'] ?? ''}',
+      'type': '${item['type'] ?? ''}',
+      'cover': LiveApi.imageOf(item['feeds_img'] ?? item['poster']),
+    });
     }
   );
 }

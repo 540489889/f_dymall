@@ -202,9 +202,11 @@ Widget build(BuildContext context) {
                           child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${widget.goodsList![index]['title']}', style: const TextStyle(fontSize: 15.0,), overflow: TextOverflow.ellipsis,),
-                            Text('${widget.goodsList![index]['tips']}', style: const TextStyle(color: Colors.red, fontSize: 12.0,),),
-                            const SizedBox(height: 5.0,),
+                            Text('${widget.goodsList![index]['title']}', maxLines: 1, style: const TextStyle(fontSize: 15.0,), overflow: TextOverflow.ellipsis,),
+                            // 副标题(tips): 服务端未下发时不留空行(空文本照样占一行高度, 视觉上就是标题下方一大块空白)
+                            if ('${widget.goodsList![index]['tips']}'.trim().isNotEmpty)
+                            Text('${widget.goodsList![index]['tips']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 12.0,),),
+                            const SizedBox(height: 4.0,),
                             Wrap(
                               spacing: 5.0,
                               children: [
@@ -226,25 +228,29 @@ Widget build(BuildContext context) {
                             ),
                             ],
                           ),
-                          const SizedBox(height: 10.0,),
-                          Row(
+                          const SizedBox(height: 6.0,),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                            Expanded(
-                            child: Row(
+                            // 价格行: 独占一行, 不再与购买按钮挤在一行
+                            Row(
                               children: [
-                                Row(
-                                  children: [
-                                    const Text('¥', style: TextStyle(color: Colors.red, fontSize: 12.0),), Text('${widget.goodsList![index]['price']}', style: const TextStyle(color: Colors.red, fontSize: 16.0),),
-                                  ],
+                                const Text('¥', style: TextStyle(color: Colors.red, fontSize: 12.0),),
+                                Flexible(
+                                  child: Text('${widget.goodsList![index]['price']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 16.0),),
                                 ),
-                                  Row(
-                                    children: [
-                                      const Text(' 券后价 ', style: TextStyle(color: Colors.grey, fontSize: 10.0),), Text('¥${widget.goodsList![index]['mprice']}', style: const TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough,),),
-                                    ],
-                                    ),
-                                  ]
+                                const SizedBox(width: 5.0,),
+                                const Text(' 券后价 ', style: TextStyle(color: Colors.grey, fontSize: 10.0),),
+                                Flexible(
+                                  child: Text('¥${widget.goodsList![index]['mprice']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough),),
                                 ),
-                              ),
+                              ],
+                            ),
+                          const SizedBox(height: 8.0,),
+                          // 购买行: 领券购买按钮独占下一行, 靠右对齐
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
                               Container(
                                 alignment: Alignment.center,
                                 height: 30.0,
@@ -271,6 +277,8 @@ Widget build(BuildContext context) {
                                     ),
                                     ],
                                   ),
+                          ],
+                          ),
                                   ],
                                 ),
                               ),

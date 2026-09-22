@@ -18,20 +18,22 @@ final double distance;
   Widget build(BuildContext context){
     return ValueListenableBuilder(
     valueListenable: offset,
-    builder: (context, value, child) {
+    // 按钮作为 child 只构建一次: 滚动中每帧仅切换显示状态,不重复重建按钮
+    child: IconButton(
+      icon: const Icon(Icons.arrow_upward_rounded, size: 20),
+      style: ButtonStyle(
+        backgroundColor: WidgetStateProperty.all(Colors.white),
+        shadowColor: WidgetStateProperty.all(Colors.black54),
+        elevation: WidgetStateProperty.all(3.0)
+      ),
+      onPressed: () {
+        controller.animateTo(0, duration: const Duration(milliseconds: 300), curve: Curves.easeInOut);
+      },
+    ),
+    builder: (context, value, Widget? child) {
       return Visibility(
       visible: value > distance,
-      child: IconButton(
-        icon: Icon(Icons.arrow_upward_rounded, size: 20),
-        style: ButtonStyle(
-          backgroundColor: WidgetStateProperty.all(Colors.white),
-          shadowColor: WidgetStateProperty.all(Colors.black54),
-          elevation: WidgetStateProperty.all(3.0)
-        ),
-        onPressed: () {
-          controller.animateTo(0, duration: Duration(milliseconds: 300), curve: Curves.easeInOut);
-        },
-      ),
+      child: child ?? const SizedBox.shrink(),
       );
     },
     );

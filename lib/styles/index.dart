@@ -21,7 +21,11 @@ class FStyle {
   );
 }
   // 边框
-static const border = Divider(color: Color(0xFFBBBBBB), height: 1.0, thickness: .5,);
+  static const border = Divider(color: Color(0xFFBBBBBB), height: 1.0, thickness: .5,);
+  // 分割线(列表/卡片内分隔,细且浅,避免默认 1px 深色线过重)
+  static const divider = Divider(color: Color(0xFFF2F2F2), height: 1.0, thickness: .5);
+  // 分割线颜色
+  static const dividerColor = Color(0xFFF2F2F2);
 // 颜色
 static const backgroundColor = Color(0xFFEEEEEE);
 static const primaryColor = Color(0xFFFF2C55);
