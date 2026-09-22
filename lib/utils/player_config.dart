@@ -2,10 +2,8 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -53,36 +51,6 @@ const VideoControllerConfiguration androidLiveVideoConfig = VideoControllerConfi
   androidAttachSurfaceAfterVideoParameters: false,
 );
 
-/// Android 专用: 起播前把 Surface 预设成预期的视频分辨率
-///
-/// native 侧 `VideoOutput.setSurfaceSize` 在尺寸没变时会直接 return:
-/// 不重建 Surface -> wid 不变 -> `widListener()` 里的 `player.seek()` 不再发生
-/// -> 直播流(RTMP 不支持 seek)不会被打断, 起播一次就稳定, 不用再重连第二次。
-///
-/// 猜错分辨率也不会更糟: 首帧时仍会按真实分辨率重建一次, 和不预设时表现一致
-/// (而且此时还没画面, 那次 seek 不会打断任何东西)。
-Future<void> presetSurfaceSize(
-  Player player, {
-  required int width,
-  required int height,
-}) async {
-  if (!Platform.isAndroid || width <= 0 || height <= 0) return;
-  try {
-    final int handle = await player.handle;
-    await const MethodChannel('com.alexmercerind/media_kit_video').invokeMethod(
-      'VideoOutputManager.SetSurfaceSize',
-      <String, String>{
-        'handle': handle.toString(),
-        'width': width.toString(),
-        'height': height.toString(),
-      },
-    );
-  } catch (e) {
-    // 私有通道, 版本变了就只是失效(退化成原来的行为), 不能影响起播
-    debugPrint('[live]预设 Surface 尺寸失败(忽略): $e');
-  }
-}
-
 /// RTMP 直播自动重连
 ///
 /// 针对 media_kit_video 在 Android 上的一个已知行为:
@@ -118,10 +86,6 @@ class LiveReconnector {
   /// 当前拉流地址
   String src = '';
 
-  /// 预期的视频分辨率: 起播前先把 Surface 调成这个尺寸(见 presetSurfaceSize), 不预设时传 0
-  int surfaceWidth = 0;
-  int surfaceHeight = 0;
-
   StreamSubscription<VideoParams>? _subscription;
   StreamSubscription<bool>? _playingSubscription;
   Timer? _timer;
@@ -143,16 +107,8 @@ class LiveReconnector {
     _subscription ??= player.stream.videoParams.listen(_onVideoParams);
     _playingSubscription ??= player.stream.playing.listen(_onPlaying);
     debugPrint('[live]起播: ${url.length > 90 ? '${url.substring(0, 90)}...' : url}');
-    // 先把 Surface 尺寸对上, 省掉首帧那次会打断直播流的 seek(重连时不调: 那时已有真实分辨率)
-    await presetSurfaceSize(player, width: surfaceWidth, height: surfaceHeight);
     await player.open(Media(url), play: play);
     _armWatchdog(seq);
-  }
-
-  /// 按房间朝向设置预期的视频分辨率(横屏 1280x720 / 竖屏 720x1280)
-  void expectSurface({required bool horizontal}) {
-    surfaceWidth = horizontal ? 1280 : 720;
-    surfaceHeight = horizontal ? 720 : 1280;
   }
 
   /// 排一次"首帧超时"检查

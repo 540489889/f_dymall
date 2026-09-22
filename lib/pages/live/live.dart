@@ -303,9 +303,6 @@ Future<void> _loadRoomInfo() async {
   // * 起播本身才是大头(建连 + 缓冲 + 首帧), 能早 1 个 RTT 就早 1 个 RTT
   // * 接口地址回来后不再二次起播: 那会把已经出来的画面重新缓冲一遍, 看着就是"播了两遍"
   //   入口地址万一失效, 由 LiveReconnector 重连时换成最新的 pullUrl(见 srcProvider)
-  // Surface 尺寸先按房间朝向对齐(横屏 1280x720 / 竖屏 720x1280): 尺寸对得上,
-  // 首帧就不会重建 Surface, 也就没有那次会打断直播流的 seek
-  liveReconnector.expectSurface(horizontal: isHorizontal);
   final String entrySrc = '${arguments['src'] ?? ''}'.trim();
   final bool started = entrySrc.isNotEmpty && shouldOpenStream(entryIndex);
   if (started) unawaited(liveReconnector.open(entrySrc));
@@ -425,7 +422,6 @@ Future<void> _switchRoom(int index) async {
   _joinTryIndex = 0;
   unawaited(liveSocket.reconnect());
   // 列表里已带 push_link 时先用它起播(与进房同理, 不等 getPullUrl 往返)
-  liveReconnector.expectSurface(horizontal: LiveApi.isHorizontalRoom(_roomItem(index)));
   final String listSrc = '${_roomItem(index)['src'] ?? ''}'.trim();
   final bool started = listSrc.isNotEmpty && shouldOpenStream(index);
   if (started) unawaited(liveReconnector.open(listSrc));
