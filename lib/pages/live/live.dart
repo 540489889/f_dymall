@@ -16,6 +16,7 @@ import '../../api/live.dart';
 import '../../config/index.dart';
 import '../../router/fade_route.dart';
 import '../../behavior/custom_scroll_behavior.dart';
+import '../../utils/danmu_zoom.dart';
 import '../../utils/live_socket.dart';
 import '../../utils/player_config.dart';
 import '../../utils/request.dart';
@@ -1513,8 +1514,10 @@ Widget _previewCard(Map<String, dynamic> item) {
 }
 
 // 弹幕列表
-List<Widget> danmuList(dynamic list) {
+// * [zoom] 弹幕字体缩放(1 标 / 1.3 中 / 1.6 大, 见 utils/danmu_zoom.dart), 作用在所有聊天文本上
+List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
   List<Widget> danmu = [];
+  final double size = 13.0 * zoom;
   for (var item in list) {
     // 公告
     if (item['type'] == 'notice') {
@@ -1526,7 +1529,7 @@ List<Widget> danmuList(dynamic list) {
             color: Colors.black26,
             borderRadius: BorderRadius.circular(12.0),
           ),
-          child: Text('${item['content']}', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: 13.0),),
+          child: Text('${item['content']}', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: size),),
         ),
       );
     }
@@ -1562,12 +1565,12 @@ List<Widget> danmuList(dynamic list) {
                               color: Color(0xFFD631F3),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
-                            child: Text('${item['tag']}', style: TextStyle(color: Colors.white, fontSize: 13.0),),
-                          ),
-                        ),
-                      ),
-                      TextSpan(text: '${item['user']}：', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: 13.0),),
-                      TextSpan(text: '${item['isbuy'] != null ? '下单1号商品' : item['content']}', style: TextStyle(color: item['isbuy'] != null ? Colors.yellow : Colors.white, fontSize: 13.0),),
+                            child: Text('${item['tag']}', style: TextStyle(color: Colors.white, fontSize: size),),
+                            ),
+                            ),
+                            ),
+                            TextSpan(text: '${item['user']}：', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: size),),
+                            TextSpan(text: '${item['isbuy'] != null ? '下单1号商品' : item['content']}', style: TextStyle(color: item['isbuy'] != null ? Colors.yellow : Colors.white, fontSize: size),),
                       WidgetSpan(
                         child: Visibility(
                           visible: item['isbuy'] != null,
@@ -1578,7 +1581,7 @@ List<Widget> danmuList(dynamic list) {
                               color: Color(0xFFFF2C55),
                               borderRadius: BorderRadius.circular(12.0),
                             ),
-                            child: Text('去购买', style: TextStyle(color: Colors.white, fontSize: 13.0),),
+                            child: Text('去购买', style: TextStyle(color: Colors.white, fontSize: size),),
                           ),
                         ),
                       ),
@@ -2139,12 +2142,16 @@ List<Widget> danmuList(dynamic list) {
                                         if (mockMsg is List) ...mockMsg,
                                         if (!demoRoom) ...messages,
                                       ];
-                                      final List<Widget> items = danmuList(list);
                                       final dynamic lastMsg = list.isEmpty ? null : list.last;
                                       // 末条消息 id 作为"是否有新消息"的标识(队列满 50 条时长度不变, 只看末条)
                                       final String lastId = lastMsg is Map ? '${lastMsg['id'] ?? ''}' : '${list.length}';
+                                      // 字体档位变了也要重建弹幕(缩放值在 danmu_zoom 里, 改档位不触发消息队列变更)
                                       // 新消息入队后自动滚到底部(滚动状态在 DanmuScrollView 内部维护)
-                                      return DanmuScrollView(items: items, lastId: lastId);
+                                      return ValueListenableBuilder<double>(
+                                        valueListenable: danmuZoom,
+                                        builder: (BuildContext context, double zoom, Widget? child) =>
+                                            DanmuScrollView(items: danmuList(list, zoom: zoom), lastId: lastId),
+                                      );
                                     },
                                   ),
                                   ),
@@ -2383,7 +2390,7 @@ List<Widget> danmuList(dynamic list) {
                                 onTap: () {
                                       navigator?.push(FadeRoute(
                                         effect: 'bottom',
-                                        child: const PopupMore(),
+                                        child: PopupMore(roomId: roomSn),
                                       ));
                                     }
                                   ),

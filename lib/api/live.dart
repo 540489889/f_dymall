@@ -186,6 +186,36 @@ class LiveApi {
     }
   }
 
+  /// 举报直播间(/live/api/shop/complaint)
+  /// * [no] 房间号 sn; [type] 举报原因(举报弹窗里选的文案); [content] 举报描述(选填)
+  /// * 返回 {ok: 是否成功(code==0), message: 提示文案}
+  /// * 提示文案优先取 data(接口直接下发字符串, 与 H5 toast res 一致), 取不到再回落 message
+  static Future<Map<String, dynamic>> complaint({
+    required String no,
+    required String type,
+    String content = '',
+  }) async {
+    if (no.isEmpty || type.isEmpty) {
+      return <String, dynamic>{'ok': false, 'message': '缺少举报信息'};
+    }
+    try {
+      final Map<String, dynamic> res = await Request().postRaw(
+        '/live/api/shop/complaint',
+        data: <String, dynamic>{'no': no, 'type': type, 'content': content},
+      );
+      final bool ok = '${res['code']}' == '0';
+      String message = '${res['message'] ?? ''}'.trim();
+      final dynamic data = res['data'];
+      if (data is String && data.trim().isNotEmpty) message = data.trim();
+      if (message.isEmpty) message = ok ? '举报已提交' : '举报失败，请稍后再试';
+      if (!ok) debugPrint('[live]举报返回异常: ${res['code']} ${res['message']}');
+      return <String, dynamic>{'ok': ok, 'message': message};
+    } catch (e) {
+      debugPrint('[live]举报失败: $e');
+      return <String, dynamic>{'ok': false, 'message': '举报失败，请稍后再试'};
+    }
+  }
+
   /// 是否横屏直播间: 直播间数据里的 type 字段
   /// * 直播间以 getRoomInfo(/live/api/shop/getRoomInfo) 返回的 type 为准:
   ///   'horizontal' 横屏直播; 'vertical' / 空 / 其它值都按竖屏处理(容错大小写与首尾空格)
