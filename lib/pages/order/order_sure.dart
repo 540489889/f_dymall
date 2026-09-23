@@ -29,9 +29,8 @@ class OrderSure extends StatefulWidget {
 }
 
 class _OrderSureState extends State<OrderSure> {
-  // 主色
+  // 主色(图标/按钮/金额统一用这个色, 不再单独用蓝色)
   static const Color primary = Color(0xFFFF2C55);
-  static const Color blue = Color(0xFF006ff6);
   final AuthStore authStore = AuthStore.to;
 
   // 下单参数(与 H5 orderCreateData 一致)
@@ -905,7 +904,7 @@ class _OrderSureState extends State<OrderSure> {
         child: Row(
           spacing: 5.0,
           children: <Widget>[
-            Icon(Icons.location_on_outlined),
+            Icon(Icons.location_on_outlined, color: primary, size: 20.0),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -949,7 +948,7 @@ class _OrderSureState extends State<OrderSure> {
           Row(
             spacing: 5.0,
             children: <Widget>[
-              Icon(Icons.storefront_outlined, size: 18.0, color: blue),
+              Icon(Icons.storefront_outlined, size: 18.0, color: primary),
               Expanded(
                 child: Text(
                   store == null ? '当前无自提门店,请选择其它配送方式' : '${store['store_name'] ?? ''}',
@@ -1144,7 +1143,7 @@ class _OrderSureState extends State<OrderSure> {
                   ),
                 ),
               ),
-              Icon(Icons.person_add_alt, color: blue, size: 18.0),
+              Icon(Icons.person_add_alt, color: primary, size: 18.0),
             ],
           ),
           FStyle.divider,
@@ -1166,7 +1165,7 @@ class _OrderSureState extends State<OrderSure> {
                   ),
                 ),
               ),
-              Icon(Icons.phone_android_outlined, color: blue, size: 18.0),
+              Icon(Icons.phone_android_outlined, color: primary, size: 18.0),
             ],
           ),
           FStyle.divider,
