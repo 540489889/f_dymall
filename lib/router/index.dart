@@ -102,6 +102,8 @@ final Map<String, Widget> routes = {
 
 // 需要登录后才能访问的路由(其余路由游客可直接浏览)
 const Set<String> authRoutes = {
+  // 直播间: 进房要连 WebSocket 发弹幕/点赞,必须登录
+  '/live',
   '/my/wallet',
   '/my/recharge',
   '/my/balance_detail',

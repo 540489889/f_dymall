@@ -10,13 +10,17 @@ class LiveApi {
   /// 直播列表(/live/api/shop/roomPage)
   /// * [page] 页码(从 1 开始); [pageSize] 每页条数
   /// * [status] 列表筛选: 1 直播中 / 2 直播预告; 不传为全部(接口默认)
+  /// * [keywords] 搜索关键字(直播间标题/主播昵称),为空不传
   /// * 返回 {list: 房间列表(已用 [roomItem] 归一化), count: 总数, pageCount: 总页数, hasMore: 是否还有下一页}
   /// * 失败/无数据返回空结果(list 为空),页面据此显示空态
-  static Future<Map<String, dynamic>> roomPage({int page = 1, int pageSize = 10, int? status}) async {
+  static Future<Map<String, dynamic>> roomPage({int page = 1, int pageSize = 10, int? status, String keywords = ''}) async {
     try {
       final Map<String, dynamic> query = <String, dynamic>{'page': page, 'page_size': pageSize};
       // 只传了筛选才带上 status(不传时按接口默认: 全部)
       if (status != null) query['status'] = status;
+      // 搜索关键字: 有输入才带(空串不传,避免把空参数当条件)
+      final String kw = keywords.trim();
+      if (kw.isNotEmpty) query['keywords'] = kw;
       final Map<String, dynamic> res = await Request().getRaw(
         '/live/api/shop/roomPage',
         queryParameters: query,

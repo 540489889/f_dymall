@@ -44,6 +44,10 @@ bool get hasMore => hasMoreValue ?? true;
 int get roomStatus => roomStatusValue ?? 1;
 // 是否加载中
 bool isLoading = false;
+// 搜索关键字(接口 roomPage 的 keywords: 直播间标题/主播昵称)
+// * 只记值不发请求,点"搜索"/回车才带关键字重新拉列表
+String keywords = '';
+final TextEditingController searchController = TextEditingController();
 // 分类栏暂时不用: 置为 false 隐藏,后续要分类时改回 true 即可
 static const bool showCateTab = false;
 
@@ -69,7 +73,7 @@ Future<void> loadRoomPage({bool refresh = false}) async {
   setState(() {
     isLoading = true;
   });
-  final Map<String, dynamic> res = await LiveApi.roomPage(page: page, pageSize: 10, status: roomStatus);
+  final Map<String, dynamic> res = await LiveApi.roomPage(page: page, pageSize: 10, status: roomStatus, keywords: keywords);
   if(!mounted) return;
   final List<dynamic> list = res['list'] is List ? res['list'] as List<dynamic> : <dynamic>[];
   setState(() {
@@ -83,6 +87,13 @@ Future<void> loadRoomPage({bool refresh = false}) async {
 
 // 下拉刷新
 Future<void> handleRefresh() async {
+  await loadRoomPage(refresh: true);
+}
+
+// 搜索(点"搜索"按钮 / 键盘回车): 带 keywords 重新拉第一页
+Future<void> handleSearch() async {
+  keywords = searchController.text.trim();
+  FocusManager.instance.primaryFocus?.unfocus();
   await loadRoomPage(refresh: true);
 }
 
@@ -105,6 +116,7 @@ void initState() {
 @override
 void dispose() {
   scrollController.dispose();
+  searchController.dispose();
   tabController.dispose();
   cateController.dispose();
   super.dispose();
@@ -153,6 +165,8 @@ Widget build(BuildContext context) {
         borderRadius: BorderRadius.circular(30.0),
       ),
         child: TextField(
+          controller: searchController,
+          textInputAction: TextInputAction.search,
           decoration: InputDecoration(
           isDense: true,
           hintText: "直播间标题/主播昵称",
@@ -168,7 +182,7 @@ Widget build(BuildContext context) {
               RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0))
             )
           ),
-          onPressed: () {},
+          onPressed: handleSearch,
             child: Text('搜索', style: TextStyle(fontSize: 13.0),),
           ),
         ),
@@ -178,8 +192,9 @@ Widget build(BuildContext context) {
       style: TextStyle(fontSize: 14.0),
       cursorColor: Colors.black,
         onChanged: (val) {
-          debugPrint(val);
+          keywords = val.trim();
         },
+        onSubmitted: (val) => handleSearch(),
         ),
       ),
     ),
