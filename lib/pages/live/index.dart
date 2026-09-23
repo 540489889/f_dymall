@@ -152,7 +152,7 @@ Widget build(BuildContext context) {
     indicatorPadding: EdgeInsets.symmetric(horizontal: 15.0, vertical: 4.0),
   ),
   actions: [
-    IconButton(icon: Icon(Icons.add_a_photo_outlined, size: 20.0,), onPressed: () {},),
+    IconButton(icon: Icon(Icons.crop_free, size: 20.0,), onPressed: () {},),
       ],
       bottom: PreferredSize(
         preferredSize: Size.fromHeight(45.0),

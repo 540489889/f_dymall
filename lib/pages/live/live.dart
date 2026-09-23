@@ -2,7 +2,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
@@ -10,10 +9,12 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shirne_dialog/shirne_dialog.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../api/live.dart';
 import '../../config/index.dart';
+import '../../controller/auth_store.dart';
 import '../../router/fade_route.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../utils/danmu_zoom.dart';
@@ -52,7 +53,7 @@ late Player player = createLivePlayer();
 late VideoController liveVideoController = VideoController(
   player,
   // Android 配置见 androidLiveVideoConfig(mediacodec-copy)
-  configuration: Platform.isAndroid
+  configuration: isAndroidPlatform
     ? androidLiveVideoConfig
     : const VideoControllerConfiguration(),
 );
@@ -272,7 +273,10 @@ Map<String, dynamic> _roomFromApi(Map<String, dynamic> room) => <String, dynamic
       'desc': '',
       'saleNum': '',
       'likeNum': '',
-      'isFollow': false,
+      // 关注状态: 接口下发(is_collect/is_follow)时以接口为准, 没下发默认未关注
+      'isFollow': LiveApi.followStatusOf(room) ?? false,
+      // 主播会员id(关注主播 collectLive 的 member_id)
+      'anchor_member_id': LiveApi.anchorMemberIdOf(room),
       'message': <dynamic>[],
     };
 
@@ -314,6 +318,11 @@ Map<String, dynamic> _mergeRoomDetail(Map<String, dynamic> item, Map<String, dyn
   if (type.isNotEmpty) merged['type'] = type;
   merged['status'] = LiveApi.statusOf(room);
   merged['status_name'] = LiveApi.statusName(room);
+  // 关注状态 / 主播会员id(详情里才有, 列表页可能没下发)
+  final bool? followed = LiveApi.followStatusOf(room);
+  if (followed != null) merged['isFollow'] = followed;
+  final String memberId = LiveApi.anchorMemberIdOf(room);
+  if (memberId.isNotEmpty) merged['anchor_member_id'] = memberId;
   return merged;
 }
 
@@ -371,6 +380,9 @@ Future<void> _loadRoomDetail(String sn, {int? index, bool updateStatus = true}) 
           LiveApi.intOf(room['subscribe_status']) > 0 ||
           LiveApi.intOf(room['subscribe']) > 0;
       debugPrint('[live]预约字段: subscribe_status=${room['subscribe_status']} subscribe=${room['subscribe']} -> subscribed=$subscribed');
+      // 排查关注用: 主播会员id / 关注状态字段名不确定, 打一次详情字段方便对照
+      debugPrint('[live]房间详情字段: ${room.keys.toList()}');
+      debugPrint('[live]主播会员id=${LiveApi.anchorMemberIdOf(room)} 关注状态=${LiveApi.followStatusOf(room)}');
       // 预告片: 只有预告房间才播(相对路径按图片域名规则补全)
       final String pre = '${room['pre_video'] ?? ''}'.trim();
       if (liveStatus == 0 && pre.isNotEmpty && pre != 'null') preVideo = LiveApi.fixImage(pre);
@@ -395,6 +407,35 @@ Future<void> _loadRoomDetail(String sn, {int? index, bool updateStatus = true}) 
     liveReconnector.src = '';
     await player.stop();
   }
+}
+
+// 关注/取消关注主播(/live/api/shop/collectLive, 参数 member_id = 主播会员id)
+// * 接口是切换语义: 未关注调一次变已关注, 再调一次取消
+// * 主播会员id 取不到(接口没下发)时不发请求, 只提示, 避免点了没反应还报脏数据
+Future<void> _onFollowTap(int index, Map<String, dynamic> item) async {
+  if (!AuthStore.to.isLogin) {
+    Get.toNamed('/login');
+    return;
+  }
+  final String memberId = '${item['anchor_member_id'] ?? ''}'.trim();
+  if (memberId.isEmpty) {
+    MyDialog.toast('未获取到主播信息');
+    return;
+  }
+  final bool before = item['isFollow'] == true;
+  final Map<String, dynamic> res = await LiveApi.collectLive(memberId: memberId);
+  if (!mounted) return;
+  if (res['ok'] != true) {
+    MyDialog.toast('${res['message']}');
+    return;
+  }
+  // 服务端没下发关注状态就按"原来取反"处理
+  final dynamic followed = res['followed'];
+  final bool after = followed is bool ? followed : !before;
+  setState(() {
+    item['isFollow'] = after;
+  });
+  MyDialog.toast(after ? '关注成功' : '已取消关注');
 }
 
 // 开播时间(转成"开播时刻"), 接口 start_time 有两种含义:
@@ -1826,11 +1867,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           ),
                                           child: Text(item['isFollow'] ? '已关注' : '关注', style: TextStyle(color: item['isFollow'] ? Color(0xFFFF2C55) : Colors.white, fontSize: 12.0),),
                                         ),
-                                        onTap: () {
-                                          setState(() {
-                                            item['isFollow'] = !item['isFollow'];
-                                              });
-                                            },
+                                        onTap: () => _onFollowTap(index, item),
                                           )
                                         ],
                                         ),

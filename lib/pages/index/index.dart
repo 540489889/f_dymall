@@ -2,7 +2,6 @@
 library;
 
 import 'dart:async';
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:card_swiper/card_swiper.dart';
@@ -325,10 +324,10 @@ Future<void> loadLiveRoom() async {
   liveReconnector = reconnector;
   // Android 配置见 androidLiveVideoConfig(mediacodec-copy)
   final VideoController controller = VideoController(
-    player,
-    configuration: Platform.isAndroid
-      ? androidLiveVideoConfig
-      : const VideoControllerConfiguration(),
+  player,
+  configuration: isAndroidPlatform
+    ? androidLiveVideoConfig
+    : const VideoControllerConfiguration(),
   );
   liveVideoController = controller;
   liveFirstFrame.value = false;

@@ -15,6 +15,10 @@ import 'ads_config.dart';
 export 'package:gromore_ads/gromore_ads.dart';
 
 class Ads {
+  /// 当前平台是否支持广告SDK(GroMore 只有 Android/iOS 实现, H5/桌面端没有插件实现)
+  /// * H5 上调插件方法会抛 MissingPluginException / Unsupported operation, 所有入口先判这个
+  static bool get supported => !kIsWeb;
+
   static bool _inited = false;
   /// SDK 是否初始化成功(失败时请求广告必然报错)
   static bool _sdkReady = false;
@@ -24,6 +28,11 @@ class Ads {
 
   /// 初始化SDK: 全局只调一次, 未配置 appId 时直接跳过(不会报错)
   static Future<bool> init() async {
+    // H5(web)没有原生实现: 不注册事件通道、不初始化, 直接跳过(否则报 MissingPluginException)
+    if (!supported) {
+      debugPrint('[ads] 当前平台不支持广告SDK(H5/桌面端), 跳过初始化');
+      return false;
+    }
     if (!AdsConfig.enabled) {
       debugPrint('[ads] 未配置 appId, 跳过初始化');
       return false;
@@ -158,6 +167,7 @@ class _AdsBannerState extends State<AdsBanner> {
   @override
   void initState() {
     super.initState();
+    if (!Ads.supported) return;
     if (widget.refreshSeconds > 0) {
       _timer = Timer.periodic(Duration(seconds: widget.refreshSeconds), (_) {
         if (mounted) setState(() => _refreshKey++);
@@ -173,6 +183,8 @@ class _AdsBannerState extends State<AdsBanner> {
 
   @override
   Widget build(BuildContext context) {
+    // H5 不渲染广告(插件无 web 实现, 渲染会抛 MissingPluginException)
+    if (!Ads.supported) return const SizedBox.shrink();
     return AdBannerWidget(
       key: ValueKey<int>(_refreshKey),
       posId: widget.posId,

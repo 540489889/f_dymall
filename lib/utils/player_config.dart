@@ -2,10 +2,16 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+
+/// 是否 Android 平台
+/// * H5(web)读 Platform.isAndroid 会抛 Unsupported operation: Platform._operatingSystem,
+///   所以先判 kIsWeb; 桌面端也不需要 Android 那套硬解配置
+bool get isAndroidPlatform => !kIsWeb && Platform.isAndroid;
 
 /// 协议白名单
 /// media_kit 默认的 PlayerConfiguration.protocolWhitelist 不含 rtmp,

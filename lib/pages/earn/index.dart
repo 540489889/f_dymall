@@ -495,6 +495,11 @@ class _EarnPageState extends State<EarnPage> {
   // 任务按钮: 激励视频看完才发金币, 其他任务走插屏
   Future<void> _onTaskTap(Map<String, dynamic> task) async {
     if (adPlaying) return;
+    // H5 没有广告实现: 直接提示, 不进广告流程(否则报 MissingPluginException)
+    if (!Ads.supported) {
+      MyDialog.toast('当前环境暂不支持广告');
+      return;
+    }
     final String adType = '${task['adType'] ?? ''}';
     setState(() => adPlaying = true);
     try {
@@ -528,6 +533,8 @@ class _EarnPageState extends State<EarnPage> {
 
   // 底部 Banner 广告位
   Widget _buildBanner() {
+    // H5 不支持广告: 整块不渲染(否则只剩一个空白白卡)
+    if (!Ads.supported) return const SizedBox.shrink();
     // 模板按 600x150 创建, 高度同比例换算, 避免广告被拉伸
     final double width = MediaQuery.of(context).size.width - 24.0 - 12.0;
     final double height = width * 150 / 600;

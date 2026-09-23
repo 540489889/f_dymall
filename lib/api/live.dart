@@ -190,6 +190,80 @@ class LiveApi {
     }
   }
 
+  /// 关注/取消关注主播(/live/api/shop/collectLive)
+  /// * [memberId] 主播会员ID(直播间/列表接口下发的主播会员 id)
+  /// * 接口是"切换"语义: 未关注 -> 关注, 已关注 -> 取消关注
+  /// * 返回 {ok: 是否成功, message: 提示文案, followed: 关注后的状态(true 已关注)}
+  ///   followed 服务端没下发时为 null, 由调用方按"原来取反"处理
+  static Future<Map<String, dynamic>> collectLive({required String memberId}) async {
+    final String mid = memberId.trim();
+    if (mid.isEmpty) {
+      return <String, dynamic>{'ok': false, 'message': '缺少主播信息', 'followed': null};
+    }
+    try {
+      final Map<String, dynamic> res = await Request().postRaw(
+        '/live/api/shop/collectLive',
+        data: <String, dynamic>{'member_id': mid},
+      );
+      final bool ok = '${res['code']}' == '0';
+      String message = '${res['message'] ?? ''}'.trim();
+      final dynamic data = res['data'];
+      if (data is String && data.trim().isNotEmpty) message = data.trim();
+      bool? followed;
+      // 关注状态: 服务端可能直接下发 is_collect / is_follow / status 等
+      final dynamic src = data is Map ? data : res;
+      for (final String key in const <String>[
+        'is_collect', 'isCollect', 'is_follow', 'isFollow', 'collect', 'follow', 'collect_status', 'status',
+      ]) {
+        final dynamic val = src is Map ? src[key] : null;
+        if (val == null) continue;
+        followed = val == true || '$val' == '1';
+        break;
+      }
+      // 少数端直接返回文案: 关注成功 / 取消关注
+      if (data is String) {
+        final String s = data.trim().toLowerCase();
+        if (s.contains('取消') || s == 'cancel' || s == 'unfollow') followed = false;
+        if (s.contains('关注成功') || s == 'follow' || s == 'collect') followed = true;
+      }
+      if (message.isEmpty) message = ok ? '操作成功' : '操作失败，请稍后再试';
+      if (!ok) debugPrint('[live]关注主播返回异常: ${res['code']} ${res['message']}');
+      return <String, dynamic>{'ok': ok, 'message': message, 'followed': followed};
+    } catch (e) {
+      debugPrint('[live]关注主播失败: $e');
+      return <String, dynamic>{'ok': false, 'message': '操作失败，请稍后再试', 'followed': null};
+    }
+  }
+
+  /// 主播会员ID(关注主播时传给 collectLive 的 member_id)
+  /// * 各端字段名不统一(member_id / anchor_id / uid 等), 逐个候选取第一个有效值
+  /// * 取不到返回空字符串, 由调用方提示"未获取到主播信息"
+  static String anchorMemberIdOf(Map<String, dynamic>? room) {
+    if (room == null) return '';
+    for (final String key in const <String>[
+      'member_id', 'memberId', 'anchor_id', 'anchorId', 'anchor_member_id',
+      'anchor_member', 'anchor_uid', 'user_id', 'uid',
+    ]) {
+      final String val = '${room[key] ?? ''}'.trim();
+      if (val.isEmpty || val == 'null' || val == '0') continue;
+      return val;
+    }
+    return '';
+  }
+
+  /// 是否已关注该主播(接口下发 is_collect / is_follow 等), 没下发返回 null
+  static bool? followStatusOf(Map<String, dynamic>? room) {
+    if (room == null) return null;
+    for (final String key in const <String>[
+      'is_collect', 'isCollect', 'is_follow', 'isFollow', 'collect_status', 'collect',
+    ]) {
+      final dynamic val = room[key];
+      if (val == null) continue;
+      return val == true || '$val' == '1';
+    }
+    return null;
+  }
+
   /// 举报直播间(/live/api/shop/complaint)
   /// * [no] 房间号 sn; [type] 举报原因(举报弹窗里选的文案); [content] 举报描述(选填)
   /// * 返回 {ok: 是否成功(code==0), message: 提示文案}
