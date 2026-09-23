@@ -78,8 +78,8 @@ String get point => '${memberInfo['point'] ?? 0}';
 String get mobile => '${memberInfo['mobile'] ?? ''}';
 // 已绑定门店名
 String get storeName => '${memberInfo['store_name'] ?? ''}';
-// 是否已绑定门店
-bool get hasStore => storeId.value != 0;
+// 是否已绑定门店(store_id 非 0; 少数账号只下发 store_name, 一并兼容)
+bool get hasStore => storeId.value != 0 || storeName.isNotEmpty;
 
 // ===== 个人资料页(设置)用字段 =====
 // 是否已设置登录密码(修改密码时决定走「原密码」还是「短信动态码」)

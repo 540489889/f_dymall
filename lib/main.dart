@@ -10,6 +10,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
+import 'utils/ads.dart';
 // 引入路由管理
 import 'router/index.dart';
 
@@ -22,6 +23,8 @@ Get.put(VideoStore());
   // 初始化media_kit视频套件
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+  // 初始化穿山甲广告SDK(未配置 appId 时内部直接跳过, 不影响启动)
+  await Ads.init();
 
   runApp(const MyApp());
 }

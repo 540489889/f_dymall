@@ -48,7 +48,8 @@ bool isLoading = false;
 static const bool showCateTab = false;
 
 late ScrollController scrollController = ScrollController();
-late TabController tabController = TabController(initialIndex: 2, length: tabList.length, vsync: this);
+// initialIndex 必须小于 tabList.length(现在只有 2 个 tab), 越界会直接在 tab_controller.dart 触发断言报错
+late TabController tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
 late TabController cateController = TabController(initialIndex: 0, length: cateList.length, vsync: this);
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);

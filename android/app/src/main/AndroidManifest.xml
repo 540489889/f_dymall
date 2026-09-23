@@ -1,5 +1,9 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- GroMore/穿山甲 mediation-sdk 的 AndroidManifest 也声明了 label/allowBackup/usesCleartextTraffic 等属性,
+         不声明 tools:replace 会触发 Manifest merger failed -->
     <application
+        tools:replace="android:label,android:icon,android:usesCleartextTraffic"
         android:label="flutter3_dymall"
         android:usesCleartextTraffic="true"
         android:name="${applicationName}"
@@ -56,6 +60,14 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+
+    <!-- 穿山甲广告SDK建议权限: 网络状态用于广告请求, 定位用于提升填充率(缺少时SDK会日志告警) -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- 下载类广告(应用推广)安装时需要 -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!--
       Media access permissions.
       Android 13 or higher.

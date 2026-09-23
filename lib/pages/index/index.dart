@@ -21,6 +21,7 @@ import '../../utils/player_config.dart';
 import '../../api/goods.dart';
 import '../../api/live.dart';
 import '../../api/seckill.dart';
+import '../../controller/auth_store.dart';
 class IndexPage extends StatefulWidget {
   const IndexPage({super.key});
   @override
@@ -314,7 +315,13 @@ Future<void> loadLiveRoom() async {
   await livePlayer?.dispose();
   final Player player = createLivePlayer();
   livePlayer = player;
-  final LiveReconnector reconnector = LiveReconnector(player);
+  final LiveReconnector reconnector = LiveReconnector(
+    player,
+    // 重连时把封面显示回来: "首帧已渲染"后封面是隐藏的, 重连这几秒 Video 没画面就会露出白板
+    onReconnecting: () {
+      if (mounted) liveFirstFrame.value = false;
+    },
+  );
   liveReconnector = reconnector;
   // Android 配置见 androidLiveVideoConfig(mediacodec-copy)
   final VideoController controller = VideoController(
@@ -340,20 +347,30 @@ Future<void> loadLiveRoom() async {
   player.stream.buffering.listen((bool buffering) => debugPrint('[live]buffering=$buffering'));
   player.stream.width.listen((int? width) {
     debugPrint('[live]视频尺寸: ${width ?? 0}x${player.state.height ?? 0}');
-    if((width ?? 0) > 0 && !liveFirstFrame.value) liveFirstFrame.value = true;
+    // 不能用解码尺寸判定首帧: 拿到尺寸时纹理可能还没渲染, 这时隐藏封面会露出卡片白底(一块白板)
   });
   player.stream.videoParams.listen((VideoParams params) {
     debugPrint('[live]videoParams: ${params.dw}x${params.dh} rotate=${params.rotate}');
   });
   // 视频输出诊断: 纹理id / 输出矩形 / 首帧是否真的渲染出来
-  controller.id.addListener(() => debugPrint('[live]textureId=${controller.id.value}'));
+  // * 首帧以"纹理已创建 / 首帧已渲染"为准, 才不会被过早隐藏封面
+  controller.id.addListener(() {
+    debugPrint('[live]textureId=${controller.id.value}');
+    if((controller.id.value ?? -1) > 0 && !liveFirstFrame.value) liveFirstFrame.value = true;
+  });
   controller.rect.addListener(() => debugPrint('[live]输出rect=${controller.rect.value}'));
-  controller.waitUntilFirstFrameRendered.then((_) => debugPrint('[live]首帧已渲染'));
+  controller.waitUntilFirstFrameRendered.then((_) {
+    debugPrint('[live]首帧已渲染');
+    if(mounted) liveFirstFrame.value = true;
+  });
   await player.setVolume(0.0);
   // 走 LiveReconnector: 抵消 Surface 重建触发的 seek 对 RTMP 直播的打断
   await reconnector.open(src, play: true);
   if(!mounted) return;
   setState(() {});
+  // 卡片挂载可能晚于接口返回(此刻 liveCardKey.currentContext 还是 null): 首帧后再同步一次,
+  // 否则这一轮同步会直接 return, 之后只有滚动才会恢复预览
+  WidgetsBinding.instance.addPostFrameCallback((_) => syncLivePlayState());
   // 卡片若已滚出视口则不播放
   syncLivePlayState();
 }
@@ -435,6 +452,11 @@ Widget liveBg() {
 void initState() {
   super.initState();
   scrollController.addListener(_onScroll);
+
+  // 已登录但会员信息为空(启动时拉取失败): 补拉一次, 避免门店绑定状态拿不到还显示"去绑定门店"
+  if (Get.isRegistered<AuthStore>() && AuthStore.to.isLogin && AuthStore.to.memberInfo.isEmpty) {
+    AuthStore.to.loadMemberInfo();
+  }
 
   // 初始化加载
   handleRefresh();
@@ -676,17 +698,6 @@ void initState() {
     super.dispose();
   }
 
-  // 直播弹幕气泡
-  Widget _buildDanmu(String text) {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-      decoration: BoxDecoration(
-        color: Colors.white.withAlpha(46),
-        borderRadius: BorderRadius.circular(4.0),
-      ),
-      child: Text(text, style: TextStyle(color: Colors.white, fontSize: 12.0)),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -723,21 +734,39 @@ void initState() {
                     SizedBox(width: 6.0),
                     Text('乐惠生活', style: TextStyle(color: Colors.white, fontSize: 20.0, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
                     Spacer(),
-                    // 去绑定门店入口
-                    Material(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(15.0),
-                      child: InkWell(
+                    // 绑定门店入口: 已绑定显示门店名, 未绑定才显示"去绑定门店"(点进去绑定)
+                    Obx(() {
+                      final bool bound = AuthStore.to.hasStore;
+                      final String name = AuthStore.to.storeName;
+                      return Material(
+                        color: Colors.white24,
                         borderRadius: BorderRadius.circular(15.0),
-                        onTap: () {
-                          debugPrint('去绑定门店');
-                        },
-                        child: Container(
-                          padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-                          child: Text('去绑定门店', style: TextStyle(color: Colors.white, fontSize: 13.0)),
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(15.0),
+                          onTap: () {
+                            // 未绑定: 去绑定门店页
+                            if (!bound) {
+                              Get.toNamed('/bind_store');
+                              return;
+                            }
+                            // 已绑定: 进门店详情(/api/store/info?store_id=)
+                            final int sid = AuthStore.to.storeId.value;
+                            if (sid == 0) {
+                              Get.snackbar('提示', name.isNotEmpty ? '已绑定门店：$name' : '已绑定门店');
+                              return;
+                            }
+                            Get.toNamed('/store/detail', arguments: <String, dynamic>{'store_id': sid});
+                          },
+                          child: Container(
+                            padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                            child: Text(
+                              bound ? (name.isNotEmpty ? name : '已绑定门店') : '去绑定门店',
+                              style: TextStyle(color: Colors.white, fontSize: 13.0),
+                            ),
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    }),
                   ],
                 ),
               ),
@@ -982,102 +1011,129 @@ void initState() {
                                       fit: BoxFit.cover,
                                       // 无控制条
                                       controls: NoVideoControls,
-                                      fill: Colors.transparent,
+                                      // 没出帧时用深色兜底: 默认透明会露出卡片白底, 观感就是一块白板
+                                      fill: const Color(0xFF2A0A0B),
                                     ),
                                   ),
-                                // 遮罩: 保证画面上的文字可读
-                                if (liveVideoController != null)
-                                  Positioned.fill(
-                                    child: Container(
-                                      decoration: BoxDecoration(
-                                        gradient: LinearGradient(
-                                          begin: Alignment.topCenter,
-                                          end: Alignment.bottomCenter,
-                                          colors: [Colors.black.withAlpha(70), Color(0xFF3A0708).withAlpha(120)],
-                                        ),
+                                // 遮罩: 上下都压一点深色(顶部标签/居中文字都可读), 中间留轻一点保持通透
+                                Positioned.fill(
+                                  child: Container(
+                                    decoration: BoxDecoration(
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        stops: const [0.0, 0.5, 1.0],
+                                        colors: [
+                                          Colors.black.withAlpha(110),
+                                          Colors.black.withAlpha(60),
+                                          Colors.black.withAlpha(130),
+                                        ],
                                       ),
                                     ),
                                   ),
-                                // 观看人数
+                                ),
+                                // 观看人数 + 直播中标签
                                 Positioned(
                                   top: 10.0,
                                   left: 10.0,
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withAlpha(120),
-                                      borderRadius: BorderRadius.circular(4.0),
-                                    ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.videocam, color: Colors.white, size: 14.0),
-                                        SizedBox(width: 4.0),
-                                        Text('${liveText(const ['online'], '0')}观看', style: TextStyle(color: Colors.white, fontSize: 11.0)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                // 专场标题
-                                Align(
-                                  alignment: Alignment(0, -0.45),
-                                  child: Column(
-                                    mainAxisSize: MainAxisSize.min,
+                                  right: 10.0,
+                                  child: Row(
                                     children: [
-                                      Text(liveText(const ['name', 'room_name', 'title'], '欧拿优选专场'), style: TextStyle(color: Colors.white, fontSize: 28.0, fontWeight: FontWeight.w900, letterSpacing: 2.0)),
-                                      SizedBox(height: 6.0),
-                                      Text(liveSubtitle, style: TextStyle(color: Colors.white70, fontSize: 13.0)),
+                                      Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black.withAlpha(110),
+                                          borderRadius: BorderRadius.circular(20.0),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Icon(Icons.videocam, color: Colors.white, size: 13.0),
+                                            SizedBox(width: 4.0),
+                                            Text('${liveText(const ['online'], '0')}观看', style: TextStyle(color: Colors.white, fontSize: 11.0)),
+                                          ],
+                                        ),
+                                      ),
+                                      Spacer(),
+                                      // 直播中: 红底白点, 一眼看出在播
+                                      Container(
+                                        padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                        decoration: BoxDecoration(
+                                          color: Color(0xFFFF2C55),
+                                          borderRadius: BorderRadius.circular(20.0),
+                                        ),
+                                        child: Row(
+                                          mainAxisSize: MainAxisSize.min,
+                                          children: [
+                                            Container(width: 5.0, height: 5.0, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
+                                            SizedBox(width: 4.0),
+                                            Text('直播中', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
+                                          ],
+                                        ),
+                                      ),
                                     ],
                                   ),
                                 ),
-                                // 点击看直播
-                                Align(
-                                  alignment: Alignment(0, 0.35),
-                                  child: Container(
-                                    padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 7.0),
-                                    decoration: BoxDecoration(
-                                      color: Colors.white,
-                                      borderRadius: BorderRadius.circular(20.0),
+                                // 信息区: 标题/副标题/看直播在画面正中(水平 + 垂直都居中)
+                                Positioned.fill(
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                                    child: Center(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.center,
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            liveText(const ['name', 'room_name', 'title'], '欧拿优选专场'),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(color: Colors.white, fontSize: 16.0, fontWeight: FontWeight.w700, height: 1.2),
+                                          ),
+                                          SizedBox(height: 2.0),
+                                          Text(
+                                            liveSubtitle,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 11.0),
+                                          ),
+                                          SizedBox(height: 6.0),
+                                          Container(
+                                            padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                                            decoration: BoxDecoration(
+                                              color: Colors.white,
+                                              borderRadius: BorderRadius.circular(14.0),
+                                            ),
+                                            child: Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Icon(Icons.play_arrow_rounded, color: Color(0xFFFF2C55), size: 14.0),
+                                                Text('看直播', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0, fontWeight: FontWeight.w700)),
+                                              ],
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Icon(Icons.slideshow, color: Color(0xFFFF2C55), size: 16.0),
-                                        SizedBox(width: 6.0),
-                                        Text('点击看直播', style: TextStyle(color: Colors.black87, fontSize: 14.0, fontWeight: FontWeight.w600)),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                // 左下角弹幕
-                                Positioned(
-                                  left: 10.0,
-                                  bottom: 12.0,
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      _buildDanmu('再上点，没拍到'),
-                                      SizedBox(height: 6.0),
-                                      _buildDanmu('没拍到加点库存吧'),
-                                    ],
                                   ),
                                 ),
                               ],
                             ),
                           ),
-                          // 官方直播条
+                          // 官方直播条: 头像 + 主播名/福利文案(两行) + 进入
                           Container(
-                            height: 56.0,
-                            padding: EdgeInsets.symmetric(horizontal: 10.0),
-                            color: Color(0xFFC8121C),
+                            height: 54.0,
+                            padding: EdgeInsets.symmetric(horizontal: 12.0),
+                            color: Color(0xFFFFF1F2),
                             child: Row(
                               children: [
                                 Container(
-                                  width: 38.0,
-                                  height: 38.0,
+                                  width: 34.0,
+                                  height: 34.0,
                                   clipBehavior: Clip.antiAlias,
                                   decoration: BoxDecoration(
-                                    color: Colors.white,
+                                    color: Color(0xFFFFE1E5),
                                     shape: BoxShape.circle,
                                   ),
                                   child: liveAnchorImg.isEmpty
@@ -1090,17 +1146,37 @@ void initState() {
                                             Image.asset('assets/images/logo.png', fit: BoxFit.contain, isAntiAlias: true),
                                       ),
                                 ),
-                                SizedBox(width: 8.0),
-                                Text(liveText(const ['anchor_name', 'shop_name', 'nickname'], '惠买官方直播'), style: TextStyle(color: Colors.white, fontSize: 16.0, fontWeight: FontWeight.bold)),
-                                SizedBox(width: 8.0),
+                                SizedBox(width: 10.0),
+                                // 名称 + 福利文案竖排: 名称再长也不会把右侧挤出去了
                                 Expanded(
-                                  child: Text('限时福利特惠', style: TextStyle(color: Color(0xFFFCE38A), fontSize: 14.0, fontWeight: FontWeight.bold)),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        liveText(const ['anchor_name', 'shop_name', 'nickname'], '惠买官方直播'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: Color(0xFF222222), fontSize: 15.0, fontWeight: FontWeight.w700),
+                                      ),
+                                      SizedBox(height: 2.0),
+                                      Text(
+                                        '限时福利特惠',
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0),
+                                      ),
+                                    ],
+                                  ),
                                 ),
+                                // 原来的心形圆按钮只是装饰(点了没反应), 换成"进入"更明确
                                 Container(
-                                  width: 32.0,
-                                  height: 32.0,
-                                  decoration: BoxDecoration(color: Color(0xFFFF5C8A), shape: BoxShape.circle),
-                                  child: Icon(Icons.favorite, color: Colors.white, size: 18.0),
+                                  padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                                  decoration: BoxDecoration(
+                                    color: Color(0xFFFF2C55),
+                                    borderRadius: BorderRadius.circular(14.0),
+                                  ),
+                                  child: Text('进入', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w600)),
                                 ),
                               ],
                             ),

@@ -335,7 +335,13 @@ class _MyPageState extends State<MyPage> {
         break;
       case '我的自提门店':
         if (authStore.hasStore) {
-          Get.snackbar('提示', authStore.storeName.isNotEmpty ? '已绑定门店：${authStore.storeName}' : '已绑定门店');
+          // 已绑定: 进门店详情(/api/store/info?store_id=)
+          final int sid = authStore.storeId.value;
+          if (sid == 0) {
+            Get.snackbar('提示', authStore.storeName.isNotEmpty ? '已绑定门店：${authStore.storeName}' : '已绑定门店');
+          } else {
+            Get.toNamed('/store/detail', arguments: <String, dynamic>{'store_id': sid});
+          }
         } else {
           Get.toNamed('/bind_store');
         }

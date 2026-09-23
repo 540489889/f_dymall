@@ -9,7 +9,7 @@ import '../components/keepalive_wrapper.dart';
 import '../pages/index/index.dart';
 import '../pages/video/index.dart';
 import '../pages/live/index.dart';
-import '../pages/chat/index.dart';
+import '../pages/earn/index.dart';
 import '../pages/my/index.dart';
 
 class Layout extends StatefulWidget {
@@ -28,7 +28,7 @@ final videoStore = VideoStore.to;
    KeepAliveWrapper(child: IndexPage()),
     VideoPage(),
    KeepAliveWrapper(child: LivePage()),
-  ChatPage(),
+  KeepAliveWrapper(child: EarnPage()),
    MyPage(),
  ];
   // tabs选项
@@ -53,14 +53,8 @@ final videoStore = VideoStore.to;
      label: ''
     ),
     BottomNavigationBarItem(
-      icon: Badge.count(
-       isLabelVisible: true,
-        count: 2,
-       backgroundColor: Colors.redAccent,
-      alignment: Alignment(2.5, -1.0),
-       child: Icon(Icons.messenger_outline),
-      ),
-     label: '消息'
+      icon: Icon(Icons.card_giftcard_outlined),
+     label: '赚钱'
     ),
     BottomNavigationBarItem(
      icon: Icon(Icons.person_pin),

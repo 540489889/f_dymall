@@ -320,6 +320,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "2.1.1"
+  gromore_ads:
+    dependency: "direct main"
+    description:
+      name: gromore_ads
+      sha256: d343aa3c82d0cb01785730c6091856097f5f661a6a3c12b0fdbf311a7d2ae276
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.0.3"
   hooks:
     dependency: transitive
     description:

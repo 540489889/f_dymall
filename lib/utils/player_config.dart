@@ -68,13 +68,16 @@ const VideoControllerConfiguration androidLiveVideoConfig = VideoControllerConfi
 /// b. 起播 3s 仍无画面、且流已经停了(既没播也没缓冲) -> 重连
 /// * 流没断只是起播慢时不打断它, 否则正常起播会被重新来一遍(观感就是"播了两遍")
 class LiveReconnector {
-  LiveReconnector(this.player, {this.srcProvider});
+  LiveReconnector(this.player, {this.srcProvider, this.onReconnecting});
 
   final Player player;
 
   /// 重连前刷新拉流地址: m3u8 地址带 auth_key 时效, 过期后旧地址会 403
   /// * 返回空字符串时沿用当前地址
   final Future<String> Function()? srcProvider;
+
+  /// 开始重连的回调: 重连期间画面是空的, 上层要把封面/占位重新显示出来, 否则就是一块白板
+  final VoidCallback? onReconnecting;
 
   /// 最大重连次数(主播真的下播时避免无限重连)
   static const int maxRetry = 3;
@@ -171,6 +174,8 @@ class LiveReconnector {
 
   /// 重连: 优先用 srcProvider 刷新地址(auth_key 有时效)
   Future<void> _reconnect(int seq) async {
+    // 通知上层: 接下来画面会空一段时间(封面重新显示, 避免白板/黑屏)
+    onReconnecting?.call();
     String url = src;
     final Future<String> Function()? provider = srcProvider;
     if (provider != null) {

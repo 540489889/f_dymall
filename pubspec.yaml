@@ -41,6 +41,9 @@ dependencies:
   ai_barcode_scanner: ^8.2.0
   # 直播间 WebSocket(与H5 Config.socketUrl 同一服务)
   web_socket_channel: ^3.0.3
+  # GroMore 聚合广告SDK(穿山甲/巨量引擎): 赚钱页的激励视频/插屏/Banner
+  # * 后台用了瀑布流+竞价, 必须走聚合SDK, 普通穿山甲SDK请求聚合代码位会报 20001/40034
+  gromore_ads: ^1.0.3
 
 dev_dependencies:
   flutter_test:

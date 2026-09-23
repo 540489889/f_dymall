@@ -2,6 +2,8 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // 穿山甲/GroMore 融合SDK与 adapter 依赖仓库
+        maven { url = uri("https://artifact.bytedance.com/repository/pangle") }
     }
 }
 
