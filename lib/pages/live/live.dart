@@ -1346,19 +1346,13 @@ List<Widget> danmuList(dynamic list) {
               // 切房: 换房间号并重新取该房间的详情/拉流地址/带货商品, 再起播重进 socket
               await _switchRoom(index);
             },
-            // 列表还没回来时先给一页占位(空态), 拿到数据后按真实条数渲染
+            // 列表还没回来时先用首页入参渲染进入的这一间(_roomItem 已兜底), 不再显示加载占位
             itemCount: roomList.isEmpty ? 1 : roomList.length,
             itemBuilder: (context, index) {
-            // 接口列表为空: 首次加载完成前显示加载中, 加载完仍为空才是暂无直播间
-            if (roomList.isEmpty) {
-              return Center(
-                child: roomListLoaded
-                    ? const Text('暂无直播间', style: TextStyle(color: Colors.white70, fontSize: 14.0))
-                    : const SizedBox(
-                        height: 24.0,
-                        width: 24.0,
-                        child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white70),
-                      ),
+            // 加载完仍为空、且不是从首页点进来的(没有房间号): 才提示暂无直播间
+            if (roomList.isEmpty && roomListLoaded && currentSn.isEmpty) {
+              return const Center(
+                child: Text('暂无直播间', style: TextStyle(color: Colors.white70, fontSize: 14.0)),
               );
             }
             // 上下滑动的房间全部来自 roomPage 接口, 没有本地演示房间:
