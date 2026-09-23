@@ -162,6 +162,30 @@ class LiveApi {
     }
   }
 
+  /// 预约直播接口路径(预告房间点"预约直播"时调用, 与 H5 this.$api.sendRequest 的路径一致)
+  static const String subscribePath = '/live/api/shop/subscribeRoom';
+
+  /// 预约直播
+  /// * [no] 房间号 sn(与 getRoomInfo 同一个参数)
+  /// * 成功(接口 code==0)返回 true, 失败/异常返回 false(页面据此外显提示)
+  static Future<bool> subscribeRoom(String no) async {
+    if (no.isEmpty) return false;
+    try {
+      final Map<String, dynamic> res = await Request().postRaw(
+        subscribePath,
+        data: <String, dynamic>{'no': no},
+      );
+      if ('${res['code']}' != '0') {
+        debugPrint('[live]预约直播返回异常: ${res['code']} ${res['message']}');
+        return false;
+      }
+      return true;
+    } catch (e) {
+      debugPrint('[live]预约直播失败: $e');
+      return false;
+    }
+  }
+
   /// 是否横屏直播间: 直播间数据里的 type 字段
   /// * 直播间以 getRoomInfo(/live/api/shop/getRoomInfo) 返回的 type 为准:
   ///   'horizontal' 横屏直播; 'vertical' / 空 / 其它值都按竖屏处理(容错大小写与首尾空格)

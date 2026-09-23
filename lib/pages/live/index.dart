@@ -18,7 +18,7 @@ class LivePage extends StatefulWidget {
 }
 
 class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
-  List<String> tabList = ['关注', '发现', '精选'];
+  List<String> tabList = ['关注', '精选'];
   List cateList = [
   {'name': "直播推荐", 'badge': 1},
   {'name': "上新"},
@@ -154,7 +154,7 @@ Widget build(BuildContext context) {
         child: TextField(
           decoration: InputDecoration(
           isDense: true,
-          hintText: "男卫衣纯棉100%",
+          hintText: "直播间标题/主播昵称",
           prefixIcon: Icon(Icons.search, color: Colors.black38, size: 20.0,),
         suffixIcon: Padding(
           padding: EdgeInsetsGeometry.all(2.0),

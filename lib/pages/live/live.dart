@@ -88,7 +88,19 @@ Map<String, dynamic>? roomInfo;
 int liveStatus = 1;
 // 是否横屏直播间: 以 getRoomInfo 返回的 type 为准('horizontal' 横屏)
 // * 接口返回前先用首页传入的 type 预判, 避免进来先竖版闪一下; 其余值一律按竖屏处理
+// * 直播预告(status=0)一律按竖屏(接口此时常不下发 type), 预告卡片才不会被压成 16:9
 bool isHorizontal = false;
+// 直播预告: 开播时间(接口 start_time)与倒计时(每秒刷新, 到点自动复查房间状态)
+DateTime? liveStartTime;
+// 倒计时归零后的复查只做一次(否则房间还是预告时会反复请求详情)
+bool startChecked = false;
+// 预告片(getRoomInfo 的 pre_video): 非空时预告页播视频, 为空则展示封面图
+String preVideo = '';
+final ValueNotifier<Duration> countdownNotifier = ValueNotifier<Duration>(Duration.zero);
+Timer? countdownTimer;
+// 是否已预约直播(接口 subscribe_status / subscribe 字段), 已预约时按钮置灰
+bool subscribed = false;
+bool subscribing = false;
 // 拉流地址: /live/api/shop/getPullUrl(参数 no = sn 房间号)返回的 url,拿不到为空
 String pullUrl = '';
 // 房间号: 进入时取首页传入的 sn, 上下滑动切房后跟随当前房间(进房消息/拉流都用它)
@@ -230,18 +242,31 @@ Future<void> _loadRoomList({bool loadMore = false}) async {
   }
 }
 
+// 主播名: 接口字段是 anchor_name(name 是直播间标题, 不是主播名), 没下发时回退 name
+// * 与直播列表页一致: 头像旁显示 anchor_name, 标题显示 name
+String anchorNameOf(Map<String, dynamic> item) {
+  final String anchor = '${item['anchor_name'] ?? ''}'.trim();
+  if (anchor.isNotEmpty && anchor != 'null') return anchor;
+  return '${item['name'] ?? ''}'.trim();
+}
+
 // 接口房间 -> 页面渲染字段(沿用原来的字段名, 渲染层不用改)
 // * 真实房间没有演示字段: 销量/点赞走 socket, 历史弹幕为空, 关注默认未关注
 Map<String, dynamic> _roomFromApi(Map<String, dynamic> room) => <String, dynamic>{
       'id': '${room['sn'] ?? ''}'.trim(),
       'sn': '${room['sn'] ?? ''}'.trim(),
       'name': '${room['name'] ?? ''}'.trim(),
+      // 主播名(顶部主播信息栏/红包"xxx的红包"用)
+      'anchor_name': '${room['anchor_name'] ?? ''}'.trim(),
       'logo': '${room['anchor_img'] ?? ''}'.trim(),
       'poster': '${room['feeds_img'] ?? ''}'.trim(),
       'src': '${room['push_link'] ?? ''}'.trim(),
-      'type': '${room['type'] ?? ''}'.trim(),
+      // 横竖屏默认竖屏: 接口不下发 type 时(直播预告常见)按 vertical 处理
+      'type': '${room['type'] ?? ''}'.trim().isEmpty ? 'vertical' : '${room['type']}'.trim(),
       'status': LiveApi.statusOf(room),
       'status_name': LiveApi.statusName(room),
+      // 开播时间(预告倒计时用): 文本 "2026-09-22 10:57:53" 或时间戳, 原样保留由 _parseStartTime 解析
+      'start_time': '${room['start_time'] ?? ''}'.trim(),
       'online': LiveApi.intOf(room['online']),
       'desc': '',
       'saleNum': '',
@@ -255,10 +280,12 @@ Map<String, dynamic> _roomFromArguments() => <String, dynamic>{
       'id': currentSn,
       'sn': currentSn,
       'name': '${arguments?['name'] ?? ''}'.trim(),
+      'anchor_name': '${arguments?['anchor_name'] ?? ''}'.trim(),
       'logo': '',
       'poster': '${arguments?['cover'] ?? ''}'.trim(),
       'src': '${arguments?['src'] ?? ''}'.trim(),
-      'type': '${arguments?['type'] ?? ''}'.trim(),
+      // 同上: 首页没传 type 时默认竖屏
+      'type': '${arguments?['type'] ?? ''}'.trim().isEmpty ? 'vertical' : '${arguments?['type']}'.trim(),
       'status': 1,
       'status_name': '',
       'online': 0,
@@ -272,8 +299,11 @@ Map<String, dynamic> _roomFromArguments() => <String, dynamic>{
 // 用 getRoomInfo 详情补齐列表里的房间(标题/头像/封面/横竖屏/状态), 只覆盖非空字段
 Map<String, dynamic> _mergeRoomDetail(Map<String, dynamic> item, Map<String, dynamic> room) {
   final Map<String, dynamic> merged = Map<String, dynamic>.from(item);
-  final String name = '${room['name'] ?? room['anchor_name'] ?? ''}'.trim();
+  final String name = '${room['name'] ?? ''}'.trim();
   if (name.isNotEmpty) merged['name'] = name;
+  // 主播名单独字段: 详情回来后补齐(列表页可能没下发)
+  final String anchor = '${room['anchor_name'] ?? ''}'.trim();
+  if (anchor.isNotEmpty) merged['anchor_name'] = anchor;
   final String logo = LiveApi.imageOf(room['anchor_img']);
   if (logo.isNotEmpty) merged['logo'] = logo;
   String cover = LiveApi.imageOf(room['feeds_img']);
@@ -332,12 +362,31 @@ Future<void> _loadRoomDetail(String sn, {int? index, bool updateStatus = true}) 
     if (updateStatus) {
       roomInfo = room;
       liveStatus = LiveApi.statusOf(room);
+      // getRoomInfo 的 start_time 常为 0, 这时回退用列表里那条的(roomPage 下发的开播时间)
+      liveStartTime = _parseStartTime(room) ?? _parseStartTime(i < roomList.length ? roomList[i] : null);
+      startChecked = false;
+      // 兼容 1 / "1" / true 三种写法, 避免后端已返回已预约却识别成未预约(点了一次没变化)
+      subscribed = room['subscribe_status'] == true ||
+          LiveApi.intOf(room['subscribe_status']) > 0 ||
+          LiveApi.intOf(room['subscribe']) > 0;
+      debugPrint('[live]预约字段: subscribe_status=${room['subscribe_status']} subscribe=${room['subscribe']} -> subscribed=$subscribed');
+      // 预告片: 只有预告房间才播(相对路径按图片域名规则补全)
+      final String pre = '${room['pre_video'] ?? ''}'.trim();
+      if (liveStatus == 0 && pre.isNotEmpty && pre != 'null') preVideo = LiveApi.fixImage(pre);
     }
     // 横竖屏以接口 type 为准(首页传入的 type 只是预判)
     // * 详情是后台请求: 回来时用户可能已滑到别的房间, 这时不能改当前房间的布局
-    if (liveIndexNotifier.value == i) isHorizontal = LiveApi.isHorizontalRoom(room);
+    // * 直播预告(status=0)按竖屏展示(type 默认 vertical), 预告卡片不被压成 16:9
+    if (liveIndexNotifier.value == i) {
+      isHorizontal = LiveApi.isHorizontalRoom(room) && LiveApi.statusOf(room) != 0;
+    }
     if (i < roomList.length) roomList[i] = _mergeRoomDetail(roomList[i], room);
   });
+  // 预告房间: 起播倒计时(到点自动复查是否已开播) + 有预告片就播预告片
+  if (updateStatus && liveStatus == 0) {
+    _startCountdown();
+    unawaited(_openPreviewVideo());
+  }
   // 接口回来才发现已结束/暂停/预告: 停掉刚起的流, 交给封面 + 状态提示
   // * 用最新的 entryIndex 判断(房间列表回来后它可能已经变过)
   if (updateStatus && !shouldOpenStream(entryIndex)) {
@@ -345,6 +394,100 @@ Future<void> _loadRoomDetail(String sn, {int? index, bool updateStatus = true}) 
     liveReconnector.src = '';
     await player.stop();
   }
+}
+
+// 开播时间(转成"开播时刻"), 接口 start_time 有两种含义:
+// * getRoomInfo: 距开播的剩余秒数(如 13044 = 3小时37分后开播)
+// * roomPage 列表: 绝对时间文本(如 "2026-09-22 10:57:53"), 也可能是秒级/毫秒级时间戳
+// * 区分方法: 数字小于 1e8(约 115 天) 按剩余秒数, 否则按绝对时间戳
+DateTime? _parseStartTime(Map<String, dynamic>? room) {
+  if (room == null) return null;
+  final dynamic raw = room['start_time'] ?? room['startTime'];
+  if (raw == null) return null;
+  DateTime? fromSeconds(int seconds) {
+    if (seconds <= 0) return null;
+    // 剩余秒数: 以当前时间为基准往后推(每次解析都按当下算, 接口回来即可用)
+    if (seconds < 100000000) return DateTime.now().add(Duration(seconds: seconds));
+    // 绝对时间戳: 毫秒级(1.7e12)直接用, 秒级(1.7e9)乘 1000
+    return DateTime.fromMillisecondsSinceEpoch(seconds > 1000000000000 ? seconds : seconds * 1000);
+  }
+  if (raw is num) return fromSeconds(raw.toInt());
+  final String text = '$raw'.trim();
+  if (text.isEmpty) return null;
+  final DateTime? parsed = DateTime.tryParse(text);
+  if (parsed != null) return parsed;
+  final int? ts = int.tryParse(text);
+  return ts == null ? null : fromSeconds(ts);
+}
+
+// 预告片(getRoomInfo 的 pre_video): 静音循环播放, 开播时会被直播流顶掉
+Future<void> _openPreviewVideo() async {
+  if (preVideo.isEmpty) return;
+  await player.setVolume(0.0);
+  await liveReconnector.open(preVideo);
+}
+
+// 开播倒计时: 每秒刷新, 归零后再查一次房间状态(已开播就起播)
+void _startCountdown() {
+  countdownTimer?.cancel();
+  countdownTimer = null;
+  if (liveStartTime == null || startChecked) return;
+  void tick() {
+    final DateTime? start = liveStartTime;
+    if (start == null) return;
+    final Duration left = start.difference(DateTime.now());
+    countdownNotifier.value = left.isNegative ? Duration.zero : left;
+    if (countdownNotifier.value != Duration.zero) return;
+    countdownTimer?.cancel();
+    countdownTimer = null;
+    startChecked = true;
+    unawaited(_refreshAfterStart());
+  }
+  tick();
+  countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) => tick());
+}
+
+// 倒计时归零: 重新查房间详情, 已开播(status=1)就直接起播
+Future<void> _refreshAfterStart() async {
+  if (!mounted) return;
+  final String sn = roomSn.isNotEmpty ? roomSn : currentSn;
+  if (sn.isEmpty) return;
+  await _loadRoomDetail(sn);
+  if (!mounted || liveStatus != 1) return;
+  await _openEntryStream();
+}
+
+// 倒计时文案: 超过一天带天数; 接口没给开播时间时提示待定
+String get countdownText {
+  if (liveStartTime == null) return '开播时间待定';
+  final Duration d = countdownNotifier.value;
+  if (d == Duration.zero) return '即将开播';
+  String two(int v) => v.toString().padLeft(2, '0');
+  final String hms = '${two(d.inHours % 24)}:${two(d.inMinutes % 60)}:${two(d.inSeconds % 60)}';
+  return d.inDays > 0 ? '${d.inDays}天 $hms' : hms;
+}
+
+// 预约直播: 成功后按钮置灰(已预约)
+// * [sn] 预告卡片那条数据的 sn(与 H5 item.sn 一致), 不传则回退当前房间 sn
+Future<void> _onSubscribeTap([String? sn]) async {
+  debugPrint('[live]预约直播点击: subscribed=$subscribed subscribing=$subscribing sn=${sn ?? ''} roomSn=$roomSn');
+  if (subscribing || subscribed) return;
+  final String no = '${sn ?? ''}'.trim().isNotEmpty ? '${sn!}'.trim() : (roomSn.isNotEmpty ? roomSn : currentSn);
+  if (no.isEmpty) {
+    _toast('房间信息还在加载');
+    return;
+  }
+  debugPrint('[live]预约直播 no=$no');
+  setState(() => subscribing = true);
+  final bool ok = await LiveApi.subscribeRoom(no);
+  debugPrint('[live]预约直播结果 ok=$ok');
+  if (!mounted) return;
+  setState(() {
+    subscribing = false;
+    if (ok) subscribed = true;
+  });
+  // 成功只改按钮状态(置灰 + 文案变"已预约"), 不弹提示; 只有失败才提示
+  if (!ok) _toast('预约失败，请稍后再试');
 }
 
 // 带货商品(onlineGoods, 底部购物弹窗用): 单独请求, 不阻塞起播; 拿不到则保持空列表, 弹窗回落本地演示数据
@@ -364,6 +507,8 @@ Future<void> _openEntryStream() async {
   if (liveSrc.isEmpty) liveSrc = '${arguments['src'] ?? ''}'.trim();
   // 拿不到拉流地址就不起播(由封面 + 状态提示兜底), 不再回落到演示地址
   if (liveSrc.isEmpty) return;
+  // 预告片是静音播的, 起直播流时恢复音量
+  await player.setVolume(100.0);
   await liveReconnector.open(liveSrc);
 }
 
@@ -388,6 +533,12 @@ Future<void> _switchRoom(int index) async {
     positionNotifier.value = Duration.zero;
     // 切房: 等新流解码出首帧再显示画面, 期间继续显示封面
     firstFrameNotifier.value = false;
+    // 预告片/倒计时是上一个房间的, 新房间详情回来后重新取
+    preVideo = '';
+    liveStartTime = null;
+    startChecked = false;
+    countdownTimer?.cancel();
+    subscribed = false;
     // 上一个房间的实时数据不带过来: 弹幕/活动/进场/在线人数/点赞/讲解中商品
     danmuMessages.value = const <Map<String, dynamic>>[];
     danmuIds.clear();
@@ -827,7 +978,7 @@ void _openWinnerList(String gameId, ActivityWinnerType type) {
 }
 
 // 主播昵称(红包封面展示"xxx的红包")
-String get anchorName => '${roomInfo?['name'] ?? roomInfo?['anchor_name'] ?? ''}'.trim();
+String get anchorName => anchorNameOf(roomInfo ?? const <String, dynamic>{});
 
 // 主播头像(与 _roomItem 取值口径一致)
 String get anchorAvatar => LiveApi.imageOf(roomInfo?['anchor_img']);
@@ -1225,6 +1376,8 @@ bool _isDemoRoom(int index) => false;
   _joinWatchdog?.cancel();
   // 活动倒计时: 离开直播间一并停掉
   activityTimer?.cancel();
+  // 开播倒计时(预告房间)
+  countdownTimer?.cancel();
   liveSocket.close();
   likeHearts.dispose();
   danmuMessages.dispose();
@@ -1236,6 +1389,127 @@ bool _isDemoRoom(int index) => false;
   pageVerticalController.dispose();
   pageHorizontalController.dispose();
   super.dispose();
+}
+
+// 直播预告卡片(status=0): 封面图 + 开播倒计时 + 预约直播按钮
+// * 预告没有流可播, 画面就是封面; 卡片浮在封面之上, 倒计时到点会自动复查是否已开播
+Widget _previewCard(Map<String, dynamic> item) {
+  final String poster = '${item['poster'] ?? ''}'.trim();
+  // 卡片里只显示直播间标题(name): 主播信息(头像+名字)直播间左上角已经有了, 这里不重复展示
+  final String title = '${item['name'] ?? ''}'.trim();
+  // 略高于垂直居中: 底部还要留出主播信息/购物栏的位置, 卡片整体再往上一点
+  return Align(
+    alignment: const Alignment(0.0, -0.3),
+    child: Container(
+      width: double.infinity,
+      margin: const EdgeInsets.symmetric(horizontal: 32.0),
+      padding: const EdgeInsets.all(14.0),
+      decoration: BoxDecoration(
+        color: const Color(0x99000000),
+        borderRadius: BorderRadius.circular(16.0),
+        border: Border.all(color: Colors.white12),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // 标题 + "预告"标签(主播信息不在这里展示: 左上角已有)
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title.isEmpty ? '直播预告' : title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(color: Colors.white, fontSize: 15.0, fontWeight: FontWeight.w600),
+                ),
+              ),
+              const SizedBox(width: 8.0),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF2C55),
+                  borderRadius: BorderRadius.circular(20.0),
+                ),
+                child: const Text('预告', style: TextStyle(color: Colors.white, fontSize: 11.0)),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12.0),
+          // 封面位置: 有预告片(pre_video)就在这个位置播视频, 没有就只显示封面图
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12.0),
+            child: SizedBox(
+              height: 170.0,
+              width: double.infinity,
+              child: Stack(
+                children: [
+                  poster.isEmpty
+                      ? Container(
+                          color: Colors.white10,
+                          child: const Center(child: Icon(Icons.image_outlined, size: 32.0, color: Colors.white38)),
+                        )
+                      : CachedNetworkImage(
+                          imageUrl: poster,
+                          height: 170.0,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                          fadeInDuration: Duration.zero,
+                        ),
+                  // 预告片出帧后才盖上去: 加载期间仍显示封面, 不会露出黑块
+                  if (preVideo.isNotEmpty)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: firstFrameNotifier,
+                      builder: (BuildContext context, bool firstFrame, Widget? child) => firstFrame
+                          ? Video(controller: liveVideoController, fit: BoxFit.cover, controls: NoVideoControls)
+                          : const SizedBox.shrink(),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12.0),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('距开播', style: TextStyle(color: Colors.white70, fontSize: 12.0)),
+              const SizedBox(width: 6.0),
+              ValueListenableBuilder<Duration>(
+                valueListenable: countdownNotifier,
+                builder: (BuildContext context, Duration value, Widget? child) => Text(
+                  countdownText,
+                  style: const TextStyle(color: Colors.white, fontSize: 16.0, fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12.0),
+          GestureDetector(
+            // opaque: 保证点击落在按钮自己身上, 不被上下层的手势抢走
+            behavior: HitTestBehavior.opaque,
+            onTap: () => _onSubscribeTap('${item['sn'] ?? ''}'.trim()),
+            child: Container(
+              height: 40.0,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: subscribed ? Colors.white24 : const Color(0xFFFF2C55),
+                borderRadius: BorderRadius.circular(20.0),
+              ),
+              child: subscribing
+                  ? const SizedBox(
+                      width: 16.0,
+                      height: 16.0,
+                      child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                    )
+                  : Text(
+                      subscribed ? '已预约，开播提醒我' : '预约直播',
+                      style: const TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w600),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 // 弹幕列表
@@ -1395,7 +1669,9 @@ List<Widget> danmuList(dynamic list) {
                       // 当前房间才挂载 Video(非当前房间挂载会跟当前房间抢同一个 controller 的输出)
                       // * 挂载/卸载会重建 Surface: 收到分辨率后 SetSurfaceSize -> 内部 seek -> 直播流被打断,
                       //   然后触发一次自动重连, 观感就是"视频播了两遍"。所以挂载时机不能跟着首帧走
-                      if (liveIndex != index) return const SizedBox.shrink();
+                      // 直播预告(status=0)不挂载全屏 Video: 预告片在预告卡片的封面位置播,
+                      // 同一个 controller 不能同时给两个 Video 用, 否则两边抢输出
+                      if (liveIndex != index || (index == entryIndex && liveStatus == 0)) return const SizedBox.shrink();
                       return ValueListenableBuilder<bool>(
                         valueListenable: firstFrameNotifier,
                       builder: (context, firstFrame, child) {
@@ -1418,8 +1694,8 @@ List<Widget> danmuList(dynamic list) {
                             );
                           },
                           ),
-                          // 非直播中(0 预告 / 2 暂停 / 3 已结束): 封面之上展示状态与提示, 不拉流
-                          if (index == entryIndex && liveStatus != 1)
+                          // 暂停(2) / 已结束(3): 保持状态文案提示, 不拉流
+                          if (index == entryIndex && liveStatus != 1 && liveStatus != 0)
                             Positioned.fill(
                               child: Center(
                                 child: Column(
@@ -1530,7 +1806,7 @@ List<Widget> danmuList(dynamic list) {
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text('${item['name']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontSize: 12.0),),
+                                          Text(anchorNameOf(item), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontSize: 12.0),),
                                           Text(_zanText(index, item), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white70, fontSize: 8.0),),
                                         ],
                                       ),
@@ -2128,17 +2404,19 @@ List<Widget> danmuList(dynamic list) {
                 },
               ),
               // 点击屏幕点赞: 只覆盖视频中部空白区(避开顶部工具栏/榜单/红包、右侧货卡、底部工具栏, 与H5 touch-layer 定位一致)
-              Positioned(
-                left: 0,
-                right: 130.0,
-                top: MediaQuery.of(context).padding.top + 170.0,
-                bottom: 200.0,
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onTapDown: (TapDownDetails details) => _onScreenLike(details.globalPosition),
-                  child: const SizedBox.expand(),
+              // * 只在直播中(1)挂载: 这层在预告卡片之上, 预告/暂停/已结束时它会吞掉"预约直播"等按钮的点击(变成点赞)
+              if (liveStatus == 1)
+                Positioned(
+                  left: 0,
+                  right: 130.0,
+                  top: MediaQuery.of(context).padding.top + 170.0,
+                  bottom: 200.0,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTapDown: (TapDownDetails details) => _onScreenLike(details.globalPosition),
+                    child: const SizedBox.expand(),
+                  ),
                 ),
-              ),
               // 点赞飘心层: 不拦截手势(与H5 like-effect-layer pointer-events: none 一致)
               Positioned.fill(
                 child: IgnorePointer(
@@ -2162,6 +2440,15 @@ List<Widget> danmuList(dynamic list) {
                     },
                   ),
                 ),
+              ),
+              // 直播预告(0): 预告卡片必须挂在整页最上层(所有浮层/点赞层之后),
+              // * 之前挂在房间 item 的 Stack 里, 被外层的点赞层等覆盖, 点"预约直播"会被上层手势吃掉(表现为点了没反应)
+              ValueListenableBuilder<int>(
+                valueListenable: liveIndexNotifier,
+                builder: (BuildContext context, int liveIndex, Widget? child) {
+                  if (liveIndex != entryIndex || liveStatus != 0) return const SizedBox.shrink();
+                  return Positioned.fill(child: _previewCard(_roomItem(entryIndex)));
+                },
               ),
               ],
             ),
