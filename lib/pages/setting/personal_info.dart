@@ -21,6 +21,7 @@ import '../../api/address.dart';
 import '../../api/member.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
+import '../../utils/wx.dart';
 
 class PersonalInfoPage extends StatefulWidget {
   const PersonalInfoPage({super.key});
@@ -538,9 +539,24 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
 
   // ============== 微信 / 手机 / 密码 / 地址 ==============
 
-  /// 微信绑定: 需微信授权 code(uni.login),当前端无微信 SDK,提示在小程序端操作
+  /// 微信绑定: fluwx 授权拿 code -> /api/member/bindWxopen
+  /// * 未接入(web 端或未配置 AppID)时保持原提示
   Future<void> _bindWechat() async {
-    MyDialog.toast(auth.wxBound ? '请在微信/小程序端重新授权绑定' : '当前端未接入微信授权,请在微信端绑定');
+    if (!WxAuth.supported) {
+      MyDialog.toast(auth.wxBound ? '请在微信/小程序端重新授权绑定' : '当前端未接入微信授权,请在微信端绑定');
+      return;
+    }
+    try {
+      final String code = await WxAuth.authCode();
+      await MemberApi.bindWxopen(code);
+      // 绑定结果体现在 wxopen_openid,重新拉会员信息刷新展示
+      await auth.loadMemberInfo();
+      if (!mounted) return;
+      setState(() {});
+      MyDialog.toast('微信绑定成功', icon: const Icon(Icons.check_circle_rounded), style: ToastStyle(backgroundColor: Colors.green.withAlpha(200)));
+    } catch (e) {
+      MyDialog.toast(WxAuth.errorMsg(e), icon: const Icon(Icons.warning_rounded), style: ToastStyle(backgroundColor: Colors.red.withAlpha(200)));
+    }
   }
 
   /// 手机号脱敏: 138****8888(H5 filters.mobile)

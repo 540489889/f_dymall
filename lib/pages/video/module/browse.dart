@@ -159,7 +159,8 @@ Widget build(BuildContext context) {
         spacing: 10.0,
         children: [
           Icon(Icons.keyboard_voice, color: Colors.black45, size: 20.0,),
-          Icon(Icons.camera_alt_outlined, color: Colors.black45, size: 20.0,),
+          // 扫码图标(自定义 png)
+          Image.asset('assets/images/icon_sm.png', width: 20.0, height: 20.0, fit: BoxFit.contain, isAntiAlias: true),
         ],
       ),
     ),

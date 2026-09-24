@@ -152,7 +152,11 @@ Widget build(BuildContext context) {
     indicatorPadding: EdgeInsets.symmetric(horizontal: 15.0, vertical: 4.0),
   ),
   actions: [
-    IconButton(icon: Icon(Icons.crop_free, size: 20.0,), onPressed: () {},),
+    IconButton(
+      // 扫码图标(自定义 png)
+      icon: Image.asset('assets/images/icon_sm.png', width: 20.0, height: 20.0, fit: BoxFit.contain, isAntiAlias: true),
+      onPressed: () {},
+    ),
       ],
       bottom: PreferredSize(
         preferredSize: Size.fromHeight(45.0),

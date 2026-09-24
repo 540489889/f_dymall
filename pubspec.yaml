@@ -44,6 +44,12 @@ dependencies:
   # GroMore 聚合广告SDK(穿山甲/巨量引擎): 赚钱页的激励视频/插屏/Banner
   # * 后台用了瀑布流+竞价, 必须走聚合SDK, 普通穿山甲SDK请求聚合代码位会报 20001/40034
   gromore_ads: ^1.0.3
+  # 穿山甲内容输出(短剧/小视频/短故事), 依赖上面的 gromore_ads 提供广告能力
+  # * 需要后台「内容合作」下发的 SDK_Setting_*.json, 放到 assets/ 下并改 Content.configPath
+  pangrowth_content: ^1.0.3
+  fluwx: ^6.0.4
+  # 阿里云号码认证: APP 一键登录(需 Config.aliAndroidSk / aliIosSk)
+  ali_auth: ^1.3.9
 
 dev_dependencies:
   flutter_test:
@@ -55,6 +61,17 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^6.0.0
+  # APP 图标生成: dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.4
+
+# APP 图标源图(assets/images/mlogo.png),生成 Android mipmap / iOS AppIcon
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/mlogo.png"
+  min_sdk_android: 21
+  # iOS 图标不允许透明通道,自动去透明并补白底
+  remove_alpha_ios: true
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -68,6 +85,8 @@ flutter:
   uses-material-design: true
 
   assets:
+    # 穿山甲内容SDK配置(SDK_Setting_*.json 放这里, 文件名同步改 lib/utils/content.dart 的 configPath)
+    - assets/
     - assets/images/
     - assets/images/avatar/
     - assets/images/svg/

@@ -4,6 +4,7 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../../components/loading.dart';
 import '../../../components/backtop.dart';
+import '../../../utils/content.dart';
 class DramaModule extends StatefulWidget {
   const DramaModule({ super.key });
   @override
@@ -79,6 +80,22 @@ void dispose() {
   
   @override
   Widget build(BuildContext context) {
+    // 内容SDK已就绪: 直接渲染穿山甲短剧聚合页(点剧集进原生播放器, 解锁广告由SDK内部走)
+    if (Content.ready) {
+      return const Scaffold(
+        backgroundColor: Colors.white,
+        body: SafeArea(
+          child: DramaHomeNativeView(
+            config: DramaHomeConfig(
+              showBackBtn: false, // 已经是 tab 页, 不需要原生返回按钮
+              freeEpisodesCount: 3, // 前 3 集免费
+              unlockEpisodesCountUsingAd: 2, // 看激励视频解锁 2 集
+            ),
+          ),
+        ),
+      );
+    }
+    // 兜底: 没开通内容合作/H5/初始化失败时, 仍是原来的本地演示列表
     return Scaffold(
       backgroundColor: Colors.white,
     appBar: AppBar(

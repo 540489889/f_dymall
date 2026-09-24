@@ -4,7 +4,7 @@
          不声明 tools:replace 会触发 Manifest merger failed -->
     <application
         tools:replace="android:label,android:icon,android:usesCleartextTraffic"
-        android:label="flutter3_dymall"
+        android:label="乐惠新零售"
         android:usesCleartextTraffic="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
@@ -30,6 +30,35 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- ===== 阿里云号码认证(一键登录)授权页 Activity ===== -->
+        <!-- 协议页 WebView -->
+        <activity
+            android:name="com.mobile.auth.gatewayauth.activity.AuthWebVeiwActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            tools:replace="android:theme,android:configChanges"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind"
+            android:theme="@style/authsdk_activity_dialog" />
+        <!-- 联通 / 电信 授权页 -->
+        <activity
+            android:name="com.mobile.auth.gatewayauth.LoginAuthActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            tools:replace="android:theme,android:configChanges"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:screenOrientation="behind"
+            android:theme="@style/authsdk_activity_dialog" />
+        <!-- 移动 授权页 -->
+        <activity
+            android:name="com.cmic.sso.sdk.activity.LoginAuthActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            tools:replace="android:theme,android:configChanges"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:screenOrientation="behind"
+            android:theme="@style/authsdk_activity_dialog" />
+
         <!-- 关闭 Impeller(Vulkan): 海思/荣耀等机型上平台视图(SurfaceView)无法合成,导致直播画面不显示 -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
@@ -50,6 +79,8 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
+        <!-- Android 11+ 包名可见性: 不声明时微信SDK的 isWXAppInstalled 恒返回 false -->
+        <package android:name="com.tencent.mm" />
     </queries>
 
     <!--

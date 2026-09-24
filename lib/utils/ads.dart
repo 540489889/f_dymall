@@ -22,6 +22,8 @@ class Ads {
   static bool _inited = false;
   /// SDK 是否初始化成功(失败时请求广告必然报错)
   static bool _sdkReady = false;
+  /// 对外只读: 内容SDK(pangrowth_content)初始化前要确认广告SDK已就绪
+  static bool get ready => _sdkReady;
   /// 最近一次错误码, 用于区分"没看完"和"没拉起来"
   static int lastErrorCode = 0;
   static String lastErrorMessage = '';

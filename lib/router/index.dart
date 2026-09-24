@@ -4,6 +4,7 @@ import '../controller/auth_store.dart';
 import '../layouts/index.dart';
 
 /* 引入路由页面 */
+import '../pages/auth/bind_mobile.dart';
 import '../pages/auth/login.dart';
 import '../pages/auth/register.dart';
 import '../pages/goods/evaluate.dart';
@@ -148,6 +149,7 @@ GetPage(name: '/register', page: () => const Register()),
   GetPage(name: '/goods/evaluate', page: () => const GoodsEvaluatePage()),
   GetPage(name: '/store/detail', page: () => const StoreDetailPage()),
   GetPage(name: '/bind_store', page: () => const BindStorePage()),
+  GetPage(name: '/bind_mobile', page: () => const BindMobilePage()),
   ...routeList,
 ];
 

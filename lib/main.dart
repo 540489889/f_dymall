@@ -11,6 +11,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
 import 'utils/ads.dart';
+import 'utils/content.dart';
 // 引入路由管理
 import 'router/index.dart';
 
@@ -25,6 +26,8 @@ Get.put(VideoStore());
   MediaKit.ensureInitialized();
   // 初始化穿山甲广告SDK(未配置 appId 时内部直接跳过, 不影响启动)
   await Ads.init();
+  // 穿山甲内容SDK(短剧/小视频): 依赖上面的广告SDK, 失败/H5 自动跳过, 页面走兜底
+  await Content.init();
 
   runApp(const MyApp());
 }
@@ -51,7 +54,7 @@ class MyApp extends StatelessWidget {
    systemNavigationBarIconBrightness: Brightness.dark,
    ),
       child: GetMaterialApp(
-       title: 'Flutter3 DYMALL',
+       title: '乐惠新零售',
         debugShowCheckedModeBanner: false,
         // 排查路由跳转用: debug 下打印路由变化
         routingCallback: (Routing? routing) {
@@ -62,7 +65,11 @@ class MyApp extends StatelessWidget {
        theme: ThemeData(
          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF2C55)),
          useMaterial3: true,
-          fontFamily: isWindows() ? 'Microsoft YaHei' : null
+          fontFamily: isWindows() ? 'Microsoft YaHei' : null,
+        // 全局 toast 居中显示(默认在底部)
+        extensions: <ThemeExtension<dynamic>>[
+          ShirneDialogTheme(toastStyle: ToastStyle().center()),
+        ],
       ),
         // 初始化路由(默认进入首页,不强制先登录)
        initialRoute: '/',

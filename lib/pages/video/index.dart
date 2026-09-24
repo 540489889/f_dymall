@@ -15,6 +15,7 @@ import './module/drama.dart';
 import './module/attention.dart';
 import './module/local.dart';
 import './module/recommend.dart';
+import './module/short_video.dart';
 
 class VideoPage extends StatefulWidget {
   const VideoPage({super.key});
@@ -30,7 +31,7 @@ final videoStore = VideoStore.to;
 late TabController tabController = TabController(initialIndex: videoStore.videoTabIndex.value, length: tabList.length, vsync: this);
 late PageController pageController = PageController(initialPage: videoStore.videoTabIndex.value, viewportFraction: 1.0);
 
-List<String> tabList = ['订阅', '逛逛', '直播', '团购', '短剧', '关注', '同城', '推荐'];
+List<String> tabList = ['订阅', '逛逛', '直播', '团购', '短剧', '关注', '同城', '推荐', '小视频'];
 final tabModules = [
   KeepAliveWrapper(child: SubscribeModule()),
   KeepAliveWrapper(child: BrowseModule()),
@@ -39,7 +40,9 @@ KeepAliveWrapper(child: BuyingModule()),
 KeepAliveWrapper(child: DramaModule()),
 AttentionModule(),
 LocalModule(),
-RecommendModule()
+RecommendModule(),
+// 穿山甲内容SDK小视频(沉浸式原生View, 不做 KeepAlive)
+const ShortVideoModule(),
 ];
 
 @override

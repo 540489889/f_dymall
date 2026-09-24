@@ -1,0 +1,28 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      // deviceId 优先级高于右下角状态栏选的设备,锁定真机
+      // 换手机/ID 变了: 终端 flutter devices 查新 ID,改下面的 deviceId
+      "name": "Android 真机(默认)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "3TG0221720006674"
+    },
+    {
+      "name": "Web Chrome(网页调试)",
+      "request": "launch",
+      "type": "dart",
+      "args": [
+        "-d",
+        "chrome",
+        "--web-browser-flag",
+        "--disable-web-security",
+        "--web-browser-flag",
+        "--disable-features=IsolateOrigins,site-per-process",
+        "--web-browser-flag",
+        "--user-data-dir=D:\\chrome-flutter-debug"
+      ]
+    }
+  ]
+}
