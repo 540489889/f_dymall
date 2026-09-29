@@ -3,6 +3,12 @@
 # 无法解析 media_kit(media_kit_libs_video) 引入的二进制原生依赖
 # (Avformat / Freetype / Mbedx509 等 xcframework), 导致 pod install 失败。
 #
+# 二次修复(本版):
+#   Codemagic 会缓存 ~/.cocoapods/repos, 导致 `pod repo update` 被判定为
+#   "已是最新" 而未真正拉取新 spec, 从而仍报
+#   "CocoaPods's specs repository is too out-of-date to satisfy dependencies"。
+#   因此在更新前先 `rm -rf ~/.cocoapods/repos` 强制全量刷新, 并升级 CocoaPods。
+#
 # 使用方式:
 #   1. 仓库根目录放置本文件
 #   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
@@ -19,14 +25,15 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
-    cache:
-      cache_paths:
-        - $HOME/Library/Caches/CocoaPods
     scripts:
       - name: Flutter packages get
         script: flutter pub get
-      - name: CocoaPods repo update & pod install
+      - name: Upgrade CocoaPods (避免版本过旧解析失败)
+        script: sudo gem install cocoapods
+      - name: 强制刷新 CocoaPods specs 并安装
         script: |
+          # 清除可能被缓存的陈旧 specs 仓库, 强制全量更新
+          rm -rf ~/.cocoapods/repos
           cd ios
           pod repo update
           pod install --repo-update
