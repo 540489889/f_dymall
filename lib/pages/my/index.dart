@@ -52,10 +52,14 @@ class _MyPageState extends State<MyPage> {
     const Widget placeholder = Icon(Icons.person, color: Colors.white70, size: 34.0);
     final String url = authStore.headimg;
     if (url.isEmpty) return placeholder;
-    return Image.network(
-      url,
-      fit: BoxFit.cover,
-      errorBuilder: (_, _, _) => placeholder,
+    return ClipOval(
+      child: Image.network(
+        url,
+        width: 60.0,
+        height: 60.0,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => placeholder,
+      ),
     );
   }
 
