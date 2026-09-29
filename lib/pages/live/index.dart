@@ -267,8 +267,8 @@ body: ScrollConfiguration(
             _statusChip('直播预告', 2),
           ],
         ),
-        dataList.isEmpty ? 
-        // 首次加载转圈;加载完仍为空显示空态
+        dataList.isEmpty ?
+        // 首次加载转圈;加载完仍为空显示空态(图标 + 文案)
           Padding(
           padding: EdgeInsets.symmetric(vertical: 60.0),
           child: isLoading ?
@@ -276,7 +276,15 @@ body: ScrollConfiguration(
               backgroundColor: Colors.white,
               color: Color(0xFFFF2C55),
             )
-            : Text('暂无直播', style: TextStyle(color: Colors.grey, fontSize: 13.0),),
+            : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: <Widget>[
+                Image.asset('assets/images/common-empty.png', width: 120.0),
+                const SizedBox(height: 12.0),
+                const Text('暂无直播', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
+              ],
+            ),
         )
           :
           MasonryGridView.count(

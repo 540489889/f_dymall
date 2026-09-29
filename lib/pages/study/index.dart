@@ -3,6 +3,7 @@ library;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:get/get.dart';
 import '../../api/materials.dart';
 
@@ -270,8 +271,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
                           const Padding(
                             padding: EdgeInsets.symmetric(vertical: 40),
                             child: Center(
-                                child: Text('暂无内容',
-                                    style: TextStyle(color: Colors.grey))),
+                                child: const CommonEmpty(text: '暂无内容')),
                           ),
                       ] else ...<Widget>[
                         _sectionCard(
@@ -439,7 +439,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
       return const SizedBox(
           height: 40,
           child: Center(
-              child: Text('暂无视频', style: TextStyle(color: Colors.grey))));
+              child: const CommonEmpty(text: '暂无视频')));
     }
     final double screenW = MediaQuery.of(context).size.width;
     final double cardW = (screenW - 68) / 2; // ListView(14*2)+sectionCard(14*2)+列间距12
@@ -526,7 +526,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
       return const SizedBox(
           height: 40,
           child: Center(
-              child: Text('暂无文章', style: TextStyle(color: Colors.grey))));
+              child: const CommonEmpty(text: '暂无文章')));
     }
     return Column(
       children: List<Widget>.generate(articleList.length, (int i) {
@@ -592,7 +592,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
       return const SizedBox(
           height: 60,
           child: Center(
-              child: Text('暂无内容', style: TextStyle(color: Colors.grey))));
+              child: const CommonEmpty(text: '暂无内容')));
     }
     final double screenW = MediaQuery.of(context).size.width;
     final double cardW = (screenW - 68) / 2; // ListView(14*2)+sectionCard(14*2)+列间距12

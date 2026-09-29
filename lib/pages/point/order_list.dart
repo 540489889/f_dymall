@@ -262,7 +262,7 @@ class _PointOrderListPageState extends State<PointOrderListPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.receipt_long_outlined, size: 56.0, color: Colors.grey.shade300),
+            Image.asset('assets/images/common-empty.png', width: 120.0),
             const SizedBox(height: 12.0),
             Text(errorMsg.isEmpty ? '暂无积分兑换订单' : errorMsg,
                 style: const TextStyle(fontSize: 14.0, color: Colors.grey)),

@@ -3,6 +3,7 @@ library;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:get/get.dart';
 import '../../api/materials.dart';
 
@@ -181,7 +182,7 @@ class _StudyMorePageState extends State<StudyMorePage> {
           Expanded(
             child: list.isEmpty && !loading
                 ? const Center(
-                    child: Text('暂无数据', style: TextStyle(color: Colors.grey)))
+                    child: const CommonEmpty(text: '暂无数据'))
                 : ListView.builder(
                     controller: _scroll,
                     padding: const EdgeInsets.symmetric(horizontal: 14),

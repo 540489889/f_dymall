@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
@@ -1670,7 +1671,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
             // 加载完仍为空、且不是从首页点进来的(没有房间号): 才提示暂无直播间
             if (roomList.isEmpty && roomListLoaded && currentSn.isEmpty) {
               return const Center(
-                child: Text('暂无直播间', style: TextStyle(color: Colors.white70, fontSize: 14.0)),
+                child: CommonEmpty(text: '暂无直播间', textColor: Colors.white70),
               );
             }
             // 上下滑动的房间全部来自 roomPage 接口, 没有本地演示房间:

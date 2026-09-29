@@ -8,6 +8,7 @@ library;
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
@@ -505,7 +506,7 @@ class _OrderSureState extends State<OrderSure> {
                           ),
                           Expanded(
                             child: periods.isEmpty
-                                ? const Center(child: Text('当天暂无可预约时段', style: TextStyle(fontSize: 13.0, color: Colors.grey)))
+                                ? const Center(child: const CommonEmpty(text: '当天暂无可预约时段'))
                                 : ListView.builder(
                                     padding: const EdgeInsets.symmetric(horizontal: 12.0),
                                     itemCount: periods.length,
@@ -1064,7 +1065,7 @@ class _OrderSureState extends State<OrderSure> {
                     if (stores.isEmpty) {
                       return const Padding(
                         padding: EdgeInsets.symmetric(vertical: 30.0),
-                        child: Center(child: Text('暂无可选门店', style: TextStyle(color: Colors.grey, fontSize: 13.0))),
+                        child: Center(child: const CommonEmpty(text: '暂无可选门店')),
                       );
                     }
                     final Map<String, dynamic> store = stores[index];

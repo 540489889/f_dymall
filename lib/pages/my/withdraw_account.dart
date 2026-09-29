@@ -24,20 +24,36 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
   List<Map<String, dynamic>> list = <Map<String, dynamic>>[];
   bool loading = true;
   String errorMsg = '';
+  /// 来源: member 会员 / fenxiao 分销(对齐 H5 type)
+  String type = 'member';
+  /// 从提现页选账户进入时带回的页面(对齐 H5 back + redirect)
+  String back = '';
+  String redirect = 'redirectTo';
+  /// 提现方式是否含「余额」(仅 fenxiao 且后端返回 balance 时为真)
+  bool balanceAvailable = false;
 
   @override
   void initState() {
     super.initState();
+    final dynamic args = Get.arguments;
+    if (args is Map) {
+      type = '${args['type'] ?? 'member'}';
+      back = '${args['back'] ?? ''}';
+      redirect = '${args['redirect'] ?? 'redirectTo'}';
+    }
     load();
   }
 
   Future<void> load() async {
+    if (!mounted) return;
     setState(() {
       loading = true;
       errorMsg = '';
     });
     try {
       final List<Map<String, dynamic>> data = await MemberWithdrawApi.accountPage(pageSize: 50);
+      if (!mounted) return;
+      await getTransferType();
       if (!mounted) return;
       setState(() {
         list = data;
@@ -52,22 +68,45 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
     }
   }
 
+  /// 提现方式(区分 member/fenxiao),fenxiao 且后端返回 balance 时显示「提现到余额」
+  Future<void> getTransferType() async {
+    try {
+      final List<Map<String, dynamic>> result = await MemberWithdrawApi.transferType(type: type);
+      balanceAvailable = type == 'fenxiao' && result.any((Map<String, dynamic> e) => '${e['value']}' == 'balance');
+    } catch (_) {
+      balanceAvailable = false;
+    }
+  }
+
   /// 新增 / 编辑账户,返回后刷新
   Future<void> toEdit({int id = 0}) async {
-    await Get.toNamed('/my/withdraw_account_edit', arguments: <String, dynamic>{'id': id});
+    await Get.toNamed('/my/withdraw_account_edit', arguments: <String, dynamic>{'id': id, 'type': type});
     if (!mounted) return;
     await load();
   }
 
-  /// 设为默认(与 H5 一致: 从提现页进入时设置完直接返回)
+  /// 设为默认(对齐 H5 setDefault: back 非空则带回原页,否则刷新列表)
   Future<void> setDefault(int id) async {
     try {
       await MemberWithdrawApi.accountSetDefault(id);
       if (!mounted) return;
       MyDialog.toast('设置成功');
-      Get.back();
+      if (back.isNotEmpty) {
+        Get.back(result: <String, dynamic>{'id': id});
+      } else {
+        await load();
+      }
     } catch (e) {
       MyDialog.toast(MemberWithdrawApi.errorMsg(e, '设置失败'));
+    }
+  }
+
+  /// 提现到余额(仅 fenxiao): 对齐 H5 setBalanceDefault,带回 back 并标记 is_balance=1
+  Future<void> setBalanceDefault() async {
+    if (back.isNotEmpty) {
+      Get.back(result: <String, dynamic>{'is_balance': 1});
+    } else {
+      MyDialog.toast('已选择提现到余额');
     }
   }
 
@@ -124,12 +163,12 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
         child: CircularProgressIndicator(strokeWidth: 2.0, valueColor: AlwaysStoppedAnimation<Color>(primary)),
       );
     }
-    if (list.isEmpty) {
+    if (list.isEmpty && !balanceAvailable) {
       return Center(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.account_balance_wallet_outlined, size: 56.0, color: Colors.grey.shade300),
+            Image.asset('assets/images/common-empty.png', width: 120.0),
             const SizedBox(height: 12.0),
             Text(
               errorMsg.isEmpty ? '暂无账户信息，请添加' : errorMsg,
@@ -144,8 +183,31 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
       onRefresh: load,
       child: ListView.builder(
         padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 12.0),
-        itemCount: list.length,
-        itemBuilder: (BuildContext context, int index) => _buildItem(list[index]),
+        itemCount: list.length + (balanceAvailable ? 1 : 0),
+        itemBuilder: (BuildContext context, int index) {
+          if (balanceAvailable && index == 0) return _buildBalanceItem();
+          final Map<String, dynamic> item = list[index - (balanceAvailable ? 1 : 0)];
+          return _buildItem(item);
+        },
+      ),
+    );
+  }
+
+  /// 提现到余额(分销): 对齐 H5 balance-item
+  Widget _buildBalanceItem() {
+    return GestureDetector(
+      onTap: setBalanceDefault,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10.0),
+        padding: const EdgeInsets.all(14.0),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10.0)),
+        child: const Row(
+          children: <Widget>[
+            Text('提现到余额', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
+            Spacer(),
+            Icon(Icons.chevron_right, color: Colors.grey, size: 18.0),
+          ],
+        ),
       ),
     );
   }
@@ -168,7 +230,7 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
             color: Colors.transparent,
             child: InkWell(
               borderRadius: const BorderRadius.vertical(top: Radius.circular(10.0)),
-              onTap: () => setDefault(id),
+              onTap: back.isNotEmpty ? () => setDefault(id) : null,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14.0, 14.0, 14.0, 10.0),
                 child: Row(
@@ -220,9 +282,12 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
             child: Row(
               children: <Widget>[
                 Expanded(
-                  child: Text(
-                    isDefault ? '默认账户' : '设为默认账户',
-                    style: const TextStyle(fontSize: 13.0, color: Color(0xFF666666)),
+                  child: GestureDetector(
+                    onTap: isDefault ? null : () => setDefault(id),
+                    child: Text(
+                      isDefault ? '默认账户' : '设为默认账户',
+                      style: const TextStyle(fontSize: 13.0, color: Color(0xFF666666)),
+                    ),
                   ),
                 ),
                 if (!isDefault)

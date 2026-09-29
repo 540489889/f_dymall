@@ -225,7 +225,7 @@ class _MyCouponPageState extends State<MyCouponPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.confirmation_num_outlined, size: 56.0, color: Colors.grey.shade300),
+            Image.asset('assets/images/common-empty.png', width: 120.0),
             const SizedBox(height: 12.0),
             Text(
               errorMsg.isEmpty ? '暂无优惠券' : errorMsg,

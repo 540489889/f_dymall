@@ -94,4 +94,31 @@ class RefundApi {
     if (list is! List) return <Map<String, dynamic>>[];
     return list.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList();
   }
+
+  /// 售后/退款列表(/api/orderrefund/lists)
+  /// 对齐 H5: pages_tool/order/activist.vue
+  static Future<Map<String, dynamic>> lists({int page = 1, int pageSize = 10}) async {
+    final Map<String, dynamic> res = await Request().postRaw(
+      '/api/orderrefund/lists',
+      data: <String, dynamic>{'page': page, 'page_size': pageSize},
+    );
+    final int code = int.tryParse('${res['code']}') ?? -1;
+    if (code < 0) throw Exception('${res['message'] ?? '获取售后列表失败'}');
+    final dynamic data = res['data'];
+    if (data is! Map) return <String, dynamic>{};
+    return data.cast<String, dynamic>();
+  }
+
+  /// 列表项数组: lists.data.list
+  static List<Map<String, dynamic>> listOf(Map<String, dynamic> data) {
+    final dynamic list = data['list'];
+    if (list is! List) return <Map<String, dynamic>>[];
+    return list.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList();
+  }
+
+  /// 异常消息提取(与 OrderApi.errorMsg 一致)
+  static String errorMsg(Object e, [String def = '操作失败']) {
+    final String msg = '$e';
+    return msg.startsWith('Exception: ') ? msg.substring(10) : def;
+  }
 }

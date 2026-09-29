@@ -218,9 +218,6 @@ class _BindMobilePageState extends State<BindMobilePage> {
 
   /// 表单校验(返回 null 表示通过;否则返回 <字段, 提示>,提示显示在对应位置)
   MapEntry<String, String>? verify() {
-    if (agreementShow && !agreed) {
-      return const MapEntry<String, String>('agreement', '请先阅读并同意《隐私协议》和《用户协议》');
-    }
     final String mobile = mobileController.text.trim();
     if (mobile.isEmpty) return const MapEntry<String, String>('mobile', '请输入手机号');
     if (!Utils.checkTel(mobile)) return const MapEntry<String, String>('mobile', '手机号格式不正确');
@@ -232,6 +229,10 @@ class _BindMobilePageState extends State<BindMobilePage> {
     if (captchaOn && vercodeController.text.trim().isEmpty) {
       return const MapEntry<String, String>('vercode', '请输入验证码');
     }
+    // 协议最后校验: 让用户先把表单填对,最后再提示勾选协议
+    if (agreementShow && !agreed) {
+      return const MapEntry<String, String>('agreement', '请先阅读并同意《隐私协议》和《用户协议》');
+    }
     return null;
   }
 
@@ -240,6 +241,10 @@ class _BindMobilePageState extends State<BindMobilePage> {
     clearErrors();
     final MapEntry<String, String>? error = verify();
     if (error != null) {
+      if (error.key == 'agreement') {
+        await showAgreementDialog(onAgreed: handleSubmit);
+        return;
+      }
       showError(error.value, field: error.key);
       return;
     }
@@ -599,6 +604,105 @@ class _BindMobilePageState extends State<BindMobilePage> {
     return GestureDetector(
       onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': type}),
       child: Text(text, style: const TextStyle(color: _primary, fontSize: 12.5)),
+    );
+  }
+
+  /// 协议确认弹窗(类似京东): 未勾选协议时弹出,点"同意"自动勾选并继续
+  /// * 用原生 showDialog 挂在当前 State 的 context 上,避免 shirne_dialog 的
+  ///   navigatorKey 在 GetX 路由下取不到 NavigatorState 导致弹窗推不出来的问题
+  Future<void> showAgreementDialog({required VoidCallback onAgreed}) async {
+    final bool? ok = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          contentPadding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              _buildAgreementDialogContent(),
+              const SizedBox(height: 16),
+              Row(
+                children: <Widget>[
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(ctx).pop(false),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFF5F5F5),
+                        foregroundColor: const Color(0xFF202020),
+                        minimumSize: const Size.fromHeight(44),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      child: const Text('我再想想', style: TextStyle(fontSize: 15)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(ctx).pop(true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF2C55),
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size.fromHeight(44),
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                      child: const Text('同意', style: TextStyle(fontSize: 15)),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+    if (ok == true && mounted) {
+      setState(() => agreed = true);
+      onAgreed();
+    }
+  }
+
+  /// 弹窗内容: 请阅读并同意《隐私协议》《用户协议》,协议名可点击跳转
+  Widget _buildAgreementDialogContent() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      child: RichText(
+        textAlign: TextAlign.center,
+        text: TextSpan(
+          text: '请阅读并同意',
+          style: const TextStyle(fontSize: 15, color: Color(0xFF202020), height: 1.5),
+          children: <InlineSpan>[
+            const TextSpan(text: '《', style: TextStyle(color: Color(0xFF202020))),
+            WidgetSpan(
+              child: GestureDetector(
+                onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'}),
+                child: const Text(
+                  '隐私协议',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF2C8DFA)),
+                ),
+              ),
+            ),
+            const TextSpan(text: '》《', style: TextStyle(color: Color(0xFF202020))),
+            WidgetSpan(
+              child: GestureDetector(
+                onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'}),
+                child: const Text(
+                  '用户协议',
+                  style: TextStyle(fontSize: 15, color: Color(0xFF2C8DFA)),
+                ),
+              ),
+            ),
+            const TextSpan(text: '》', style: TextStyle(color: Color(0xFF202020))),
+          ],
+        ),
+      ),
     );
   }
 

@@ -2,7 +2,10 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter/rendering.dart';
 import 'package:card_swiper/card_swiper.dart';
 import 'package:get/get.dart';
@@ -21,6 +24,7 @@ import '../../api/goods.dart';
 import '../../api/live.dart';
 import '../../api/seckill.dart';
 import '../../controller/auth_store.dart';
+import '../../api/index.dart';
 class IndexPage extends StatefulWidget {
   const IndexPage({super.key});
   @override
@@ -180,6 +184,12 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
 
   // 首页 tab 分类(来自 /api/goodscategory/tree 一级分类)
   List<Map<String, dynamic>> categoryList = [];
+
+  // 首页聚合配置(来自 /api/index/index): 轮播 / 金刚区 / 弹窗
+  List bannerList = [];
+  List navList = [];
+  Map<String, dynamic> popupInfo = {};
+  bool _popupShown = false;
 
 late ScrollController scrollController = ScrollController();
 late TabController tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
@@ -465,6 +475,8 @@ void initState() {
   loadSeckill();
   // 首页 tab 分类(一级分类树)
   loadCategory();
+  // 首页聚合配置(banner / nav / popup)
+  loadIndexConfig();
   // 秒杀倒计时(每秒局部刷新)
   seckillTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickSeckill());
   }
@@ -496,6 +508,114 @@ void initState() {
       });
     } catch (_) {
       // 分类加载失败保留默认 tab
+    }
+  }
+
+  /// 首页聚合配置: /api/index/index 的 banner_info / nav_info / popup_info
+  Future<void> loadIndexConfig() async {
+    try {
+      final Map<String, dynamic> data = await IndexApi.index();
+      if (!mounted) return;
+      setState(() {
+        bannerList = (data['banner_info'] as List? ?? const []).toList();
+        navList = (data['nav_info'] as List? ?? const []).toList();
+        popupInfo = data['popup_info'] is Map
+            ? Map<String, dynamic>.from(data['popup_info'] as Map)
+            : <String, dynamic>{};
+      });
+      // 弹窗: 仅首次进入弹一次
+      if (!_popupShown &&
+          popupInfo.isNotEmpty &&
+          '${popupInfo['state']}' == '1' &&
+          '${popupInfo['adv_image'] ?? ''}'.isNotEmpty) {
+        _showPopupAd();
+      }
+    } catch (e) {
+      debugPrint('[index]首页配置加载失败: $e');
+    }
+  }
+
+  /// 启动弹窗广告
+  void _showPopupAd() {
+    _popupShown = true;
+    Future.delayed(const Duration(milliseconds: 400), () {
+      if (!mounted) return;
+      final String img = '${popupInfo['adv_image'] ?? ''}';
+      showDialog(
+        context: context,
+        barrierDismissible: true,
+        builder: (BuildContext ctx) => Stack(
+          children: <Widget>[
+            GestureDetector(
+              onTap: () => Navigator.of(ctx).pop(),
+              child: Container(color: Colors.black54),
+            ),
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  GestureDetector(
+                    onTap: () {
+                      Navigator.of(ctx).pop();
+                      _handleNavUrl('${popupInfo['adv_url'] ?? ''}');
+                    },
+                    child: CachedNetworkImage(
+                      imageUrl: img,
+                      width: 300.0,
+                      fit: BoxFit.contain,
+                      placeholder: (BuildContext c, String u) => const SizedBox.shrink(),
+                    ),
+                  ),
+                  const SizedBox(height: 16.0),
+                  GestureDetector(
+                    onTap: () => Navigator.of(ctx).pop(),
+                    child: Container(
+                      width: 36.0,
+                      height: 36.0,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.85),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.close, color: Colors.black54, size: 22.0),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  /// 解析 nav_url / adv_url(JSON 字符串) 中的 name 跳转到对应页面
+  void _handleNavUrl(String navUrlJson) {
+    if (navUrlJson.isEmpty) return;
+    Map<String, dynamic>? info;
+    try {
+      info = jsonDecode(navUrlJson) as Map<String, dynamic>?;
+    } catch (_) {
+      return;
+    }
+    if (info == null) return;
+    final String name = '${info['name'] ?? ''}';
+    switch (name) {
+      case 'SIGN_IN':
+        Get.toNamed('/my/signin');
+        break;
+      case 'SECKILL_PREFECTURE':
+        Get.toNamed('/seckill');
+        break;
+      case 'GOODS_CATEGORY_PAGE':
+        final String cid = '${info['category_id'] ?? ''}';
+        Get.toNamed('/goods', arguments: <String, dynamic>{'category_id': cid});
+        break;
+      case 'MEMBER_CENTER':
+        Get.toNamed('/my/wallet');
+        break;
+      default:
+        Get.snackbar('提示', name.isNotEmpty ? '跳转:$name' : '该入口暂未配置',
+            snackPosition: SnackPosition.BOTTOM);
     }
   }
 
@@ -664,6 +784,94 @@ void initState() {
     );
   }
 
+  // 金刚区: 本地 cateList 渲染(接口 nav_info 未返回时的回退)
+  Widget _buildCateGrid() {
+    return PageView.builder(
+      controller: pageController,
+      itemCount: cateList.length,
+      itemBuilder: (BuildContext context, int index) {
+        final Map<String, dynamic> item = cateList[index] as Map<String, dynamic>;
+        return GridView.builder(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          physics: NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4),
+          itemCount: (item['list'] as List).length,
+          itemBuilder: (BuildContext context, int i) {
+            final Map<String, dynamic> citem = (item['list'] as List)[i] as Map<String, dynamic>;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _onCateTap('${citem['label'] ?? ''}'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                alignment: Alignment.center,
+                child: Column(
+                  spacing: 3.0,
+                  children: [
+                    if (citem['icon'] != null)
+                      Badge(
+                        isLabelVisible: citem['count'] != null,
+                        backgroundColor: Colors.redAccent,
+                        label: Text('${citem['count']}'),
+                        child: SvgPicture.asset('${citem['icon']}', height: 30.0, width: 30.0),
+                      ),
+                    Text('${citem['label']}'),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // 金刚区: 后端 nav_info 渲染(图片图标 + 名称 + 点击跳转)
+  Widget _buildNavGrid() {
+    return PageView.builder(
+      controller: pageController,
+      itemCount: (navList.length / 4).ceil(),
+      itemBuilder: (BuildContext context, int index) {
+        final int start = index * 4;
+        final int end = min(start + 4, navList.length);
+        final List group = navList.sublist(start, end);
+        return GridView.builder(
+          shrinkWrap: true,
+          padding: EdgeInsets.zero,
+          physics: NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4),
+          itemCount: group.length,
+          itemBuilder: (BuildContext context, int i) {
+            final Map<String, dynamic> n = group[i] as Map<String, dynamic>;
+            return GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _handleNavUrl('${n['nav_url'] ?? ''}'),
+              child: Container(
+                padding: const EdgeInsets.symmetric(vertical: 10.0),
+                alignment: Alignment.center,
+                child: Column(
+                  spacing: 3.0,
+                  children: [
+                    CachedNetworkImage(
+                      imageUrl: '${n['nav_image'] ?? ''}',
+                      width: 30.0,
+                      height: 30.0,
+                      fit: BoxFit.contain,
+                      placeholder: (BuildContext c, String u) => const SizedBox.shrink(),
+                      errorWidget: (BuildContext c, String u, Object e) =>
+                          const Icon(Icons.image, size: 30.0, color: Colors.grey),
+                    ),
+                    Text('${n['nav_name'] ?? ''}', style: const TextStyle(fontSize: 12.0)),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   // 首页宫格点击
   void _onCateTap(String label) {
     switch (label) {
@@ -681,6 +889,9 @@ void initState() {
         break;
       case '客服消息':
         Get.toNamed('/chat');
+        break;
+      case '退款/售后':
+        Get.toNamed('/order/refund_list');
         break;
       default:
         Get.snackbar('提示', '$label 功能待接入', snackPosition: SnackPosition.BOTTOM);
@@ -719,19 +930,19 @@ void initState() {
           expandedHeight: 220.0,
           toolbarHeight: 94.0,
           titleSpacing: 0.0,
+          automaticallyImplyLeading: false,
+          centerTitle: false,
           title: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               // 第一行: logo + 品牌名  |  去绑定门店 + 购物车
               Padding(
-                padding: EdgeInsets.only(left: 12.0, right: 6.0),
+                padding: EdgeInsets.only(left: 0.0, right: 6.0),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Image.asset('assets/images/logo.png', width: 26.0, height: 26.0, fit: BoxFit.contain, isAntiAlias: true),
-                    SizedBox(width: 6.0),
-                    Text('乐惠生活', style: TextStyle(color: Colors.white, fontSize: 20.0, fontWeight: FontWeight.bold, letterSpacing: 0.5)),
+                    Image.asset('assets/images/t-logo.png', width: 140.0, height: 30.0, fit: BoxFit.contain, isAntiAlias: true),
                     Spacer(),
                     // 绑定门店入口: 已绑定显示门店名, 未绑定才显示"去绑定门店"(点进去绑定)
                     Obx(() {
@@ -786,7 +997,7 @@ void initState() {
             child: TextField(
                 decoration: InputDecoration(
                   isDense: true,
-              hintText: "2026国补",
+              hintText: "请输入关键字搜索",
               prefixIcon: Icon(Icons.search, color: Colors.black54, size: 20.0,),
               suffixIcon: Container(
                 padding: EdgeInsets.only(right: 15.0),
@@ -838,7 +1049,9 @@ void initState() {
               child: FlexibleSpaceBar(
                 // pin: 折叠时背景不跟随视差做 transform/裁剪合成,滚动更省
                 collapseMode: CollapseMode.pin,
-                background: Swiper.children(
+                background: Stack(
+                  children: <Widget>[
+                    Swiper.children(
                 pagination: SwiperPagination(
                       builder: DotSwiperPaginationBuilder(
                   color: Colors.white70,
@@ -846,101 +1059,71 @@ void initState() {
                 )
               ),
               indicatorLayout: PageIndicatorLayout.SCALE,
-              children: [
-                CachedNetworkImage(
-                  imageUrl: 'https://m.360buyimg.com/babel/jfs/t20281118/356751/9/12253/82448/691d63f8Fc9511ae6/3d5a48eb2f613cd0.jpg',
-                  memCacheWidth: 1080,
-                  placeholder: (context, url) => Container(color: Colors.grey[50]),
-                  fit: BoxFit.fill,
-                ),
-                CachedNetworkImage(
-                  imageUrl: 'https://m.360buyimg.com/babel/jfs/t20281126/363429/14/6762/278758/69283a1dFa354dd17/01953f5ca31b08fc.png',
-                  memCacheWidth: 1080,
-                  placeholder: (context, url) => Container(color: Colors.grey[50]),
-                  fit: BoxFit.fill,
-                ),
-                CachedNetworkImage(
-                  imageUrl: 'https://m.360buyimg.com/babel/jfs/t20281125/363656/36/6056/154345/69267511F6c7bb231/ba21f9349fa661a6.jpg',
-                  memCacheWidth: 1080,
-                  placeholder: (context, url) => Container(color: Colors.grey[50]),
-                  fit: BoxFit.fill,
-                ),
-                CachedNetworkImage(
-                  imageUrl: 'https://m.360buyimg.com/babel/jfs/t20281127/356616/26/17402/95517/69292231F262ad573/59e415cfbc72bfcb.jpg',
-                  memCacheWidth: 1080,
-                  placeholder: (context, url) => Container(color: Colors.grey[50]),
-                  fit: BoxFit.fill,
-                ),
-              ],
+              children: bannerList.isEmpty
+                  ? <Widget>[Container(color: Colors.grey[200])]
+                  : bannerList.map<Widget>((dynamic b) {
+                      final String img = '${b['adv_image'] ?? ''}';
+                      return GestureDetector(
+                        onTap: () => _handleNavUrl('${b['adv_url'] ?? ''}'),
+                        child: CachedNetworkImage(
+                          imageUrl: img,
+                          memCacheWidth: 1080,
+                          placeholder: (BuildContext c, String u) => Container(color: Colors.grey[50]),
+                          fit: BoxFit.fill,
+                        ),
+                      );
+                    }).toList(),
             ),
+                    // 顶部渐变遮罩: 让悬浮标题栏(白字/搜索框)在亮色轮播图上清晰可见
+                    Positioned(
+                      top: 0.0,
+                      left: 0.0,
+                      right: 0.0,
+                      height: 110.0,
+                      child: IgnorePointer(
+                        child: Container(
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: <Color>[Colors.black.withAlpha(110), Colors.transparent],
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
 
-          // 分类
+          // 金刚区(来自 /api/index/index 的 nav_info;接口未返回时回退到本地 cateList)
           SliverToBoxAdapter(
-          child: Container(
-            margin: EdgeInsets.all(10.0),
-            padding: EdgeInsets.only(bottom: 6.0),
-            height: 90.0,
-            clipBehavior: Clip.antiAlias,
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(10.0),
-            ),
-            child: Column(
-              children: [
-                Expanded(
-                  child: PageView.builder(
+            child: Container(
+              margin: EdgeInsets.all(10.0),
+              padding: EdgeInsets.only(bottom: 6.0),
+              height: 90.0,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(10.0),
+              ),
+              child: Column(
+                children: [
+                  Expanded(
+                    child: navList.isEmpty ? _buildCateGrid() : _buildNavGrid(),
+                  ),
+                  CustomPageViewIndicator(
                     controller: pageController,
-                    itemCount: cateList.length,
-                    itemBuilder: (context, index) {
-                      final item = cateList[index];
-                      return GridView.builder(
-                        shrinkWrap: true,
-                        padding: EdgeInsets.zero,
-                        physics: NeverScrollableScrollPhysics(),
-                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 4,
-                        ),
-                        itemCount: item['list'].length,
-                        itemBuilder: (BuildContext context, int index) {
-                          final citem = item['list'][index];
-                          return GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onTap: () => _onCateTap('${citem['label'] ?? ''}'),
-                            child: Container(
-                          padding: EdgeInsets.only(top: 12.0),
-                            child: Column(
-                              spacing: 3.0,
-                              children: [
-                                if (citem['icon'] != null)
-                                  Badge(
-                                    isLabelVisible: citem['count'] != null,
-                                    backgroundColor: Colors.redAccent,
-                                    label: Text('${citem['count']}'),
-                                    child: SvgPicture.asset('${citem['icon']}', height: 30.0, width: 30.0,),
-                                  ),
-                                Text(citem['label']),
-                              ],
-                              ),
-                              ),
-                          );
-                            },
-                          );
-                          },
-                        ),
-                      ),
-                      CustomPageViewIndicator(
-                      controller: pageController,
-                      count: cateList.length,
-                      color: Color(0xFFCECECE),
-                      activeColor: Color(0xFFFF2C55),
-                    ),
-                  ],
-                )
+                    count: navList.isNotEmpty ? (navList.length / 4).ceil() : cateList.length,
+                    color: Color(0xFFCECECE),
+                    activeColor: Color(0xFFFF2C55),
+                  ),
+                ],
               ),
             ),
+          ),
 
             // App直播板块(无直播间时隐藏)
             if (liveRoom != null) SliverToBoxAdapter(
@@ -1307,7 +1490,7 @@ void initState() {
 
             // 商品列表(瀑布流 / 横向单列可切换)
             SliverPadding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.only(left: 10, right: 10, bottom: 10),
               sliver: isHorizontalList
                 ? SliverList.separated(
                     itemCount: dataList.length,
@@ -1331,10 +1514,11 @@ void initState() {
               : Padding(
                   padding: const EdgeInsets.only(bottom: 20, top: 10),
                   child: Center(
-                    child: Text(
-                      dataList.isEmpty ? '暂无商品' : (hasMore ? '' : '没有更多了'),
-                      style: const TextStyle(color: Colors.grey, fontSize: 12.0),
-                    ),
+                    child: dataList.isEmpty
+                        ? const CommonEmpty(text: '暂无商品', imageWidth: 80.0)
+                        : (hasMore
+                            ? const SizedBox.shrink()
+                            : const Text('没有更多了', style: TextStyle(color: Colors.grey, fontSize: 12.0))),
                   ),
                 ),
             ),
@@ -1360,7 +1544,7 @@ Widget build(BuildContext context) {
   return GestureDetector(
     child: Container(
       clipBehavior: Clip.antiAlias,
-      padding: EdgeInsets.all(5.0),
+      padding: EdgeInsets.zero,
     decoration: BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(10.0),
@@ -1436,7 +1620,7 @@ Widget build(BuildContext context) {
         ),
         // 信息区: 标题 + 价格 + 马上抢
         Container(
-          padding: const EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 10.0),
+          padding: const EdgeInsets.all(10.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
@@ -1489,7 +1673,7 @@ Widget build(BuildContext context) {
   // 图文信息(标题/价格/销量/店铺)
   Widget _buildInfo() {
     return Container(
-      padding: EdgeInsets.all(5.0),
+      padding: EdgeInsets.all(10.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 5.0,

@@ -7,6 +7,7 @@ library;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 
@@ -597,7 +598,7 @@ class _PointShopPageState extends State<PointShopPage> {
   Widget _buildEmpty() {
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 80.0),
-      child: Center(child: Text('暂无可兑换的商品', style: TextStyle(fontSize: 14.0, color: Colors.grey))),
+      child: Center(child: const CommonEmpty(text: '暂无可兑换的商品')),
     );
   }
 

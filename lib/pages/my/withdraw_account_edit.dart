@@ -32,6 +32,8 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
   bool loading = true;
   bool submitting = false;
   String errorMsg = '';
+  /// 来源: member 会员 / fenxiao 分销
+  String type = 'member';
   /// 提现方式 [{ label, value }]
   List<Map<String, dynamic>> types = <Map<String, dynamic>>[];
   String withdrawType = '';
@@ -40,7 +42,10 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
   void initState() {
     super.initState();
     final dynamic args = Get.arguments;
-    if (args is Map) id = int.tryParse('${args['id'] ?? 0}') ?? 0;
+    if (args is Map) {
+      id = int.tryParse('${args['id'] ?? 0}') ?? 0;
+      type = '${args['type'] ?? 'member'}';
+    }
     load();
   }
 
@@ -69,7 +74,7 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
         accountController.text = '${info['bank_account'] ?? ''}';
         withdrawType = '${info['withdraw_type'] ?? ''}';
       }
-      final List<Map<String, dynamic>> transferTypes = await MemberWithdrawApi.transferType();
+      final List<Map<String, dynamic>> transferTypes = await MemberWithdrawApi.transferType(type: type);
       if (!mounted) return;
       setState(() {
         types = transferTypes;

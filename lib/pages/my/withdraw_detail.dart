@@ -133,6 +133,8 @@ class _WithdrawDetailPageState extends State<WithdrawDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
+            Image.asset('assets/images/common-empty.png', width: 120.0),
+            const SizedBox(height: 12.0),
             Text(errorMsg.isEmpty ? '暂无提现信息' : errorMsg,
                 style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
             const SizedBox(height: 12.0),

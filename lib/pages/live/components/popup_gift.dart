@@ -227,7 +227,7 @@ void dispose() {
                       Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Image.network('https://lf-cdn-tos.bytescm.com/obj/static/webcast/douyin_live/media/empty.bcc258a60fd6da03.png', width: 200,),
+                          Image.asset('assets/images/common-empty.png', width: 120.0),
                           SizedBox(height: 20.0,),
                           Text('暂无数据', style: TextStyle(color: Colors.white54,),),
                         ],
@@ -235,7 +235,7 @@ void dispose() {
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Image.network('https://lf-cdn-tos.bytescm.com/obj/static/webcast/douyin_live/media/empty.bcc258a60fd6da03.png', width: 200,),
+                          Image.asset('assets/images/common-empty.png', width: 120.0),
                           SizedBox(height: 20.0,),
                           Text('暂无数据', style: TextStyle(color: Colors.white54,),),
                         ],
@@ -243,7 +243,7 @@ void dispose() {
                       Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          Image.network('https://lf-cdn-tos.bytescm.com/obj/static/webcast/douyin_live/media/empty.bcc258a60fd6da03.png', width: 200,),
+                          Image.asset('assets/images/common-empty.png', width: 120.0),
                           SizedBox(height: 20.0,),
                           Text('暂无数据', style: TextStyle(color: Colors.white54,),),
                         ],

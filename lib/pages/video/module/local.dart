@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class LocalModule extends StatefulWidget {
   const LocalModule({ super.key });
@@ -20,7 +19,7 @@ class _LocalModuleState extends State<LocalModule> {
       mainAxisAlignment: MainAxisAlignment.center,
       spacing: 5.0,
       children: [
-        SvgPicture.asset('assets/images/svg/empty.svg', colorFilter: ColorFilter.mode(Colors.white60, BlendMode.srcIn), width: 40.0,),
+        Image.asset('assets/images/common-empty.png', width: 120.0),
         Text('暂无同城信息~', style: TextStyle(color: Colors.white60, fontSize: 14.0),),
       ],
     ),

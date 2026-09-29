@@ -6,6 +6,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
@@ -253,7 +254,7 @@ class _GoodsEvaluatePageState extends State<GoodsEvaluatePage> {
     if (loading) return const Center(child: Loading(title: '加载中...'));
     if (list.isEmpty) {
       return const Center(
-        child: Text('暂无商品评价', style: TextStyle(fontSize: 13.0, color: FStyle.c999)),
+        child: const CommonEmpty(text: '暂无商品评价'),
       );
     }
     return ListView.separated(

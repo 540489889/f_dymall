@@ -5,6 +5,7 @@ library;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -238,8 +239,7 @@ class _StudyDetailPageState extends State<StudyDetailPage> {
           Expanded(
             child: _commentList.isEmpty && !_commentLoading
                 ? const Center(
-                    child: Text('暂无评论，快来抢沙发~',
-                        style: TextStyle(color: Colors.grey)))
+                    child: const CommonEmpty(text: '暂无评论，快来抢沙发~'))
                 : ListView.builder(
                     padding: const EdgeInsets.symmetric(horizontal: 14),
                     itemCount: _commentList.length + (_commentLoading ? 1 : 0),

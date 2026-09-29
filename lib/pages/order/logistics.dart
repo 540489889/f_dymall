@@ -6,6 +6,7 @@ library;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
@@ -259,7 +260,7 @@ class _OrderLogisticsState extends State<OrderLogistics> {
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 10.0),
           child: Center(
-            child: Text('${trace['reason'] ?? '暂无物流信息'}', style: const TextStyle(fontSize: 13.0, color: Colors.grey)),
+            child: CommonEmpty(text: '${trace['reason'] ?? '暂无物流信息'}'),
           ),
         ),
       );

@@ -14,11 +14,13 @@ import 'dart:typed_data';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/order.dart';
+import '../../utils/order_status.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/popup_pay.dart';
 import '../../config/index.dart';
@@ -385,22 +387,23 @@ class _OrderDetailState extends State<OrderDetail> with WidgetsBindingObserver {
     final bool waitPay = '${orderData['order_status'] ?? ''}' == '0' && '${orderData['pay_type'] ?? ''}' != 'offlinepay';
     final String promotionName = '${orderData['promotion_status_name'] ?? ''}';
     final bool presaleWaitSend = '${orderData['promotion_type'] ?? ''}' == 'presale' && '${orderData['order_status'] ?? ''}' == '1';
+    final OrderStatusMeta meta = OrderStatusStyle.meta('${orderData['order_status'] ?? ''}');
     return Stack(
       children: <Widget>[
         Container(
           width: double.infinity,
           padding: const EdgeInsets.fromLTRB(16.0, 18.0, 16.0, 20.0),
           decoration: BoxDecoration(
-            gradient: const LinearGradient(colors: <Color>[Color(0xFFFF5577), primary], begin: Alignment.topLeft, end: Alignment.bottomRight),
+            gradient: LinearGradient(colors: meta.gradient, begin: Alignment.topLeft, end: Alignment.bottomRight),
             borderRadius: BorderRadius.circular(16.0),
-            boxShadow: const <BoxShadow>[BoxShadow(color: Color(0x33FF5577), blurRadius: 12.0, offset: Offset(0.0, 6.0))],
+            boxShadow: <BoxShadow>[BoxShadow(color: meta.color.withAlpha(40), blurRadius: 12.0, offset: const Offset(0.0, 6.0))],
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               Row(
                 children: <Widget>[
-                  const Icon(Icons.inventory_2_outlined, color: Colors.white, size: 22.0),
+                  Icon(meta.icon, color: Colors.white, size: 22.0),
                   const SizedBox(width: 8.0),
                   Flexible(
                     child: Text(
@@ -928,7 +931,7 @@ class _OrderDetailState extends State<OrderDetail> with WidgetsBindingObserver {
           child: records.isEmpty
               ? const Padding(
                   padding: EdgeInsets.symmetric(vertical: 6.0),
-                  child: Text('暂无核销记录', style: TextStyle(fontSize: 12.0, color: Colors.grey)),
+                  child: const CommonEmpty(text: '暂无核销记录', imageWidth: 80.0),
                 )
               : Column(
                   children: records.map((Map<String, dynamic> item) => Column(

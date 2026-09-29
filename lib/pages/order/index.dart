@@ -12,10 +12,10 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/order.dart';
+import '../../utils/order_status.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/popup_pay.dart';
 
@@ -265,10 +265,9 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
       mainAxisAlignment: MainAxisAlignment.center,
       spacing: 5.0,
       children: <Widget>[
-        SvgPicture.asset(
-          'assets/images/svg/empty.svg',
-          colorFilter: const ColorFilter.mode(Colors.black38, BlendMode.srcIn),
-          width: 40.0,
+        Image.asset(
+          'assets/images/common-empty.png',
+          width: 120.0,
         ),
         const Text('还没有相关订单~', style: TextStyle(color: Colors.grey, fontSize: 12.0)),
       ],
@@ -422,7 +421,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
                   ),
                 ],
                 const SizedBox(width: 6.0),
-                Text('${item['order_status_name'] ?? ''}', style: const TextStyle(fontSize: 13.0, color: primary)),
+                Text('${item['order_status_name'] ?? ''}', style: TextStyle(fontSize: 13.0, color: OrderStatusStyle.meta('${item['order_status'] ?? ''}').color)),
               ],
             ),
             const SizedBox(height: 10.0),

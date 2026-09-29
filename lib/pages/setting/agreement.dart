@@ -5,6 +5,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 import '../../api/member.dart';
@@ -91,8 +92,7 @@ class _AgreementPageState extends State<AgreementPage> {
       return Center(
         child: Padding(
           padding: const EdgeInsets.all(24.0),
-          child: Text(errorMsg.isEmpty ? '暂无协议内容' : errorMsg,
-              style: const TextStyle(fontSize: 14.0, color: Colors.black54)),
+          child: CommonEmpty(text: errorMsg.isEmpty ? '暂无协议内容' : errorMsg),
         ),
       );
     }

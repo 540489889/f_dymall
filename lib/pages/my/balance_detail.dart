@@ -7,6 +7,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:get/get.dart';
 
 import '../../api/member_account.dart';
@@ -169,7 +170,7 @@ class _BalanceDetailPageState extends State<BalanceDetailPage> {
               if (options.isEmpty)
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 24.0),
-                  child: Text('暂无可选数据', style: TextStyle(fontSize: 13.0, color: Colors.grey)),
+                  child: const CommonEmpty(text: '暂无可选数据', imageWidth: 80.0),
                 )
               else
                 Flexible(
@@ -307,7 +308,7 @@ class _BalanceDetailPageState extends State<BalanceDetailPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.receipt_long_outlined, size: 56.0, color: Colors.grey.shade300),
+            Image.asset('assets/images/common-empty.png', width: 120.0),
             const SizedBox(height: 12.0),
             Text(errorMsg.isEmpty ? '暂无余额明细' : errorMsg, style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
           ],

@@ -75,16 +75,19 @@ class MemberWithdrawApi {
     return <Map<String, dynamic>>[];
   }
 
-  /// 提现方式(/api/memberwithdraw/transferType)
-  /// 返回 { bank: 银行卡, alipay: 支付宝, wechatpay: 微信零钱, balance: ... }
-  /// * balance(提现到余额)只对分销有效,会员提现需过滤
-  static Future<List<Map<String, dynamic>>> transferType() async {
-    final dynamic res = await Request().get('/api/memberwithdraw/transferType');
+  /// 提现方式
+  /// * [type] 'member' 用 /api/memberwithdraw/transferType;'fenxiao' 用 /fenxiao/api/withdraw/transferType
+  /// * member 端过滤 balance(余额提现仅分销可用),fenxiao 保留 balance
+  static Future<List<Map<String, dynamic>>> transferType({String type = 'member'}) async {
+    final String url = type == 'fenxiao'
+        ? '/fenxiao/api/withdraw/transferType'
+        : '/api/memberwithdraw/transferType';
+    final dynamic res = await Request().get(url);
     final List<Map<String, dynamic>> types = <Map<String, dynamic>>[];
     if (res is! Map) return types;
     final Map<String, dynamic> data = res.cast<String, dynamic>();
     data.forEach((String key, dynamic value) {
-      if (key == 'balance') return;
+      if (type != 'fenxiao' && key == 'balance') return;
       types.add(<String, dynamic>{'label': '$value', 'value': key});
     });
     return types;

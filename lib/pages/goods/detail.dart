@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:get/get.dart';
 import 'package:card_swiper/card_swiper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -898,7 +899,7 @@ Widget _buildDetail() {
         content.isEmpty
           ? const Padding(
               padding: EdgeInsets.symmetric(vertical: 20.0),
-              child: Center(child: Text('暂无详情', style: TextStyle(color: Colors.grey, fontSize: 12.0))),
+              child: Center(child: const CommonEmpty(text: '暂无详情')),
             )
           : Html(
               data: content,

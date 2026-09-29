@@ -26,6 +26,7 @@ import '../pages/order/pay_result.dart';
 import '../pages/order/logistics.dart';
 import '../pages/order/evaluate.dart';
 import '../pages/order/refund.dart';
+import '../pages/order/refund_list.dart';
 import '../pages/order/refund_detail.dart';
 // 钱包
 import '../pages/my/wallet.dart';
@@ -52,6 +53,14 @@ import '../pages/setting/agreement.dart';
 // 限时秒杀
 import '../pages/seckill/list.dart';
 import '../pages/seckill/detail.dart';
+// 学习课程 / 素材库
+import '../pages/study/index.dart';
+import '../pages/study/detail.dart';
+import '../pages/study/article.dart';
+import '../pages/study/more.dart';
+// 看播集章
+import '../pages/stamp/index.dart';
+import '../pages/stamp/detail.dart';
 // 积分商城(积分兑换)
 import '../pages/point/shop.dart';
 import '../pages/point/goods_detail.dart';
@@ -74,6 +83,7 @@ final Map<String, Widget> routes = {
  '/order/evaluate': const OrderEvaluate(),
  '/order/refund': const OrderRefund(),
  '/order/refund_detail': const OrderRefundDetail(),
+'/order/refund_list': const RefundList(),
  '/my/wallet': const Wallet(),
 '/my/recharge': const Recharge(),
 '/my/balance_detail': const BalanceDetailPage(),
@@ -131,6 +141,7 @@ const Set<String> authRoutes = {
   '/order/evaluate',
   '/order/refund',
   '/order/refund_detail',
+  '/order/refund_list',
   '/cart',
   '/order/ordersure',
   '/chat',
@@ -150,6 +161,14 @@ GetPage(name: '/register', page: () => const Register()),
   GetPage(name: '/store/detail', page: () => const StoreDetailPage()),
   GetPage(name: '/bind_store', page: () => const BindStorePage()),
   GetPage(name: '/bind_mobile', page: () => const BindMobilePage()),
+  // 学习课程 / 素材库(游客可见,不进 authRoutes)
+  GetPage(name: '/study', page: () => const StudyIndexPage()),
+  GetPage(name: '/study/detail', page: () => const StudyDetailPage()),
+  GetPage(name: '/study/article', page: () => const StudyArticlePage()),
+  GetPage(name: '/study/more', page: () => const StudyMorePage()),
+  // 看播集章(游客可见,不进 authRoutes)
+  GetPage(name: '/stamp', page: () => const StampIndexPage()),
+  GetPage(name: '/stamp/detail', page: () => const StampDetailPage()),
   ...routeList,
 ];
 

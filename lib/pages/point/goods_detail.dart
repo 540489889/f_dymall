@@ -9,6 +9,7 @@ import 'dart:convert';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
@@ -748,7 +749,7 @@ class _PointGoodsDetailPageState extends State<PointGoodsDetailPage> {
           const Text('兑换详情', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
           const Divider(color: FStyle.dividerColor, height: 20.0, thickness: 0.5),
           content.isEmpty
-              ? const Text('暂无兑换详情！', style: TextStyle(fontSize: 13.0, color: Color(0xFF999999)))
+              ? const CommonEmpty(text: '暂无兑换详情！')
               : Html(data: content, shrinkWrap: true),
         ],
       ),

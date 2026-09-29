@@ -197,7 +197,7 @@ class _AddressListPageState extends State<AddressListPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(Icons.location_off_outlined, size: 56.0, color: Colors.grey.shade300),
+          Image.asset('assets/images/common-empty.png', width: 120.0),
           const SizedBox(height: 12.0),
           Text(errorMsg.isEmpty ? '暂无收货地址,请点击下方按钮添加' : errorMsg, style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
         ],

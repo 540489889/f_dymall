@@ -8,6 +8,7 @@ library;
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
@@ -446,7 +447,7 @@ class _OrderRefundDetailState extends State<OrderRefundDetail> {
       children: <Widget>[
         Expanded(
           child: logs.isEmpty
-              ? const Center(child: Text('暂无协商记录', style: TextStyle(fontSize: 13.0, color: Colors.grey)))
+              ? const Center(child: const CommonEmpty(text: '暂无协商记录'))
               : ListView.separated(
                   padding: const EdgeInsets.all(10.0),
                   itemCount: logs.length,

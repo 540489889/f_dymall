@@ -2,6 +2,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import '../../components/common_empty.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 import '../../api/materials.dart';
@@ -56,7 +57,7 @@ class _StudyArticlePageState extends State<StudyArticlePage> {
           ? const Center(child: CircularProgressIndicator())
           : detail.isEmpty
               ? const Center(
-                  child: Text('暂无内容', style: TextStyle(color: Colors.grey)))
+                  child: const CommonEmpty(text: '暂无内容'))
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: <Widget>[

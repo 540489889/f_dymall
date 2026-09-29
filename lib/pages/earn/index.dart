@@ -95,7 +95,7 @@ class _EarnPageState extends State<EarnPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F5),
+      backgroundColor: const Color(0xFFFFF0F2),
       body: CustomScrollView(
         slivers: <Widget>[
           SliverToBoxAdapter(child: _buildHeader()),
@@ -113,8 +113,10 @@ class _EarnPageState extends State<EarnPage> {
 
   // 顶部红色收益卡
   Widget _buildHeader() {
+    // 用顶部外边距把整张卡挪到状态栏下方,而不是 SafeArea 在卡内留白(否则红底上延显得卡片变高)
+    final double topPad = MediaQuery.of(context).padding.top;
     return Container(
-      margin: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 0.0),
+      margin: EdgeInsets.fromLTRB(12.0, topPad + 12.0, 12.0, 0.0),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           begin: Alignment.topLeft,
@@ -123,12 +125,9 @@ class _EarnPageState extends State<EarnPage> {
         ),
         borderRadius: BorderRadius.circular(16.0),
       ),
-      child: SafeArea(
-        top: false,
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(18.0, 18.0, 18.0, 14.0),
-          child: Column(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18.0, 18.0, 18.0, 14.0),
+        child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
               // 我的金币 / 可提现 / 去领取
@@ -212,7 +211,6 @@ class _EarnPageState extends State<EarnPage> {
             ],
           ),
         ),
-      ),
     );
   }
 
