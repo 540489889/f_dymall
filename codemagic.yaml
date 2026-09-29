@@ -1,0 +1,42 @@
+# Codemagic 构建配置
+# 关键修复: iOS 构建前先 `pod repo update`, 否则 CocoaPods specs 仓库过旧,
+# 无法解析 media_kit(media_kit_libs_video) 引入的二进制原生依赖
+# (Avformat / Freetype / Mbedx509 等 xcframework), 导致 pod install 失败。
+#
+# 使用方式:
+#   1. 仓库根目录放置本文件
+#   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
+#   3. 若需要真机/App Store 分发, 请在下方 environment 配置代码签名
+#      (App Store Connect API key / 证书), 否则把 `flutter build ios --release`
+#      改为 `flutter build ios --release --no-codesign` 仅验证构建
+
+workflows:
+  default-workflow:
+    name: Default Workflow
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    cache:
+      cache_paths:
+        - $HOME/Library/Caches/CocoaPods
+    scripts:
+      - name: Flutter packages get
+        script: flutter pub get
+      - name: CocoaPods repo update & pod install
+        script: |
+          cd ios
+          pod repo update
+          pod install --repo-update
+      - name: Build iOS
+        # 先用 --no-codesign 验证 pod 安装是否通过; 验证 OK 后再配代码签名并去掉该参数
+        script: |
+          flutter build ios --release --no-codesign
+    artifacts:
+      - build/ios/iphoneos/Runner.app
+    publishing:
+      email:
+        recipients:
+          - user@example.com # TODO: 替换为你的接收邮箱
