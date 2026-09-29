@@ -192,17 +192,13 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   bool _popupShown = false;
 
 late ScrollController scrollController = ScrollController();
-late TabController tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
+late TabController tabController;
 final PageController pageController = PageController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 // 上次直播可见性检测时间(毫秒): 滚动中节流,避免每帧做 RenderObject 计算
 int liveCheckedAt = 0;
-// TabBar 的 Tab 列表(随 tabList 预生成,避免滚动中每帧重建都重新 map)
-late List<Widget> tabWidgets = _buildTabWidgets(tabList);
-
-List<Widget> _buildTabWidgets(List<String> tabs) =>
-    tabs.map((String v) => Tab(text: v)).toList();
+// TabBar 的 tabs 直接由 tabList 生成, 与 tabController.length 同源, 杜绝数量不一致报错
 
 // 滚动回调: 每一帧都会执行,只放轻量逻辑
 void _onScroll() {
@@ -460,6 +456,8 @@ Widget liveBg() {
 @override
 void initState() {
   super.initState();
+  // 初始用默认 tabList 创建 TabController; 分类加载后会在 loadCategory 中按新数量重建
+  tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
   scrollController.addListener(_onScroll);
 
   // 已登录但会员信息为空(启动时拉取失败): 补拉一次, 避免门店绑定状态拿不到还显示"去绑定门店"
@@ -498,7 +496,6 @@ void initState() {
       setState(() {
         categoryList = list;
         tabList = tabs;
-        tabWidgets = _buildTabWidgets(tabs);
         // tab 数量变了, TabController 必须重建(否则 controller.length != tabs.length 报错)
         tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
       });
@@ -1446,7 +1443,7 @@ void initState() {
                   controller: tabController,
                   // 点击分类 tab: 拉取该分类下的商品(/api/goodssku/page)
                   onTap: _onTabTap,
-                  tabs: tabWidgets,
+                  tabs: tabList.map((String v) => Tab(text: v)).toList(),
                 isScrollable: true,
                 tabAlignment: TabAlignment.start,
                 overlayColor: WidgetStateProperty.all(Colors.transparent),
