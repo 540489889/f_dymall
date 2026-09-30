@@ -33,6 +33,8 @@
 #   -Werror 将其提升为 error)。因此在 post_install 对所有 pod target 的 OTHER_CFLAGS 末尾
 #   追加 -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的),
 #   彻底消除该错误, 且不影响其他告警。
+#   注意: CocoaPods 不支持多个 post_install 钩子("Specifying multiple `post_install`
+#   hooks is unsupported"), 故修复代码必须插入 Flutter 模板已有的 post_install 内部。
 #
 # 使用方式:
 #   1. 仓库根目录放置本文件
@@ -109,27 +111,33 @@ workflows:
           # 4) 关键: 穿山甲/火山引擎 SDK 含静态二进制, use_frameworks! 需改为 static linkage
           grep -q "use_frameworks! :linkage" Podfile || sed -i '' 's/^\( *\)use_frameworks!$/\1use_frameworks! :linkage => :static/' Podfile
           # 5) 关键: YYText 在 Xcode 15+ 下因 'X < Y < Z' 链式比较被当作语义错误而编译失败。
-          #    在 post_install 中关闭 CLANG_WARN_CHAINED_COMPARISON(对所有 pod target 生效)以修复。
-          if ! grep -q "CLANG_WARN_CHAINED_COMPARISON" Podfile; then
-            cat >> Podfile <<'RUBY'
-
-          post_install do |installer|
-            installer.pods_project.targets.each do |target|
-              target.build_configurations.each do |config|
-                # 关闭链式比较警告(Xcode 15+ 默认开启)。若 podspec 显式重开该警告并配合
-                # -Werror 将其提升为 error, 仅关警告压不住; 故在 OTHER_CFLAGS 末尾追加
-                # -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的)。
-                config.build_settings['CLANG_WARN_CHAINED_COMPARISON'] = 'NO'
-                other = config.build_settings['OTHER_CFLAGS']
-                other = '' if other.nil?
-                other = other.join(' ') if other.is_a?(Array)
-                unless other.include?('-Wno-error=chained-compare')
-                  config.build_settings['OTHER_CFLAGS'] = (other + ' -Wno-chained-compare -Wno-error=chained-compare').strip
-                end
+          #    重要: CocoaPods 不支持多个 post_install 钩子(Flutter 模板自带的 Podfile 已有一个),
+          #    因此必须把修复代码插入已有 post_install 内部, 绝不能再追加第二个 post_install。
+          #    修复方式: 关闭 CLANG_WARN_CHAINED_COMPARISON, 并在 OTHER_CFLAGS 末尾追加
+          #    -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的),
+          #    以压住被 podspec 重开并配合 -Werror 提升为 error 的该告警。
+          if ! grep -q "chained-compare" Podfile; then
+            cat > /tmp/yytext_fix.rb <<'RUBY'
+          installer.pods_project.targets.each do |target|
+            target.build_configurations.each do |config|
+              config.build_settings['CLANG_WARN_CHAINED_COMPARISON'] = 'NO'
+              other = config.build_settings['OTHER_CFLAGS']
+              other = '' if other.nil?
+              other = other.join(' ') if other.is_a?(Array)
+              unless other.include?('-Wno-error=chained-compare')
+                config.build_settings['OTHER_CFLAGS'] = (other + ' -Wno-chained-compare -Wno-error=chained-compare').strip
               end
             end
           end
           RUBY
+            if grep -q "post_install do |installer|" Podfile; then
+              awk '/^ *post_install do \|installer\|/ {print; while ((getline line < "/tmp/yytext_fix.rb") > 0) print line; next} {print}' Podfile > Podfile.tmp && mv Podfile.tmp Podfile
+            else
+              printf 'post_install do |installer|\n' >> Podfile
+              cat /tmp/yytext_fix.rb >> Podfile
+              printf 'end\n' >> Podfile
+            fi
+            grep -q "chained-compare" Podfile || { echo "ERROR: 未能注入 YYText 链式比较修复"; exit 1; }
           fi
           cat Podfile
           # 6) 增量刷新 specs: ~/.cocoapods/repos 已通过 cache_paths 持久化(不再 rm 全量重建),
