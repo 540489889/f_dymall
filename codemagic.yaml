@@ -40,7 +40,9 @@
 # 使用方式:
 #   1. 仓库根目录放置本文件
 #   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
-#   3. 产物: build/ios/ipa/Runner.ipa(已在 artifacts 中, 构建结束可直接下载)
+#   3. 产物: build/ios/ipa/Runner.ipa(已在 artifacts 中, 构建结束可直接下载)。
+#      构建用 `flutter build ios --release` 产出 Runner.app(手动签名时已带签名),
+#      再由 Package IPA 步骤按 Payload/Runner.app 标准结构 zip 成 ipa。
 #   4. 当前为手动签名(IPA_SIGNING=development)。需要在 Codemagic 配置 3 个 Secret
 #      环境变量: CM_CERTIFICATE / CM_CERTIFICATE_PASSWORD / CM_PROVISIONING_PROFILE
 #      (均为 base64), 并在 environment.groups 引用该变量组。详见 environment 处注释。
@@ -56,11 +58,12 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        # IPA 签名方式(手动签名: 证书/描述文件通过 Codemagic 环境变量注入):
-        #   none        = 免签, 只把 Runner.app 压成 ipa(真机装不上, 仅供校验包体)
-        #   development = 开发签名(当前使用): 可装到已登记 UDID 的测试机
-        #   ad_hoc      = Ad Hoc 分发签名: 同样装到已登记 UDID 的机器(需 distribution 证书)
-        #   app_store   = 上架 / TestFlight
+        # 是否签名(手动签名: 证书/描述文件通过 Codemagic 环境变量注入,
+        # 由 `xcode-project use-profiles` 把 Xcode 工程切成 Manual 签名):
+        #   none = 免签: flutter build ios --no-codesign, 压成 ipa 仅供校验包体(真机装不上)
+        #   其它任意值(当前 development) = 用注入的证书/描述文件签名 Runner.app 再压成 ipa
+        #   注: 具体签名类型取决于上传的 .p12 / .mobileprovision 本身,
+        #       要 ad-hoc / app-store 包只需替换证书与描述文件, 无需改这个值
         IPA_SIGNING: development
         BUNDLE_ID: com.chongloutech.lehui
       # ---- 手动签名: 必须配置的环境变量(不要用 ios_signing, 那是自动签名) ----
@@ -241,53 +244,26 @@ workflows:
           fi
           cd "$REPO_ROOT"
           if [ "$IPA_SIGNING" = "none" ]; then
-            # 免签: 只编译出 Runner.app, 下一步手动打成 ipa(真机需本地重签名)
+            # 免签: 只编译出未签名的 Runner.app, 下一步手动打成 ipa(真机需本地重签名)
             flutter build ios --release --no-codesign
           else
-            # 签名: 由 flutter build ipa 完成 archive + export, 直接产出签名 ipa
-            case "$IPA_SIGNING" in
-              ad_hoc) METHOD="ad-hoc" ;;
-              development) METHOD="development" ;;
-              app_store) METHOD="app-store" ;;
-              *) echo "ERROR: 未知 IPA_SIGNING=$IPA_SIGNING"; exit 1 ;;
-            esac
-            cat > /tmp/export_options.plist <<PLIST
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-            <key>method</key>
-            <string>$METHOD</string>
-            <key>compileBitcode</key>
-            <false/>
-            <key>uploadBitcode</key>
-            <false/>
-            <key>uploadSymbols</key>
-            <true/>
-          </dict>
-          </plist>
-          PLIST
-            flutter build ipa --release --export-options-plist=/tmp/export_options.plist
+            # 签名: xcode-project use-profiles 已把工程改成 Manual 签名,
+            #       flutter build ios 会按该配置签名并输出 Runner.app
+            flutter build ios --release
           fi
       - name: Package IPA
         script: |
           set -e
           REPO_ROOT="$(git rev-parse --show-toplevel)"
           cd "$REPO_ROOT"
-          mkdir -p build/ios/ipa
-          if [ "$IPA_SIGNING" = "none" ]; then
-            # 免签模式: flutter 只产出 .app, 这里按 IPA 标准结构 Payload/xxx.app 打包
-            APP="build/ios/iphoneos/Runner.app"
-            [ -d "$APP" ] || { echo "ERROR: 未找到 $APP"; exit 1; }
-            rm -rf build/ios/ipa/Payload
-            mkdir -p build/ios/ipa/Payload
-            cp -R "$APP" build/ios/ipa/Payload/
-            (cd build/ios/ipa && zip -qry Runner.ipa Payload && rm -rf Payload)
-          fi
+          APP="build/ios/iphoneos/Runner.app"
+          [ -d "$APP" ] || { echo "ERROR: 未找到 $APP"; exit 1; }
+          rm -rf build/ios/ipa && mkdir -p build/ios/ipa/Payload
+          cp -R "$APP" build/ios/ipa/Payload/
+          (cd build/ios/ipa && zip -qry Runner.ipa Payload && rm -rf Payload)
           ls -lh build/ios/ipa/
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/ios/iphoneos/Runner.app
     publishing:
       email:
         recipients:
