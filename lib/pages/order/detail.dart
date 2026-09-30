@@ -442,7 +442,7 @@ class _OrderDetailState extends State<OrderDetail> with WidgetsBindingObserver {
             ],
           ),
         ),
-        Positioned(right: -12.0, bottom: -12.0, child: Icon(Icons.local_shipping_outlined, size: 90.0, color: Colors.white.withValues(alpha: 0.08))),
+        Positioned(right: -12.0, bottom: -12.0, child: Icon(meta.icon, size: 90.0, color: Colors.white.withValues(alpha: 0.08))),
       ],
     );
   }

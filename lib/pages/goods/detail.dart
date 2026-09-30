@@ -928,7 +928,11 @@ Widget _buildBottomBar() {
         child: Row(
         spacing: 15.0,
         children: [
-          _buildBarIcon(Icons.storefront, '进店', primary),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Get.offAllNamed('/'),
+            child: _buildBarIcon(Icons.home_outlined, '首页', primary),
+          ),
           _buildBarIcon(Icons.chat_outlined, '客服', Colors.black87),
           GestureDetector(
             behavior: HitTestBehavior.opaque,

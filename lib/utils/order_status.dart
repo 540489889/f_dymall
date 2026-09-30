@@ -28,9 +28,9 @@ class OrderStatusStyle {
         );
       case '1': // 待发货
         return const OrderStatusMeta(
-          Color(0xFF2D8CF0),
+          Color(0xFFFF2C55),
           Icons.inventory_2_outlined,
-          <Color>[Color(0xFF4FA8FF), Color(0xFF2D8CF0)],
+          <Color>[Color(0xFFFF5577), Color(0xFFFF2C55)],
         );
       case '2': // 待收货 / 待使用
         return const OrderStatusMeta(
@@ -46,15 +46,16 @@ class OrderStatusStyle {
         );
       case '4': // 已关闭
       case '5': // 已取消
+      case '-1': // 已关闭(H5 部分接口约定)
         return const OrderStatusMeta(
           Color(0xFF999999),
-          Icons.cancel_outlined,
+          Icons.do_not_disturb_on_outlined,
           <Color>[Color(0xFFBBBBBB), Color(0xFF999999)],
         );
       default:
         return const OrderStatusMeta(
           defaultColor,
-          Icons.inventory_2_outlined,
+          Icons.receipt_long_outlined,
           <Color>[Color(0xFFFF5577), defaultColor],
         );
     }

@@ -46,11 +46,17 @@ workflows:
         - $HOME/Library/Caches/CocoaPods
         # 缓存火山引擎 spec 仓库, 避免每次构建都重新克隆(该仓库较大)
         - $HOME/.cocoapods/repos/volcengine-specs
+        # 缓存 pod 下载的二进制(穿山甲/火山引擎 SDK zip), 避免每次都重新到
+        # 字节跳动中国 CDN(sf3-fe-tos.pglstatp-toutiao.com) 拉取(海外机易 Connection reset)
+        - $HOME/.cocoapods/downloads
     scripts:
       - name: Flutter packages get
         script: flutter pub get
       - name: 注册 Volcengine 源 + 设置部署目标 + 静态链接 + 安装 pods
         script: |
+          # 若 Codemagic 海外机构建机拉取穿山甲/火山引擎 SDK(pglstatp-toutiao.com) 失败,
+          # 在此 export 一个可访问中国 CDN 的代理, 例如:
+          # export https_proxy="http://user:pass@proxyhost:port" http_proxy="$https_proxy"
           cd ios
           # 确保 Podfile 存在(Flutter 首次 build 时生成; 缺失则补生成)
           [ -f Podfile ] || flutter create --platforms=ios .
