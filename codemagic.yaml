@@ -40,9 +40,11 @@
 # 使用方式:
 #   1. 仓库根目录放置本文件
 #   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
-#   3. 若需要真机/App Store 分发, 请在下方 environment 配置代码签名
-#      (App Store Connect API key / 证书), 否则把 `flutter build ios --release`
-#      改为 `flutter build ios --release --no-codesign` 仅验证构建
+#   3. 产物: build/ios/ipa/Runner.ipa(已在 artifacts 中, 构建结束可直接下载)
+#   4. 默认 IPA_SIGNING=none, 免签出包, 能下载但真机装不上(需本地重签名)。
+#      想直接装真机测试: 把 IPA_SIGNING 改成 ad_hoc, 并取消 environment.ios_signing
+#      的注释, 同时在 Codemagic 配置 App Store Connect API key、把测试机 UDID 加到
+#      Apple Developer 后台。
 
 workflows:
   default-workflow:
@@ -53,6 +55,20 @@ workflows:
       flutter: stable
       xcode: latest
       cocoapods: default
+      vars:
+        # IPA 签名方式:
+        #   none        = 免签, 直接把 Runner.app 打成 ipa(能出包, 但真机装不上, 需本地重签名)
+        #   ad_hoc      = 推荐, 可装到已在开发者后台登记 UDID 的测试机
+        #   development = 开发签名, 只能装到登记过的开发机
+        #   app_store   = 上架/ TestFlight
+        IPA_SIGNING: none
+        BUNDLE_ID: com.chongloutech.lehui
+      # ---- 需要真机可安装的 ipa 时, 打开下面的配置 ----
+      # 前置条件: Codemagic → 项目设置 → Code signing → iOS: 上传 App Store Connect API key
+      #          并把测试机 UDID 加到 Apple Developer 后台(ad_hoc/development 必需)
+      # ios_signing:
+      #   distribution_type: ad_hoc          # 需与上面的 IPA_SIGNING 一致
+      #   bundle_identifier: com.chongloutech.lehui
     cache:
       cache_paths:
         - $HOME/Library/Caches/CocoaPods
@@ -177,7 +193,6 @@ workflows:
             echo "WARN: 未找到 $YYTEXT, 跳过源码兜底修补"
           fi
       - name: Build iOS
-        # 先用 --no-codesign 验证 pod 安装是否通过; 验证 OK 后再配代码签名并去掉该参数
         script: |
           set -e
           # 再兜底一次: 万一上一步之后 Pods 被重新解包, 这里改回正确源码(幂等)
@@ -192,8 +207,54 @@ workflows:
           else
             echo "WARN: 未找到 $YYTEXT, 跳过源码兜底修补"
           fi
-          flutter build ios --release --no-codesign
+          cd "$REPO_ROOT"
+          if [ "$IPA_SIGNING" = "none" ]; then
+            # 免签: 只编译出 Runner.app, 下一步手动打成 ipa(真机需本地重签名)
+            flutter build ios --release --no-codesign
+          else
+            # 签名: 由 flutter build ipa 完成 archive + export, 直接产出签名 ipa
+            case "$IPA_SIGNING" in
+              ad_hoc) METHOD="ad-hoc" ;;
+              development) METHOD="development" ;;
+              app_store) METHOD="app-store" ;;
+              *) echo "ERROR: 未知 IPA_SIGNING=$IPA_SIGNING"; exit 1 ;;
+            esac
+            cat > "$REPO_ROOT/ios/export_options.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>$METHOD</string>
+            <key>compileBitcode</key>
+            <false/>
+            <key>uploadBitcode</key>
+            <false/>
+            <key>uploadSymbols</key>
+            <true/>
+          </dict>
+          </plist>
+          PLIST
+            flutter build ipa --release --export-options-plist=ios/export_options.plist
+          fi
+      - name: Package IPA
+        script: |
+          set -e
+          REPO_ROOT="$(git rev-parse --show-toplevel)"
+          cd "$REPO_ROOT"
+          mkdir -p build/ios/ipa
+          if [ "$IPA_SIGNING" = "none" ]; then
+            # 免签模式: flutter 只产出 .app, 这里按 IPA 标准结构 Payload/xxx.app 打包
+            APP="build/ios/iphoneos/Runner.app"
+            [ -d "$APP" ] || { echo "ERROR: 未找到 $APP"; exit 1; }
+            rm -rf build/ios/ipa/Payload
+            mkdir -p build/ios/ipa/Payload
+            cp -R "$APP" build/ios/ipa/Payload/
+            (cd build/ios/ipa && zip -qry Runner.ipa Payload && rm -rf Payload)
+          fi
+          ls -lh build/ios/ipa/
     artifacts:
+      - build/ios/ipa/*.ipa
       - build/ios/iphoneos/Runner.app
     publishing:
       email:
