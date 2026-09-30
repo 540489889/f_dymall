@@ -29,9 +29,10 @@
 # 关键修复6: YYText(被部分 Flutter 插件间接依赖)在 Xcode 15+ 下, 源码
 #   YYTextLayout.m 中的链式比较 'X < Y < Z' 会被 Clang 当作语义错误而编译失败:
 #   "Chained comparison 'X < Y < Z' does not behave the same as a mathematical expression"。
-#   仅关闭 CLANG_WARN_CHAINED_COMPARISON 在部分 Xcode 版本仍不生效(被提升为 error),
-#   故在 post_install 中直接改写 YYTextLayout.m: 将 'A < B < C' 重写为等价的
-#   'A < B && B < C'(同时保留关闭该警告作为双保险)。
+#   仅关闭 CLANG_WARN_CHAINED_COMPARISON 不生效(YYText 的 podspec 会显式重开该警告并配合
+#   -Werror 将其提升为 error)。因此在 post_install 对所有 pod target 的 OTHER_CFLAGS 末尾
+#   追加 -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的),
+#   彻底消除该错误, 且不影响其他告警。
 #
 # 使用方式:
 #   1. 仓库根目录放置本文件
@@ -115,21 +116,17 @@ workflows:
           post_install do |installer|
             installer.pods_project.targets.each do |target|
               target.build_configurations.each do |config|
+                # 关闭链式比较警告(Xcode 15+ 默认开启)。若 podspec 显式重开该警告并配合
+                # -Werror 将其提升为 error, 仅关警告压不住; 故在 OTHER_CFLAGS 末尾追加
+                # -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的)。
                 config.build_settings['CLANG_WARN_CHAINED_COMPARISON'] = 'NO'
+                other = config.build_settings['OTHER_CFLAGS']
+                other = '' if other.nil?
+                other = other.join(' ') if other.is_a?(Array)
+                unless other.include?('-Wno-error=chained-compare')
+                  config.build_settings['OTHER_CFLAGS'] = (other + ' -Wno-chained-compare -Wno-error=chained-compare').strip
+                end
               end
-            end
-            # 仅关闭 CLANG_WARN_CHAINED_COMPARISON 在部分 Xcode 版本仍不生效(被提升为 error),
-            # 因此直接改写 YYText 源码: 将链式比较 'A < B < C' 重写为等价的 'A < B && B < C'。
-            yy_path = File.join(installer.sandbox.root, 'YYText/YYText/Component/YYTextLayout.m')
-            if File.exist?(yy_path)
-              src = File.read(yy_path)
-              loop do
-                break unless src.gsub!(/([A-Za-z0-9_\)\]]+)\s*<\s*([A-Za-z0-9_]+)\s*<\s*([A-Za-z0-9_]+)/) {
-                  "#{$1} < #{$2} && #{$2} < #{$3}"
-                }
-              end
-              File.write(yy_path, src)
-              puts 'patched YYTextLayout.m chained comparisons'
             end
           end
           RUBY
