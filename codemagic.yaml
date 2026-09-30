@@ -26,13 +26,14 @@
 # "target has transitive dependencies that include statically linked binaries"。
 # 解决: 把 `use_frameworks!` 改为 `use_frameworks! :linkage => :static`。
 #
-# 关键修复6: YYText(被部分 Flutter 插件间接依赖)在 Xcode 15+ 下, 源码
-#   YYTextLayout.m 中的链式比较 'X < Y < Z' 会被 Clang 当作语义错误而编译失败:
-#   "Chained comparison 'X < Y < Z' does not behave the same as a mathematical expression"。
-#   仅关闭 CLANG_WARN_CHAINED_COMPARISON 不生效(YYText 的 podspec 会显式重开该警告并配合
-#   -Werror 将其提升为 error)。因此在 post_install 对所有 pod target 的 OTHER_CFLAGS 末尾
-#   追加 -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的),
-#   彻底消除该错误, 且不影响其他告警。
+# 关键修复6: YYText(被部分 Flutter 插件间接依赖)在 Xcode 15+ / Xcode 26 下, 源码
+#   YYTextLayout.m 中的链式比较 'X < Y < Z' 被 Clang 判定为语义错误, 编译直接失败:
+#   "Chained comparison 'X < Y < Z' does not behave the same as a mathematical expression"
+#   注意: 该诊断在新版 Clang 中是"默认 error", 只加 -Wno-xxx 或关 CLANG_WARN_CHAINED_COMPARISON
+#   都压不住(实测无效)。因此采用根治方案: 直接改写源码, 把链式比较改成三元表达式:
+#     position = fabs(left - point.x) < fabs(right - point.x) < (right ? prev : next);
+#     =>    position = (fabs(left - point.x) < fabs(right - point.x)) ? prev : next;
+#   同时在 post_install 里追加 -Wno-chained-comparison 作为双保险。
 #   注意: CocoaPods 不支持多个 post_install 钩子("Specifying multiple `post_install`
 #   hooks is unsupported"), 故修复代码必须插入 Flutter 模板已有的 post_install 内部。
 #
@@ -110,24 +111,40 @@ workflows:
           fi
           # 4) 关键: 穿山甲/火山引擎 SDK 含静态二进制, use_frameworks! 需改为 static linkage
           grep -q "use_frameworks! :linkage" Podfile || sed -i '' 's/^\( *\)use_frameworks!$/\1use_frameworks! :linkage => :static/' Podfile
-          # 5) 关键: YYText 在 Xcode 15+ 下因 'X < Y < Z' 链式比较被当作语义错误而编译失败。
+          # 5) 关键: YYText 链式比较在 Xcode 15+/26 下是默认 error, 必须改源码。
           #    重要: CocoaPods 不支持多个 post_install 钩子(Flutter 模板自带的 Podfile 已有一个),
           #    因此必须把修复代码插入已有 post_install 内部, 绝不能再追加第二个 post_install。
-          #    修复方式: 关闭 CLANG_WARN_CHAINED_COMPARISON, 并在 OTHER_CFLAGS 末尾追加
-          #    -Wno-chained-compare -Wno-error=chained-compare(编译命令行后写的 flag 覆盖先写的),
-          #    以压住被 podspec 重开并配合 -Werror 提升为 error 的该告警。
-          if ! grep -q "chained-compare" Podfile; then
+          if ! grep -q "YYTEXT_CHAINED_FIX" Podfile; then
             cat > /tmp/yytext_fix.rb <<'RUBY'
+          # YYTEXT_CHAINED_FIX
+          # (a) 双保险: 关闭链式比较告警, 并阻止其被 -Werror 提升为错误
           installer.pods_project.targets.each do |target|
             target.build_configurations.each do |config|
               config.build_settings['CLANG_WARN_CHAINED_COMPARISON'] = 'NO'
               other = config.build_settings['OTHER_CFLAGS']
               other = '' if other.nil?
               other = other.join(' ') if other.is_a?(Array)
-              unless other.include?('-Wno-error=chained-compare')
-                config.build_settings['OTHER_CFLAGS'] = (other + ' -Wno-chained-compare -Wno-error=chained-compare').strip
+              unless other.include?('-Wno-error=chained-comparison')
+                config.build_settings['OTHER_CFLAGS'] = (other + ' -Wno-chained-comparison -Wno-error=chained-comparison').strip
               end
             end
+          end
+          # (b) 根治: 直接改写 YYText 源码里的链式比较(改成三元表达式)
+          begin
+            yy = File.join(installer.sandbox.root.to_s, 'YYText', 'YYText', 'Component', 'YYTextLayout.m')
+            if File.exist?(yy)
+              src = File.read(yy)
+              out = src.gsub('position = fabs(left - point.x) < fabs(right - point.x) < (right ? prev : next);',
+                             'position = (fabs(left - point.x) < fabs(right - point.x)) ? prev : next;')
+              out = out.gsub('position = fabs(left - point.y) < fabs(right - point.y) < (right ? prev : next);',
+                             'position = (fabs(left - point.y) < fabs(right - point.y)) ? prev : next;')
+              if out != src
+                File.write(yy, out)
+                puts "[YYTEXT_CHAINED_FIX] patched: #{yy}"
+              end
+            end
+          rescue => e
+            puts "[YYTEXT_CHAINED_FIX] skipped: #{e.message}"
           end
           RUBY
             if grep -q "post_install do |installer|" Podfile; then
@@ -137,16 +154,44 @@ workflows:
               cat /tmp/yytext_fix.rb >> Podfile
               printf 'end\n' >> Podfile
             fi
-            grep -q "chained-compare" Podfile || { echo "ERROR: 未能注入 YYText 链式比较修复"; exit 1; }
+            grep -q "YYTEXT_CHAINED_FIX" Podfile || { echo "ERROR: 未能注入 YYText 链式比较修复"; exit 1; }
           fi
           cat Podfile
           # 6) 增量刷新 specs: ~/.cocoapods/repos 已通过 cache_paths 持久化(不再 rm 全量重建),
           #    增量 pod repo update 远快于全量克隆且保持 specs 新鲜; 所有网络操作均带重试。
           retry pod repo update
           retry pod install --repo-update
+          # 7) 兜底: pod install 之后再直接改写 YYText 源码一次。
+          #    原因: 下一步 `flutter build ios` 会打印 "Upgrading Podfile" 重新生成 Podfile,
+          #    可能把上面注入的 post_install 钩子冲掉, 此时只有源码已被改写才安全。
+          #    sed 是幂等的(改完之后模式串就不再存在, 重复执行无副作用)。
+          REPO_ROOT="$(git rev-parse --show-toplevel)"
+          YYTEXT="$REPO_ROOT/ios/Pods/YYText/YYText/Component/YYTextLayout.m"
+          if [ -f "$YYTEXT" ]; then
+            sed -i '' \
+              -e 's/position = fabs(left - point\.x) < fabs(right - point\.x) < (right ? prev : next);/position = (fabs(left - point.x) < fabs(right - point.x)) ? prev : next;/' \
+              -e 's/position = fabs(left - point\.y) < fabs(right - point\.y) < (right ? prev : next);/position = (fabs(left - point.y) < fabs(right - point.y)) ? prev : next;/' \
+              "$YYTEXT"
+            grep -n "? prev : next" "$YYTEXT" || true
+          else
+            echo "WARN: 未找到 $YYTEXT, 跳过源码兜底修补"
+          fi
       - name: Build iOS
         # 先用 --no-codesign 验证 pod 安装是否通过; 验证 OK 后再配代码签名并去掉该参数
         script: |
+          set -e
+          # 再兜底一次: 万一上一步之后 Pods 被重新解包, 这里改回正确源码(幂等)
+          REPO_ROOT="$(git rev-parse --show-toplevel)"
+          YYTEXT="$REPO_ROOT/ios/Pods/YYText/YYText/Component/YYTextLayout.m"
+          if [ -f "$YYTEXT" ]; then
+            sed -i '' \
+              -e 's/position = fabs(left - point\.x) < fabs(right - point\.x) < (right ? prev : next);/position = (fabs(left - point.x) < fabs(right - point.x)) ? prev : next;/' \
+              -e 's/position = fabs(left - point\.y) < fabs(right - point\.y) < (right ? prev : next);/position = (fabs(left - point.y) < fabs(right - point.y)) ? prev : next;/' \
+              "$YYTEXT"
+            grep -n "? prev : next" "$YYTEXT" || true
+          else
+            echo "WARN: 未找到 $YYTEXT, 跳过源码兜底修补"
+          fi
           flutter build ios --release --no-codesign
     artifacts:
       - build/ios/iphoneos/Runner.app
