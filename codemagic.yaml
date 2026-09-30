@@ -311,9 +311,19 @@ workflows:
           [ -s "$IPA" ] || { echo "ERROR: 未生成 $IPA(打包失败)"; exit 1; }
           ls -lh build/ios/ipa/
           unzip -l "$IPA" | grep -E "Payload/Runner.app/Runner$|embedded.mobileprovision$" || true
+          # 关键: 产物再拷一份到仓库根目录下的 ipa_out/(该目录没有被 .gitignore 忽略)。
+          # build/ 在 .gitignore 里(/build/), 之前 ipa 明明生成了却在 Codemagic 的
+          # Artifacts 里看不到, 怀疑是产物收集时按 .gitignore 过滤导致的, 故换个不被忽略的目录。
+          mkdir -p "$REPO_ROOT/ipa_out"
+          cp "$IPA" "$REPO_ROOT/ipa_out/Runner.ipa"
+          ls -lh "$REPO_ROOT/ipa_out/"
     artifacts:
+      # 两个路径都收, 保证至少有一个能出现在 Artifacts 里(同名会被自动加 _1 后缀)
+      - ipa_out/*.ipa
       - build/ios/ipa/*.ipa
-    publishing:
-      email:
-        recipients:
-          - user@example.com # TODO: 替换为你的接收邮箱
+    # 不再配置 publishing.email: 占位邮箱 user@example.com 会让发布阶段报错, 没实际用途。
+    # 需要邮件通知时再自行加上真实收件人:
+    # publishing:
+    #   email:
+    #     recipients:
+    #       - you@example.com
