@@ -37,6 +37,17 @@
 #   注意: CocoaPods 不支持多个 post_install 钩子("Specifying multiple `post_install`
 #   hooks is unsupported"), 故修复代码必须插入 Flutter 模板已有的 post_install 内部。
 #
+# 关键修复7: 不使用 `flutter build ipa`, 改为 `flutter build ios --release` + 自己 zip。
+#   原因(踩过的坑): `flutter build ipa` 的 exportArchive 需要完整的 ExportOptions.plist,
+#   手动签名时必须带 teamID + signingStyle=manual + provisioningProfiles, 缺任一项就报
+#     error: exportArchive "Runner.app" requires a provisioning profile.
+#   而 flutter_tools 在 "xcarchive 成功、export 失败" 时仍然返回成功
+#   (build_ios.dart: "Even though the IPA step didn't succeed, the xcarchive did.
+#    Still count this as success"), 于是 Codemagic 显示 finished 但 Artifacts 为空。
+#   现在: 由 use-profiles 保证 Xcode 在 build 阶段就手动签名, 产出带 embedded.mobileprovision
+#   的 Runner.app, 再按 Payload/Runner.app 标准结构 zip 成 ipa, 完全绕开 exportArchive;
+#   并加了"产物/签名缺失即 exit 1"的校验, 不会再出现静默成功。
+#
 # 使用方式:
 #   1. 仓库根目录放置本文件
 #   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
@@ -213,6 +224,12 @@ workflows:
           PROFILE_PATH="$(mktemp "$PROFILES_HOME"/$(uuidgen).mobileprovision)"
           echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_PATH"
           echo "Saved provisioning profile $PROFILE_PATH"
+          # 2.1) 同步一份到 Xcode 的 profiles 目录: flutter build ipa 自动查找描述文件时
+          #      只扫 ~/Library/Developer/Xcode/UserData/Provisioning Profiles, 放一份兜底
+          XCODE_PROFILES_HOME="$HOME/Library/Developer/Xcode/UserData/Provisioning Profiles"
+          mkdir -p "$XCODE_PROFILES_HOME"
+          cp "$PROFILE_PATH" "$XCODE_PROFILES_HOME/"
+          echo "Copied provisioning profile to $XCODE_PROFILES_HOME"
           # 3) 安装签名证书: CM_CERTIFICATE 为 .p12 的 base64
           echo "$CM_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
           if [ -z ${CM_CERTIFICATE_PASSWORD+x} ]; then
@@ -247,9 +264,35 @@ workflows:
             # 免签: 只编译出未签名的 Runner.app, 下一步手动打成 ipa(真机需本地重签名)
             flutter build ios --release --no-codesign
           else
-            # 签名: xcode-project use-profiles 已把工程改成 Manual 签名,
-            #       flutter build ios 会按该配置签名并输出 Runner.app
+            # 签名: xcode-project use-profiles 已把工程改成 Manual 签名(DEVELOPMENT_TEAM +
+            #       PROVISIONING_PROFILE_SPECIFIER), flutter build ios 会按该配置签名并输出 Runner.app。
+            #       这里刻意不用 `flutter build ipa`:
+            #       (1) 它的 exportArchive 需要完整的 ExportOptions.plist
+            #           (teamID + signingStyle=manual + provisioningProfiles), 缺任一项就会报
+            #           'exportArchive "Runner.app" requires a provisioning profile';
+            #       (2) 更坑的是: xcarchive 成功而 export 失败时 flutter 仍返回成功
+            #           (见 flutter_tools build_ios.dart), 于是"构建绿但 Artifacts 为空"。
+            #       改成自己把已签名的 Runner.app 按 Payload 结构 zip, 完全绕开 exportArchive。
             flutter build ios --release
+          fi
+          # ---- 定位产物: 新版 flutter 可能只产 xcarchive, 两种路径都兜住 ----
+          APP="build/ios/iphoneos/Runner.app"
+          if [ ! -d "$APP" ] && [ -d "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" ]; then
+            APP="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          fi
+          echo "APP=$APP"
+          [ -d "$APP" ] || { echo "ERROR: 未找到 Runner.app(iphoneos 与 xcarchive 两条路径都没有)"; exit 1; }
+          # ---- 签名校验: 没嵌入描述文件就立刻失败, 避免再次出现"成功但没产物" ----
+          if [ "$IPA_SIGNING" != "none" ]; then
+            if [ ! -f "$APP/embedded.mobileprovision" ]; then
+              echo "ERROR: $APP 内没有 embedded.mobileprovision, 说明手动签名没生效"
+              echo "---- 当前工程签名配置 ----"
+              xcodebuild -showBuildSettings -workspace ios/Runner.xcworkspace -scheme Runner 2>/dev/null \
+                | grep -E "CODE_SIGN_STYLE|DEVELOPMENT_TEAM|PROVISIONING_PROFILE|CODE_SIGN_IDENTITY" || true
+              exit 1
+            fi
+            codesign -dv "$APP" 2>&1 | grep -E "Identifier=|TeamIdentifier=|Authority=" || true
+            security cms -D -i "$APP/embedded.mobileprovision" 2>/dev/null | grep -A1 -E "<key>Name</key>|<key>ExpirationDate</key>" || true
           fi
       - name: Package IPA
         script: |
@@ -257,11 +300,17 @@ workflows:
           REPO_ROOT="$(git rev-parse --show-toplevel)"
           cd "$REPO_ROOT"
           APP="build/ios/iphoneos/Runner.app"
-          [ -d "$APP" ] || { echo "ERROR: 未找到 $APP"; exit 1; }
+          if [ ! -d "$APP" ] && [ -d "build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app" ]; then
+            APP="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          fi
+          [ -d "$APP" ] || { echo "ERROR: 未找到 Runner.app"; exit 1; }
           rm -rf build/ios/ipa && mkdir -p build/ios/ipa/Payload
           cp -R "$APP" build/ios/ipa/Payload/
           (cd build/ios/ipa && zip -qry Runner.ipa Payload && rm -rf Payload)
+          IPA="build/ios/ipa/Runner.ipa"
+          [ -s "$IPA" ] || { echo "ERROR: 未生成 $IPA(打包失败)"; exit 1; }
           ls -lh build/ios/ipa/
+          unzip -l "$IPA" | grep -E "Payload/Runner.app/Runner$|embedded.mobileprovision$" || true
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
