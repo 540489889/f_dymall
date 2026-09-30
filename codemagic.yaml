@@ -6,7 +6,7 @@
 # 关键修复2: Codemagic 会缓存 ~/.cocoapods/repos, 导致 `pod repo update` 被判定为
 # "已是最新" 而未真正拉取新 spec, 从而仍报
 # "CocoaPods's specs repository is too out-of-date to satisfy dependencies"。
-# 因此在更新前先 `rm -rf ~/.cocoapods/repos/trunk` 强制刷新 trunk(volcengine 走缓存)。
+# 因此在更新前先 `rm -rf ~/.cocoapods/repos/trunk` 强制刷新 trunk(保留 volcengine 缓存)。
 #
 # 关键修复3: Flutter 模板 Podfile 默认把 `platform :ios` 注释掉, CocoaPods 自动分配
 # iOS 13.0, 但 Flutter pod 要求更高的 min deployment target, 报
@@ -14,17 +14,16 @@
 # minimum deployment target"。因此在 pod install 前用 sed 显式声明
 # `platform :ios, "15.0"`(若仍报 higher, 改为 "17.0")。
 #
-# 关键修复4: pangrowth_content(穿山甲内容/短剧 SDK) 依赖 `Pangrowth/media (= 5.4.0.0)`,
-# 该 pod 不在 CocoaPods 公共 trunk, 而托管在火山引擎私有 spec 仓库:
+# 关键修复4: pangrowth_content(穿山甲内容/短剧 SDK) 依赖的 `Pangrowth/media` pod
+# 不在 CocoaPods 公共 trunk, 而托管在 Volcengine 私有 spec 仓库:
 #   https://github.com/volcengine/volcengine-specs.git
-# (已确认仓库里存在 Pangrowth/5.4.0.0 目录)
-# 修复方式(双保险):
-#   a) `pod repo add volcengine` 注册为全局源(幂等, 走缓存避免每次克隆)
-#   b) 按官方 README 把两行 source 显式写入 Podfile 顶部:
-#        source 'https://cdn.cocoapods.org/'
-#        source 'https://github.com/volcengine/volcengine-specs.git'
-# 注意不要写 `source 'https://github.com/CocoaPods/Specs.git'`, 那是数 GB 的 git
-# 仓库会导致构建极慢; 公共源用 CDN 地址 https://cdn.cocoapods.org/ 即可。
+# 必须通过 `pod repo add` 注册该源, 并把 source 显式写进 Podfile, 否则报
+# "None of your spec sources contain a spec satisfying Pangrowth/media"。
+#
+# 关键修复5: 穿山甲/火山引擎 SDK(RangersAPM / RangersAppLog / OneKit / TTSDKFramework)
+# 含静态链接二进制, 而 Flutter 模板默认 `use_frameworks!`(动态)。两者冲突报
+# "target has transitive dependencies that include statically linked binaries"。
+# 解决: 把 `use_frameworks!` 改为 `use_frameworks! :linkage => :static`。
 #
 # 使用方式:
 #   1. 仓库根目录放置本文件
@@ -45,25 +44,22 @@ workflows:
     cache:
       cache_paths:
         - $HOME/Library/Caches/CocoaPods
-        # 缓存 volcengine 私有 spec 仓库, 避免每次构建重新克隆(该仓库较大)
+        # 缓存火山引擎 spec 仓库, 避免每次构建都重新克隆(该仓库较大)
         - $HOME/.cocoapods/repos/volcengine-specs
     scripts:
       - name: Flutter packages get
         script: flutter pub get
-      - name: Upgrade CocoaPods (避免版本过旧解析失败)
-        script: sudo gem install cocoapods
-      - name: 注册 Volcengine 源 + 设置部署目标 + 安装 pods
+      - name: 注册 Volcengine 源 + 设置部署目标 + 静态链接 + 安装 pods
         script: |
           cd ios
           # 确保 Podfile 存在(Flutter 首次 build 时生成; 缺失则补生成)
           [ -f Podfile ] || flutter create --platforms=ios .
-          # 取消 Flutter 模板里被注释的 platform 行, 并提高最低版本到 15.0
+          # 1) 取消 Flutter 模板里被注释的 platform 行, 并提高最低版本到 15.0
           sed -i '' 's/^# *platform :ios.*/platform :ios, "15.0"/' Podfile
-          # 极少数情况下模板没有该行, 则在文件头插入
           grep -q "^platform :ios" Podfile || printf 'platform :ios, "15.0"\n%s\n' "$(cat Podfile)" > Podfile
-          # a) 注册穿山甲内容 SDK 必需的 Volcengine 私有 spec 源(幂等)
+          # 2) 注册穿山甲内容 SDK 必需的 Volcengine 私有 spec 源(幂等)
           pod repo list | grep -q volcengine || pod repo add volcengine https://github.com/volcengine/volcengine-specs.git
-          # b) 显式写入 Podfile 的 source(官方推荐, 确保 pod install 搜索该源)
+          # 3) 显式写入 Podfile 的 source(官方推荐做法)
           if ! grep -q "volcengine-specs" Podfile; then
             TMP=$(mktemp)
             {
@@ -73,8 +69,10 @@ workflows:
             } > "$TMP"
             mv "$TMP" Podfile
           fi
+          # 4) 关键: 穿山甲/火山引擎 SDK 含静态二进制, use_frameworks! 需改为 static linkage
+          grep -q "use_frameworks! :linkage" Podfile || sed -i '' 's/^\( *\)use_frameworks!$/\1use_frameworks! :linkage => :static/' Podfile
           cat Podfile
-          # 强制刷新 trunk specs(避免 too out-of-date), volcengine 走缓存
+          # 5) 强制刷新 trunk specs(保留 volcengine 缓存以加速), 安装
           rm -rf ~/.cocoapods/repos/trunk
           pod repo update
           pod install --repo-update
