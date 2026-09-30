@@ -41,10 +41,10 @@
 #   1. 仓库根目录放置本文件
 #   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
 #   3. 产物: build/ios/ipa/Runner.ipa(已在 artifacts 中, 构建结束可直接下载)
-#   4. 默认 IPA_SIGNING=none, 免签出包, 能下载但真机装不上(需本地重签名)。
-#      想直接装真机测试: 把 IPA_SIGNING 改成 ad_hoc, 并取消 environment.ios_signing
-#      的注释, 同时在 Codemagic 配置 App Store Connect API key、把测试机 UDID 加到
-#      Apple Developer 后台。
+#   4. 当前为手动签名(IPA_SIGNING=development)。需要在 Codemagic 配置 3 个 Secret
+#      环境变量: CM_CERTIFICATE / CM_CERTIFICATE_PASSWORD / CM_PROVISIONING_PROFILE
+#      (均为 base64), 并在 environment.groups 引用该变量组。详见 environment 处注释。
+#      测试机 UDID 必须已加入 Apple Developer 后台并包含在描述文件里, 否则装不上。
 
 workflows:
   default-workflow:
@@ -56,19 +56,22 @@ workflows:
       xcode: latest
       cocoapods: default
       vars:
-        # IPA 签名方式:
-        #   none        = 免签, 直接把 Runner.app 打成 ipa(能出包, 但真机装不上, 需本地重签名)
-        #   ad_hoc      = 推荐, 可装到已在开发者后台登记 UDID 的测试机
-        #   development = 开发签名, 只能装到登记过的开发机
-        #   app_store   = 上架/ TestFlight
-        IPA_SIGNING: none
+        # IPA 签名方式(手动签名: 证书/描述文件通过 Codemagic 环境变量注入):
+        #   none        = 免签, 只把 Runner.app 压成 ipa(真机装不上, 仅供校验包体)
+        #   development = 开发签名(当前使用): 可装到已登记 UDID 的测试机
+        #   ad_hoc      = Ad Hoc 分发签名: 同样装到已登记 UDID 的机器(需 distribution 证书)
+        #   app_store   = 上架 / TestFlight
+        IPA_SIGNING: development
         BUNDLE_ID: com.chongloutech.lehui
-      # ---- 需要真机可安装的 ipa 时, 打开下面的配置 ----
-      # 前置条件: Codemagic → 项目设置 → Code signing → iOS: 上传 App Store Connect API key
-      #          并把测试机 UDID 加到 Apple Developer 后台(ad_hoc/development 必需)
-      # ios_signing:
-      #   distribution_type: ad_hoc          # 需与上面的 IPA_SIGNING 一致
-      #   bundle_identifier: com.chongloutech.lehui
+      # ---- 手动签名: 必须配置的环境变量(不要用 ios_signing, 那是自动签名) ----
+      # Codemagic → 项目设置 → Environment variables, 建一个变量组(如 ios_credentials),
+      # 组里加 3 个变量, 全部勾选 Secret:
+      #   CM_CERTIFICATE          = .p12 证书的 base64:   cat cert.p12 | base64
+      #   CM_CERTIFICATE_PASSWORD = 证书导出密码(证书没设密码就不要加这个变量)
+      #   CM_PROVISIONING_PROFILE = 描述文件 base64:       cat xxx.mobileprovision | base64
+      # 建好后在 workflow 里引用该变量组(取消下面两行注释):
+      #     groups:
+      #       - ios_credentials
     cache:
       cache_paths:
         - $HOME/Library/Caches/CocoaPods
@@ -192,6 +195,35 @@ workflows:
           else
             echo "WARN: 未找到 $YYTEXT, 跳过源码兜底修补"
           fi
+      - name: Set up manual code signing (keychain + profile + certificate)
+        script: |
+          set -e
+          if [ "$IPA_SIGNING" = "none" ]; then
+            echo "IPA_SIGNING=none, 跳过代码签名配置"
+            exit 0
+          fi
+          # 1) 初始化用于签名的 keychain(Codemagic CLI 自带)
+          keychain initialize
+          # 2) 安装描述文件: CM_PROVISIONING_PROFILE 为 .mobileprovision 的 base64
+          PROFILES_HOME="$HOME/Library/MobileDevice/Provisioning Profiles"
+          mkdir -p "$PROFILES_HOME"
+          PROFILE_PATH="$(mktemp "$PROFILES_HOME"/$(uuidgen).mobileprovision)"
+          echo "$CM_PROVISIONING_PROFILE" | base64 --decode > "$PROFILE_PATH"
+          echo "Saved provisioning profile $PROFILE_PATH"
+          # 3) 安装签名证书: CM_CERTIFICATE 为 .p12 的 base64
+          echo "$CM_CERTIFICATE" | base64 --decode > /tmp/certificate.p12
+          if [ -z ${CM_CERTIFICATE_PASSWORD+x} ]; then
+            # 证书未设密码
+            keychain add-certificates --certificate /tmp/certificate.p12
+          else
+            keychain add-certificates --certificate /tmp/certificate.p12 --certificate-password "$CM_CERTIFICATE_PASSWORD"
+          fi
+      - name: Set up code signing settings on Xcode project
+        script: |
+          set -e
+          if [ "$IPA_SIGNING" != "none" ]; then
+            xcode-project use-profiles
+          fi
       - name: Build iOS
         script: |
           set -e
@@ -219,7 +251,7 @@ workflows:
               app_store) METHOD="app-store" ;;
               *) echo "ERROR: 未知 IPA_SIGNING=$IPA_SIGNING"; exit 1 ;;
             esac
-            cat > "$REPO_ROOT/ios/export_options.plist" <<PLIST
+            cat > /tmp/export_options.plist <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0">
@@ -235,7 +267,7 @@ workflows:
           </dict>
           </plist>
           PLIST
-            flutter build ipa --release --export-options-plist=ios/export_options.plist
+            flutter build ipa --release --export-options-plist=/tmp/export_options.plist
           fi
       - name: Package IPA
         script: |
