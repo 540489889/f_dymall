@@ -3,10 +3,11 @@
 # 无法解析 media_kit(media_kit_libs_video) 引入的二进制原生依赖
 # (Avformat / Freetype / Mbedx509 等 xcframework), 导致 pod install 失败。
 #
-# 关键修复2: Codemagic 会缓存 ~/.cocoapods/repos, 导致 `pod repo update` 被判定为
-# "已是最新" 而未真正拉取新 spec, 从而仍报
-# "CocoaPods's specs repository is too out-of-date to satisfy dependencies"。
-# 因此在更新前先 `rm -rf ~/.cocoapods/repos/trunk` 强制刷新 trunk(保留 volcengine 缓存)。
+# 关键修复2: 早期为绕过 Codemagic 缓存 ~/.cocoapods/repos 导致 `pod repo update` 被判定
+# "已是最新" 而 specs 过旧, 曾在更新前 `rm -rf ~/.cocoapods/repos/trunk` 强制重建。但
+# 该仓库体积巨大, 全量重新克隆在海外机构建机极易超时(curl: (56) Recv failure)。
+# 现改为: 将整个 ~/.cocoapods/repos 纳入 cache_paths 持久化, 仅做增量 `pod repo update`
+# (每次构建都更新, specs 始终新鲜, 不会再报 "too out-of-date"), 不再 rm 全量重建。
 #
 # 关键修复3: Flutter 模板 Podfile 默认把 `platform :ios` 注释掉, CocoaPods 自动分配
 # iOS 13.0, 但 Flutter pod 要求更高的 min deployment target, 报
@@ -50,8 +51,10 @@ workflows:
     cache:
       cache_paths:
         - $HOME/Library/Caches/CocoaPods
-        # 缓存火山引擎 spec 仓库, 避免每次构建都重新克隆(该仓库较大)
-        - $HOME/.cocoapods/repos/volcengine-specs
+        # 缓存 CocoaPods 全部 spec 仓库(trunk + volcengine): 该目录体积巨大,
+        # 不缓存时 rm 后全量重建在海外机构建机极易超时(本次 curl: (56) 超时即源于此)。
+        # 持久化后只做增量 pod repo update, 远快且 specs 始终新鲜。
+        - $HOME/.cocoapods/repos
         # 缓存 pod 下载的二进制(穿山甲/火山引擎 SDK zip), 避免每次都重新到
         # 字节跳动中国 CDN(sf3-fe-tos.pglstatp-toutiao.com) 拉取(海外机易 Connection reset)
         - $HOME/.cocoapods/downloads
@@ -60,17 +63,37 @@ workflows:
         script: flutter pub get
       - name: 注册 Volcengine 源 + 设置部署目标 + 静态链接 + 安装 pods
         script: |
-          # 若 Codemagic 海外机构建机拉取穿山甲/火山引擎 SDK(pglstatp-toutiao.com) 失败,
-          # 在此 export 一个可访问中国 CDN 的代理, 例如:
-          # export https_proxy="http://user:pass@proxyhost:port" http_proxy="$https_proxy"
+          set -e
+          # ---- 网络/代理 ----
+          # Codemagic 海外机拉取 CocoaPods trunk(cdn.cocoapods.org)、volcengine-specs(github.com)
+          # 或穿山甲/火山引擎 SDK 二进制(中国 CDN pglstatp-toutiao.com) 易超时/连接重置。
+          # 请在 Codemagic 项目设置 → 环境变量 中配置加密变量 HTTPS_PROXY(可选 HTTP_PROXY),
+          # 指向一个能访问上述地址的代理; 留空则不使用代理。
+          if [ -n "$HTTPS_PROXY" ]; then
+            export https_proxy="$HTTPS_PROXY" http_proxy="${HTTP_PROXY:-$HTTPS_PROXY}"
+            git config --global http.proxy "$https_proxy" || true
+            git config --global https.proxy "$https_proxy" || true
+            echo "已启用网络代理: $https_proxy"
+          fi
+          # 网络操作重试封装, 容忍海外机瞬时超时
+          retry() {
+            local n=0 max=6
+            until "$@"; do
+              n=$((n+1))
+              if [ "$n" -ge "$max" ]; then echo "已重试 $max 次仍失败: $*"; return 1; fi
+              echo "网络操作失败, 15s 后第 $n 次重试..."; sleep 15
+            done
+          }
           cd ios
           # 确保 Podfile 存在(Flutter 首次 build 时生成; 缺失则补生成)
           [ -f Podfile ] || flutter create --platforms=ios .
           # 1) 取消 Flutter 模板里被注释的 platform 行, 并提高最低版本到 15.0
           sed -i '' 's/^# *platform :ios.*/platform :ios, "15.0"/' Podfile
           grep -q "^platform :ios" Podfile || printf 'platform :ios, "15.0"\n%s\n' "$(cat Podfile)" > Podfile
-          # 2) 注册穿山甲内容 SDK 必需的 Volcengine 私有 spec 源(幂等)
-          pod repo list | grep -q volcengine || pod repo add volcengine https://github.com/volcengine/volcengine-specs.git
+          # 2) 注册穿山甲内容 SDK 必需的 Volcengine 私有 spec 源(幂等, 带重试)
+          if ! pod repo list | grep -q volcengine; then
+            retry pod repo add volcengine https://github.com/volcengine/volcengine-specs.git
+          fi
           # 3) 显式写入 Podfile 的 source(官方推荐做法)
           if ! grep -q "volcengine-specs" Podfile; then
             TMP=$(mktemp)
@@ -98,10 +121,10 @@ workflows:
           RUBY
           fi
           cat Podfile
-          # 6) 强制刷新 trunk specs(保留 volcengine 缓存以加速), 安装
-          rm -rf ~/.cocoapods/repos/trunk
-          pod repo update
-          pod install --repo-update
+          # 6) 增量刷新 specs: ~/.cocoapods/repos 已通过 cache_paths 持久化(不再 rm 全量重建),
+          #    增量 pod repo update 远快于全量克隆且保持 specs 新鲜; 所有网络操作均带重试。
+          retry pod repo update
+          retry pod install --repo-update
       - name: Build iOS
         # 先用 --no-codesign 验证 pod 安装是否通过; 验证 OK 后再配代码签名并去掉该参数
         script: |
