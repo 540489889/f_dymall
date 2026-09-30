@@ -25,6 +25,12 @@
 # "target has transitive dependencies that include statically linked binaries"。
 # 解决: 把 `use_frameworks!` 改为 `use_frameworks! :linkage => :static`。
 #
+# 关键修复6: YYText(被部分 Flutter 插件间接依赖)在 Xcode 15+ 下, 源码
+#   YYTextLayout.m 中的链式比较 'X < Y < Z' 会被 Clang 当作语义错误而编译失败:
+#   "Chained comparison 'X < Y < Z' does not behave the same as a mathematical expression"。
+#   解决: 在 Podfile 的 post_install 中对所有 pod target 关闭
+#   CLANG_WARN_CHAINED_COMPARISON(=NO), 消除该错误。
+#
 # 使用方式:
 #   1. 仓库根目录放置本文件
 #   2. Codemagic 项目设置 → Workflow → 选择 "codemagic.yaml"
@@ -77,8 +83,22 @@ workflows:
           fi
           # 4) 关键: 穿山甲/火山引擎 SDK 含静态二进制, use_frameworks! 需改为 static linkage
           grep -q "use_frameworks! :linkage" Podfile || sed -i '' 's/^\( *\)use_frameworks!$/\1use_frameworks! :linkage => :static/' Podfile
+          # 5) 关键: YYText 在 Xcode 15+ 下因 'X < Y < Z' 链式比较被当作语义错误而编译失败。
+          #    在 post_install 中关闭 CLANG_WARN_CHAINED_COMPARISON(对所有 pod target 生效)以修复。
+          if ! grep -q "CLANG_WARN_CHAINED_COMPARISON" Podfile; then
+            cat >> Podfile <<'RUBY'
+
+          post_install do |installer|
+            installer.pods_project.targets.each do |target|
+              target.build_configurations.each do |config|
+                config.build_settings['CLANG_WARN_CHAINED_COMPARISON'] = 'NO'
+              end
+            end
+          end
+          RUBY
+          fi
           cat Podfile
-          # 5) 强制刷新 trunk specs(保留 volcengine 缓存以加速), 安装
+          # 6) 强制刷新 trunk specs(保留 volcengine 缓存以加速), 安装
           rm -rf ~/.cocoapods/repos/trunk
           pod repo update
           pod install --repo-update
