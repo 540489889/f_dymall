@@ -4,12 +4,11 @@ library;
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../components/common_empty.dart';
 import 'package:flutter/rendering.dart';
-import 'package:card_swiper/card_swiper.dart';
 import 'package:get/get.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:media_kit/media_kit.dart';
@@ -32,38 +31,6 @@ class IndexPage extends StatefulWidget {
 }
 
 class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMixin {
-  // 分类列表
-  List cateList = [
-    {
-    'id': 1,
-  'list': [
-    { 'icon': 'assets/images/svg/huiyuan.svg', 'label': '每日签到' },
-    { 'icon': 'assets/images/svg/dianpu.svg', 'label': '刷短剧' },
-    { 'icon': 'assets/images/svg/shoucang.svg', 'label': '看小说' },
-    { 'icon': 'assets/images/svg/shiyong.svg', 'label': '看直播' }
-
-  ]
-},
-{
-  'id': 2,
-  'list': [
-    { 'icon': 'assets/images/svg/order.svg', 'label': '我的订单', 'count': '待发货2' },
-    { 'icon': 'assets/images/svg/chongzhi.svg', 'label': '充值中心', 'count': '减10元' },
-    { 'icon': 'assets/images/svg/coupon.svg', 'label': '券红包' },
-    { 'icon': 'assets/images/svg/cart.svg', 'label': '购物车' }
-  ]
-},
-{
-  'id': 3,
-  'list': [
-    { 'icon': 'assets/images/svg/kefu.svg', 'label': '客服消息' },
-    { 'icon': 'assets/images/svg/tuikuan.svg', 'label': '退款/售后' },
-    { 'icon': 'assets/images/svg/comment.svg', 'label': '评价中心' },
-    { 'icon': 'assets/images/svg/seckill.svg', 'label': '限时秒杀' }
-    ]
-    }
-  ];
-
   List<String> tabList = ['推荐', '新品', '手机', '酒水饮料', '男装', '女装', '爱车', '食品', '生鲜', '家电', '生活旅行'];
 
   // 瀑布流列表
@@ -143,6 +110,8 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   List dataList = [];
   // 是否加载中
   bool isLoading = false;
+  // 是否下拉刷新中(刷新时不显示底部"加载中",列表本身也不清空)
+  bool isRefreshing = false;
   // 商品列表是否横向单列布局(默认横向单列)
   bool isHorizontalList = true;
   // 当前页码
@@ -153,6 +122,9 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   bool hasMore = true;
   // 当前选中的分类id(0 = 推荐, 走 /api/goodssku/pageComponents)
   int currentCategoryId = 0;
+  // 吸顶 tab 板块缓存: SliverLayoutBuilder 滚动中每帧回调,缓存后不再每帧重建 TabBar 子树
+  Widget? _stickyTabsHeader;
+  Widget? _normalTabsHeader;
   // 请求序号: 切换分类时自增, 用于丢弃在途的旧请求响应
   int requestSeq = 0;
   // tab 板块的吸顶滚动偏移(SliverLayoutBuilder 布局时记录, 即该 sliver 到达视口顶部的偏移)
@@ -181,6 +153,8 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   // 剩余秒数(每秒刷新,局部重建倒计时)
   final ValueNotifier<int> seckillRemain = ValueNotifier<int>(0);
   Timer? seckillTimer;
+  // 滚动停止判定: 滚动中先暂停直播预览(解码 + 纹理合成抢 GPU),停手 300ms 后再按可见性恢复
+  Timer? liveScrollIdleTimer;
 
   // 首页 tab 分类(来自 /api/goodscategory/tree 一级分类)
   List<Map<String, dynamic>> categoryList = [];
@@ -192,24 +166,26 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   bool _popupShown = false;
 
 late ScrollController scrollController = ScrollController();
-late TabController tabController;
+// 金刚区翻页控制器(PageView, 每页 5 个, 配合下方 CustomPageViewIndicator)
 final PageController pageController = PageController();
+// 轮播图翻页控制器(配合底部 CustomPageViewIndicator, 下标与金刚区一致)
+final PageController bannerController = PageController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
-// 上次直播可见性检测时间(毫秒): 滚动中节流,避免每帧做 RenderObject 计算
-int liveCheckedAt = 0;
-// TabBar 的 tabs 直接由 tabList 生成, 与 tabController.length 同源, 杜绝数量不一致报错
+// TabBar 的 tabs 由 tabList 生成, 并统一用 DefaultTabController 托管(长度=tabList.length),
+// 避免手动 TabController 与 tabs 数量不同步而断言崩溃
 
 // 滚动回调: 每一帧都会执行,只放轻量逻辑
 void _onScroll() {
   scrollOffset.value = scrollController.offset;
-  // 直播预览: 卡片进出视口时暂停/恢复播放,按时间节流(RenderObject 计算较重)
+  // 直播预览: 滚动过程中直接暂停解码(视频解码 + 纹理合成会抢 GPU/CPU,是滚动掉帧的主因之一),
+  // 停手 300ms 后再按卡片可见性恢复;滚动期间不再做 RenderObject 计算
   if(livePlayer != null) {
-    final int now = DateTime.now().millisecondsSinceEpoch;
-    if(now - liveCheckedAt >= 120) {
-      liveCheckedAt = now;
-      syncLivePlayState();
-    }
+    if(livePlayer!.state.playing) livePlayer!.pause();
+    liveScrollIdleTimer?.cancel();
+    liveScrollIdleTimer = Timer(const Duration(milliseconds: 300), () {
+      if(mounted) syncLivePlayState();
+    });
   }
   // 提前一屏触发加载更多,避免滑到底部才发请求造成停顿
   if(isLoading || !hasMore) return;
@@ -219,7 +195,8 @@ void _onScroll() {
   }
 }
 // 加载更多(上拉触底 / 首次进入)
-Future<void> loadMoreData() async {
+// * refresh = true 为下拉刷新: 用第一页数据整体替换列表,不清空,避免列表闪一下(空态 + 加载中转一圈)
+Future<void> loadMoreData({bool refresh = false}) async {
   if(isLoading || !hasMore) return;
   setState(() {
     isLoading = true;
@@ -236,7 +213,12 @@ Future<void> loadMoreData() async {
     final List<Map<String, dynamic>> cardList = GoodsApi.toCardList(list);
     if(!mounted || seq != requestSeq) return;
     setState(() {
-      dataList.addAll(cardList);
+      // 刷新: 整页替换(旧数据一直留在屏幕上,直到新数据到位);加载更多: 追加
+      if(refresh) {
+        dataList = cardList;
+      } else {
+        dataList.addAll(cardList);
+      }
       page += 1;
       hasMore = page <= pageCount;
       isLoading = false;
@@ -280,11 +262,15 @@ void _onTabTap(int index) {
   });
 }
 
-// 滚动到 tab 吸顶位置(吸顶判定为 scrollOffset > 0, 所以 +1 保证落在吸顶态)
+// 滚动到 tab 吸顶位置: 让分类栏正好落在折叠后的 AppBar 正下方,且首个商品完整露出
+// * 关键: precedingScrollExtent 已包含折叠后的 AppBar 高度(toolbarHeight 94),
+//   若直接滚到 tabStickyOffset,会多滚 94px,导致首个商品顶到顶部、被吸顶的 AppBar/分类栏盖住一半。
+//   所以目标要减去 AppBar 折叠高度,使商品停在分类栏下方,而不是被吸顶栏覆盖。
 Future<void> _scrollToStickyTabs() async {
   if(!mounted || !scrollController.hasClients) return;
   final ScrollPosition position = scrollController.position;
-  final double target = (tabStickyOffset + 1.0).clamp(0.0, position.maxScrollExtent);
+  // 94.0 = SliverAppBar.toolbarHeight(折叠后高度),用于把首个商品推到分类栏下方
+  final double target = (tabStickyOffset - 94.0).clamp(0.0, position.maxScrollExtent);
   if((position.pixels - target).abs() < 1.0) return;
   await scrollController.animateTo(
     target,
@@ -294,15 +280,22 @@ Future<void> _scrollToStickyTabs() async {
 }
 
 // 下拉刷新
+// * 不清空列表: 旧商品一直留在屏幕上,新数据回来后整体替换,避免"列表空白 + 加载中"闪一下
 Future<void> handleRefresh() async {
+  // 丢弃在途的分页请求(其响应会因序号不匹配被丢弃,不会覆盖刷新结果)
+  requestSeq += 1;
   page = 1;
   hasMore = true;
-  setState(() {
-    dataList.clear();
-  });
-  await loadMoreData();
-  // 顺带刷新秒杀板块(倒计时重新对时)
-  await loadSeckill();
+  isLoading = false;
+  isRefreshing = true;
+  try {
+    await loadMoreData(refresh: true);
+    // 顺带刷新秒杀板块(倒计时重新对时)
+    await loadSeckill();
+  } finally {
+    isRefreshing = false;
+    if(mounted) setState(() {});
+  }
 }
 
 // 首页直播信息(无直播间时不展示直播板块): 拿到拉流地址后首页静音预览
@@ -338,34 +331,37 @@ Future<void> loadLiveRoom() async {
   liveVideoController = controller;
   liveFirstFrame.value = false;
   // 真机排障日志: 拉流地址 / 播放状态 / 解码尺寸
-  debugPrint('[live]拉流地址: $src');
-  player.stream.error.listen((String error) => debugPrint('[live]播放错误: $error'));
-  // mpv 层日志: 只看报错 / 视频输出 / rtmp 相关
-  player.stream.log.listen((PlayerLog log) {
-    final String line = '${log.prefix}: ${log.text}';
-    final String lower = line.toLowerCase();
-    if(lower.contains('error') || lower.contains('fail') || lower.contains('rtmp') || lower.contains('vo:') || lower.contains('vo ') || lower.contains('gpu')) {
-      debugPrint('[live][mpv] $line');
-    }
-  });
-  player.stream.playing.listen((bool playing) => debugPrint('[live]playing=$playing'));
-  player.stream.buffering.listen((bool buffering) => debugPrint('[live]buffering=$buffering'));
-  player.stream.width.listen((int? width) {
-    debugPrint('[live]视频尺寸: ${width ?? 0}x${player.state.height ?? 0}');
-    // 不能用解码尺寸判定首帧: 拿到尺寸时纹理可能还没渲染, 这时隐藏封面会露出卡片白底(一块白板)
-  });
-  player.stream.videoParams.listen((VideoParams params) {
-    debugPrint('[live]videoParams: ${params.dw}x${params.dh} rotate=${params.rotate}');
-  });
+  // * 这些流(尤其 mpv log)回调非常频繁,release 下直接不订阅,省掉主线程的字符串处理开销
+  if(kDebugMode) {
+    debugPrint('[live]拉流地址: $src');
+    player.stream.error.listen((String error) => debugPrint('[live]播放错误: $error'));
+    // mpv 层日志: 只看报错 / 视频输出 / rtmp 相关
+    player.stream.log.listen((PlayerLog log) {
+      final String line = '${log.prefix}: ${log.text}';
+      final String lower = line.toLowerCase();
+      if(lower.contains('error') || lower.contains('fail') || lower.contains('rtmp') || lower.contains('vo:') || lower.contains('vo ') || lower.contains('gpu')) {
+        debugPrint('[live][mpv] $line');
+      }
+    });
+    player.stream.playing.listen((bool playing) => debugPrint('[live]playing=$playing'));
+    player.stream.buffering.listen((bool buffering) => debugPrint('[live]buffering=$buffering'));
+    player.stream.width.listen((int? width) {
+      debugPrint('[live]视频尺寸: ${width ?? 0}x${player.state.height ?? 0}');
+      // 不能用解码尺寸判定首帧: 拿到尺寸时纹理可能还没渲染, 这时隐藏封面会露出卡片白底(一块白板)
+    });
+    player.stream.videoParams.listen((VideoParams params) {
+      debugPrint('[live]videoParams: ${params.dw}x${params.dh} rotate=${params.rotate}');
+    });
+  }
   // 视频输出诊断: 纹理id / 输出矩形 / 首帧是否真的渲染出来
   // * 首帧以"纹理已创建 / 首帧已渲染"为准, 才不会被过早隐藏封面
   controller.id.addListener(() {
-    debugPrint('[live]textureId=${controller.id.value}');
+    if(kDebugMode) debugPrint('[live]textureId=${controller.id.value}');
     if((controller.id.value ?? -1) > 0 && !liveFirstFrame.value) liveFirstFrame.value = true;
   });
-  controller.rect.addListener(() => debugPrint('[live]输出rect=${controller.rect.value}'));
+  if(kDebugMode) controller.rect.addListener(() => debugPrint('[live]输出rect=${controller.rect.value}'));
   controller.waitUntilFirstFrameRendered.then((_) {
-    debugPrint('[live]首帧已渲染');
+    if(kDebugMode) debugPrint('[live]首帧已渲染');
     if(mounted) liveFirstFrame.value = true;
   });
   await player.setVolume(0.0);
@@ -456,8 +452,6 @@ Widget liveBg() {
 @override
 void initState() {
   super.initState();
-  // 初始用默认 tabList 创建 TabController; 分类加载后会在 loadCategory 中按新数量重建
-  tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
   scrollController.addListener(_onScroll);
 
   // 已登录但会员信息为空(启动时拉取失败): 补拉一次, 避免门店绑定状态拿不到还显示"去绑定门店"
@@ -492,16 +486,14 @@ void initState() {
         if (name.isNotEmpty) tabs.add(name);
       }
       if (tabs.length < 2) return;
-      final TabController old = tabController;
       setState(() {
         categoryList = list;
         tabList = tabs;
-        // tab 数量变了, TabController 必须重建(否则 controller.length != tabs.length 报错)
-        tabController = TabController(initialIndex: 0, length: tabList.length, vsync: this);
-      });
-      // 等 UI 重建后再释放旧的, 避免 TabBar 仍持有已 dispose 的 controller
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) old.dispose();
+        // tab 内容变了: 作废吸顶 header 缓存,否则 TabBar 还是旧的 tabs
+        _stickyTabsHeader = null;
+        _normalTabsHeader = null;
+        // 控制器由外层 DefaultTabController(length: tabList.length) 托管,
+        // tabList 一变,其 length 自动跟随,无需手动重建/释放
       });
     } catch (_) {
       // 分类加载失败保留默认 tab
@@ -781,62 +773,79 @@ void initState() {
     );
   }
 
-  // 金刚区: 本地 cateList 渲染(接口 nav_info 未返回时的回退)
-  Widget _buildCateGrid() {
-    return PageView.builder(
-      controller: pageController,
-      itemCount: cateList.length,
-      itemBuilder: (BuildContext context, int index) {
-        final Map<String, dynamic> item = cateList[index] as Map<String, dynamic>;
-        return GridView.builder(
-          shrinkWrap: true,
-          padding: EdgeInsets.zero,
-          physics: NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4),
-          itemCount: (item['list'] as List).length,
-          itemBuilder: (BuildContext context, int i) {
-            final Map<String, dynamic> citem = (item['list'] as List)[i] as Map<String, dynamic>;
-            return GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => _onCateTap('${citem['label'] ?? ''}'),
-              child: Container(
-                padding: const EdgeInsets.symmetric(vertical: 10.0),
-                alignment: Alignment.center,
-                child: Column(
-                  spacing: 3.0,
-                  children: [
-                    if (citem['icon'] != null)
-                      Badge(
-                        isLabelVisible: citem['count'] != null,
-                        backgroundColor: Colors.redAccent,
-                        label: Text('${citem['count']}'),
-                        child: SvgPicture.asset('${citem['icon']}', height: 30.0, width: 30.0),
-                      ),
-                    Text('${citem['label']}'),
-                  ],
+  // 吸顶 tab 板块: 始终占 45 高
+  // * 未吸顶时也不再隐藏(之前返回 0 高度,导致不滚动到顶就看不到分类、且要滚过商品才吸顶),
+  //   现在在流里就显示,滚到顶部时吸顶固定,出现更早
+  Widget _buildStickyTabs(bool sticky) {
+    return SliverPersistentHeader(
+      pinned: true,
+      delegate: CustomStickyHeader(
+        child: PreferredSize(
+          preferredSize: const Size.fromHeight(45.0),
+          child: Container(
+            color: Colors.white,
+            height: 45.0,
+            child: Row(
+              children: [
+                Expanded(
+                  child: TabBar(
+                    // 点击分类 tab: 拉取该分类下的商品(/api/goodssku/page)
+                    onTap: _onTabTap,
+                    tabs: tabList.map((String v) => Tab(text: v)).toList(),
+                    isScrollable: true,
+                    tabAlignment: TabAlignment.start,
+                    overlayColor: WidgetStateProperty.all(Colors.transparent),
+                    unselectedLabelColor: Colors.black87,
+                    labelColor: const Color(0xFFFF2C55),
+                    indicatorColor: const Color(0xFFFF2C55),
+                    indicatorSize: TabBarIndicatorSize.tab,
+                    unselectedLabelStyle: const TextStyle(fontSize: 15.0, fontFamily: 'Microsoft YaHei'),
+                    labelStyle: const TextStyle(fontSize: 15.0, fontFamily: 'Microsoft YaHei', fontWeight: FontWeight.w700),
+                    dividerHeight: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 10.0),
+                    labelPadding: const EdgeInsets.symmetric(horizontal: 10.0),
+                    indicatorPadding: const EdgeInsets.symmetric(horizontal: 15.0, vertical: 5.0),
+                  ),
                 ),
-              ),
-            );
-          },
-        );
-      },
+                // 切换商品列表布局(瀑布流 / 横向单列)
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      isHorizontalList = !isHorizontalList;
+                    });
+                  },
+                  child: Container(
+                    width: 44.0,
+                    alignment: Alignment.center,
+                    child: Icon(
+                      isHorizontalList ? Icons.grid_view_rounded : Icons.view_list_rounded,
+                      size: 22.0,
+                      color: Colors.black87,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
-  // 金刚区: 后端 nav_info 渲染(图片图标 + 名称 + 点击跳转)
+  // 金刚区: 后端 nav_info 渲染(图片图标 + 名称 + 点击跳转), 每页 5 个翻页
   Widget _buildNavGrid() {
     return PageView.builder(
       controller: pageController,
-      itemCount: (navList.length / 4).ceil(),
+      itemCount: (navList.length / 5).ceil(),
       itemBuilder: (BuildContext context, int index) {
-        final int start = index * 4;
-        final int end = min(start + 4, navList.length);
+        final int start = index * 5;
+        final int end = min(start + 5, navList.length);
         final List group = navList.sublist(start, end);
         return GridView.builder(
           shrinkWrap: true,
           padding: EdgeInsets.zero,
           physics: NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 4),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisExtent: 82.0),
           itemCount: group.length,
           itemBuilder: (BuildContext context, int i) {
             final Map<String, dynamic> n = group[i] as Map<String, dynamic>;
@@ -851,12 +860,12 @@ void initState() {
                   children: [
                     CachedNetworkImage(
                       imageUrl: '${n['nav_image'] ?? ''}',
-                      width: 30.0,
-                      height: 30.0,
+                      width: 38.0,
+                      height: 38.0,
                       fit: BoxFit.contain,
                       placeholder: (BuildContext c, String u) => const SizedBox.shrink(),
                       errorWidget: (BuildContext c, String u, Object e) =>
-                          const Icon(Icons.image, size: 30.0, color: Colors.grey),
+                          const Icon(Icons.image, size: 38.0, color: Colors.grey),
                     ),
                     Text('${n['nav_name'] ?? ''}', style: const TextStyle(fontSize: 12.0)),
                   ],
@@ -869,37 +878,11 @@ void initState() {
     );
   }
 
-  // 首页宫格点击
-  void _onCateTap(String label) {
-    switch (label) {
-      case '限时秒杀':
-        Get.toNamed('/seckill');
-        break;
-      case '购物车':
-        Get.toNamed('/cart');
-        break;
-      case '我的订单':
-        Get.toNamed('/order');
-        break;
-      case '券红包':
-        Get.toNamed('/my/coupon');
-        break;
-      case '客服消息':
-        Get.toNamed('/chat');
-        break;
-      case '退款/售后':
-        Get.toNamed('/order/refund_list');
-        break;
-      default:
-        Get.snackbar('提示', '$label 功能待接入', snackPosition: SnackPosition.BOTTOM);
-    }
-  }
-
   @override
   void dispose() {
     scrollController.dispose();
-    tabController.dispose();
     seckillTimer?.cancel();
+    liveScrollIdleTimer?.cancel();
     liveReconnector?.dispose();
     livePlayer?.dispose();
     super.dispose();
@@ -917,7 +900,9 @@ void initState() {
         color: Color(0xFFFF2C55),
         displacement: 10.0,
         onRefresh: handleRefresh,
-        child: CustomScrollView(
+        child: DefaultTabController(
+          length: tabList.length,
+          child: CustomScrollView(
           controller: scrollController,
           slivers: [
             SliverAppBar(
@@ -935,11 +920,11 @@ void initState() {
             children: [
               // 第一行: logo + 品牌名  |  去绑定门店 + 购物车
               Padding(
-                padding: EdgeInsets.only(left: 0.0, right: 6.0),
+                padding: EdgeInsets.only(left: 10.0, right: 10.0),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    Image.asset('assets/images/t-logo.png', width: 140.0, height: 30.0, fit: BoxFit.contain, isAntiAlias: true),
+                    Image.asset('assets/images/t-logo.png', width: 140.0, height: 30.0, alignment: Alignment.centerLeft, fit: BoxFit.contain, isAntiAlias: true),
                     Spacer(),
                     // 绑定门店入口: 已绑定显示门店名, 未绑定才显示"去绑定门店"(点进去绑定)
                     Obx(() {
@@ -997,12 +982,11 @@ void initState() {
               hintText: "请输入关键字搜索",
               prefixIcon: Icon(Icons.search, color: Colors.black54, size: 20.0,),
               suffixIcon: Container(
-                padding: EdgeInsets.only(right: 15.0),
+                padding: EdgeInsets.only(right: 8.0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   spacing: 10.0,
                   children: [
-                    Icon(Icons.keyboard_voice, color: Colors.black54, size: 20.0,),
                     // 扫码图标(自定义 png)
                     Image.asset('assets/images/icon_sm.png', width: 20.0, height: 20.0, fit: BoxFit.contain, isAntiAlias: true),
                   ],
@@ -1024,7 +1008,7 @@ void initState() {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: BoxConstraints(minWidth: 30.0, minHeight: 30.0),
-                    icon: Icon(Icons.shopping_cart_outlined, color: Colors.white, size: 22.0),
+                    icon: Image.asset('assets/images/cart-1.png', width: 22.0, height: 22.0, fit: BoxFit.contain, isAntiAlias: true),
                     onPressed: () { Get.toNamed('/cart'); },
                   ),
                 ],
@@ -1048,29 +1032,37 @@ void initState() {
                 collapseMode: CollapseMode.pin,
                 background: Stack(
                   children: <Widget>[
-                    Swiper.children(
-                pagination: SwiperPagination(
-                      builder: DotSwiperPaginationBuilder(
-                  color: Colors.white70,
-                  activeColor: Colors.white,
-                )
-              ),
-              indicatorLayout: PageIndicatorLayout.SCALE,
-              children: bannerList.isEmpty
-                  ? <Widget>[Container(color: Colors.grey[200])]
-                  : bannerList.map<Widget>((dynamic b) {
-                      final String img = '${b['adv_image'] ?? ''}';
-                      return GestureDetector(
-                        onTap: () => _handleNavUrl('${b['adv_url'] ?? ''}'),
-                        child: CachedNetworkImage(
-                          imageUrl: img,
-                          memCacheWidth: 1080,
-                          placeholder: (BuildContext c, String u) => Container(color: Colors.grey[50]),
-                          fit: BoxFit.fill,
+                    PageView(
+                      controller: bannerController,
+                      children: bannerList.isEmpty
+                          ? <Widget>[Container(color: Colors.grey[200])]
+                          : bannerList.map<Widget>((dynamic b) {
+                              final String img = '${b['adv_image'] ?? ''}';
+                              return GestureDetector(
+                                onTap: () => _handleNavUrl('${b['adv_url'] ?? ''}'),
+                                child: CachedNetworkImage(
+                                  imageUrl: img,
+                                  memCacheWidth: 1080,
+                                  placeholder: (BuildContext c, String u) => Container(color: Colors.grey[50]),
+                                  fit: BoxFit.fill,
+                                ),
+                              );
+                            }).toList(),
+                    ),
+                    // 轮播下标(与金刚区一致的 CustomPageViewIndicator 药丸点)
+                    Positioned(
+                      left: 0.0,
+                      right: 0.0,
+                      bottom: 8.0,
+                      child: IgnorePointer(
+                        child: CustomPageViewIndicator(
+                          controller: bannerController,
+                          count: bannerList.isEmpty ? 1 : bannerList.length,
+                          color: const Color(0xFFCECECE),
+                          activeColor: const Color(0xFFFF2C55),
                         ),
-                      );
-                    }).toList(),
-            ),
+                      ),
+                    ),
                     // 顶部渐变遮罩: 让悬浮标题栏(白字/搜索框)在亮色轮播图上清晰可见
                     Positioned(
                       top: 0.0,
@@ -1095,27 +1087,27 @@ void initState() {
             ),
           ),
 
-          // 金刚区(来自 /api/index/index 的 nav_info;接口未返回时回退到本地 cateList)
-          SliverToBoxAdapter(
+          // 金刚区(来自 /api/index/index 的 nav_info;每页 5 个, 左右翻页;无数据时整体隐藏)
+          if (navList.isNotEmpty) SliverToBoxAdapter(
             child: Container(
-              margin: EdgeInsets.all(10.0),
-              padding: EdgeInsets.only(bottom: 6.0),
-              height: 90.0,
+              margin: const EdgeInsets.all(10.0),
+              padding: const EdgeInsets.only(bottom: 6.0),
+              height: 96.0,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(10.0),
               ),
               child: Column(
-                children: [
+                children: <Widget>[
                   Expanded(
-                    child: navList.isEmpty ? _buildCateGrid() : _buildNavGrid(),
+                    child: _buildNavGrid(),
                   ),
                   CustomPageViewIndicator(
                     controller: pageController,
-                    count: navList.isNotEmpty ? (navList.length / 4).ceil() : cateList.length,
-                    color: Color(0xFFCECECE),
-                    activeColor: Color(0xFFFF2C55),
+                    count: (navList.length / 5).ceil(),
+                    color: const Color(0xFFCECECE),
+                    activeColor: const Color(0xFFFF2C55),
                   ),
                 ],
               ),
@@ -1428,60 +1420,11 @@ void initState() {
                 final bool sticky = constraints.scrollOffset > 0;
                 // 记录吸顶偏移(该板块到达视口顶部的滚动偏移), 供切分类后回滚定位使用
                 tabStickyOffset = constraints.precedingScrollExtent;
-                return SliverPersistentHeader(
-              pinned: true,
-              delegate: CustomStickyHeader(
-                child: PreferredSize(
-                preferredSize: Size.fromHeight(sticky ? 45.0 : 0.0),
-                child: sticky ? Container(
-                  color: Colors.white,
-                height: 45.0,
-                child: Row(
-                children: [
-                  Expanded(
-                    child: TabBar(
-                  controller: tabController,
-                  // 点击分类 tab: 拉取该分类下的商品(/api/goodssku/page)
-                  onTap: _onTabTap,
-                  tabs: tabList.map((String v) => Tab(text: v)).toList(),
-                isScrollable: true,
-                tabAlignment: TabAlignment.start,
-                overlayColor: WidgetStateProperty.all(Colors.transparent),
-                unselectedLabelColor: Colors.black87,
-                labelColor: Color(0xFFFF2C55),
-                indicatorColor: Color(0xFFFF2C55),
-                indicatorSize: TabBarIndicatorSize.tab,
-                unselectedLabelStyle: TextStyle(fontSize: 15.0, fontFamily: 'Microsoft YaHei'),
-                labelStyle: TextStyle(fontSize: 15.0, fontFamily: 'Microsoft YaHei', fontWeight: FontWeight.w700),
-                dividerHeight: 0,
-                padding: EdgeInsets.symmetric(horizontal: 10.0),
-                labelPadding: EdgeInsets.symmetric(horizontal: 10.0),
-                indicatorPadding: EdgeInsets.symmetric(horizontal: 15.0, vertical: 5.0),
-                ),
-                      ),
-                    // 切换商品列表布局(瀑布流 / 横向单列)
-                    GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          isHorizontalList = !isHorizontalList;
-                        });
-                      },
-                      child: Container(
-                        width: 44.0,
-                        alignment: Alignment.center,
-                        child: Icon(
-                          isHorizontalList ? Icons.grid_view_rounded : Icons.view_list_rounded,
-                          size: 22.0,
-                          color: Colors.black87,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                ) : const SizedBox.shrink(),
-              ),
-              ),
-                );
+                // SliverLayoutBuilder 滚动中每帧都会回调: 同状态复用缓存的 header,
+                // 不再每帧重建 TabBar 子树(之前每帧都在重建,是滑动掉帧的来源之一)
+                return sticky
+                  ? (_stickyTabsHeader ??= _buildStickyTabs(true))
+                  : (_normalTabsHeader ??= _buildStickyTabs(false));
               },
             ),
 
@@ -1503,13 +1446,13 @@ void initState() {
                   ),
             ),
           SliverToBoxAdapter(
-            child: isLoading
+            child: isLoading && !isRefreshing
               ? const Padding(
                   padding: EdgeInsets.only(bottom: 20),
                   child: Loading(title: '加载中...'),
                 )
               : Padding(
-                  padding: const EdgeInsets.only(bottom: 20, top: 10),
+                  padding: const EdgeInsets.only(bottom: 20, top: 40),
                   child: Center(
                     child: dataList.isEmpty
                         ? const CommonEmpty(text: '暂无商品', imageWidth: 80.0)
@@ -1519,7 +1462,15 @@ void initState() {
                   ),
                 ),
             ),
+            // 兜底: 分类返回数据很少(甚至为空)时,内容高度可能不足一屏,
+            // 列表无法滚动到 tab 吸顶位置,导致 tab 栏(只在吸顶时显示)消失、切不回去。
+            // 这里补一段高度,保证页面始终能滚动到吸顶位置,tab 栏始终可达。
+            if (dataList.length < pageSize)
+              SliverToBoxAdapter(
+                child: SizedBox(height: MediaQuery.of(context).size.height),
+              ),
           ],
+        ),
         ),
       ),
     ),

@@ -193,7 +193,7 @@ num get couponPrice {
       ? const Center(child: Loading(title: '加载中...'))
       : (errorMsg.isNotEmpty ? _buildError() : _buildContent()),
     // 商品导航栏(加载失败时不显示)
-    bottomNavigationBar: (loading || errorMsg.isNotEmpty) ? null : _buildBottomBar(),
+    bottomNavigationBar: (loading || errorMsg.isNotEmpty) ? null : _buildBottomBar(context),
   // 返回顶部
   floatingActionButton: Backtop(controller: scrollController, offset: scrollOffset),
   );
@@ -915,14 +915,18 @@ Widget _buildDetail() {
 }
 
 /// 底部操作栏(下架时按钮置灰)
-Widget _buildBottomBar() {
+Widget _buildBottomBar(BuildContext context) {
   final Color primary = const Color(0xFFFF2C55);
   final Color disabled = Colors.grey.shade400;
+  final double bottomInset = MediaQuery.of(context).padding.bottom;
   return Container(
-    height: 50.0,
     color: Colors.white,
-    padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-    child: Row(
+    padding: EdgeInsets.only(bottom: bottomInset),
+    child: Container(
+      height: 50.0,
+      color: Colors.white,
+      padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+      child: Row(
       children: [
       Expanded(
         child: Row(
@@ -979,6 +983,7 @@ Widget _buildBottomBar() {
       ),
       ),
       ],
+    ),
     ),
   );
 }

@@ -904,11 +904,15 @@ class _CartPageState extends State<CartPage> {
 
   /// 底部结算/删除栏
   Widget _buildBottomBar() {
+    final double bottomInset = MediaQuery.of(context).padding.bottom;
     return Container(
-      height: 50.0,
       color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-      child: Row(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        height: 50.0,
+        color: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+        child: Row(
         children: <Widget>[
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -983,6 +987,7 @@ class _CartPageState extends State<CartPage> {
             ),
           ),
         ],
+      ),
       ),
     );
   }
