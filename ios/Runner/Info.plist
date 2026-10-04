@@ -29,6 +29,9 @@
 	<!-- 扫码组件支持从相册选图识别(image_picker) -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于从相册选择门店二维码图片进行识别</string>
+	<!-- 广告SDK(穿山甲/GroMore)在 iOS 上请求跟踪权限(ATT)所必需, 缺失会导致启动闪退 -->
+	<key>NSUserTrackingUsageDescription</key>
+	<string>用于向您推荐更相关的广告内容</string>
 	<!-- 直播拉流地址可能为 http,放开 ATS 限制 -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
