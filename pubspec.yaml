@@ -88,6 +88,9 @@ flutter:
     # 穿山甲内容SDK配置(SDK_Setting_*.json 放这里, 文件名同步改 lib/utils/content.dart 的 configPath)
     - assets/
     - assets/images/
+    - assets/images/newico/
+    - assets/images/make/
+    - assets/images/me/
     - assets/images/avatar/
     - assets/images/svg/
     # gift list

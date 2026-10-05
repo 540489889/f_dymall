@@ -85,7 +85,23 @@ class LiveApi {
       'online': intOf(raw['online'] ?? raw['online_num']),
       'type': '${raw['type'] ?? ''}'.trim(),
       'start_time': '${raw['start_time'] ?? ''}'.trim(),
+      // 新版直播列表页扩展字段（后端下发时透传）
+      'desc': '${raw['desc'] ?? raw['subtitle'] ?? raw['summary'] ?? ''}'.trim(),
+      'tags': _parseTags(raw['tags'] ?? raw['labels'] ?? raw['tag']),
+      'community': '${raw['community'] ?? raw['community_name'] ?? raw['area'] ?? ''}'.trim(),
+      'is_verified': raw['is_verified'] == true || '${raw['is_verified'] ?? ''}' == '1',
     };
+  }
+
+  /// 标签字段归一化（逗号/竖线/数组）
+  static List<String> _parseTags(dynamic val) {
+    if (val is List) {
+      return val.map((dynamic e) => '${e ?? ''}'.trim()).where((String s) => s.isNotEmpty).take(3).toList();
+    }
+    if (val is String && val.isNotEmpty) {
+      return val.split(RegExp(r'[,，|/]')).map((String e) => e.trim()).where((String s) => s.isNotEmpty).take(3).toList();
+    }
+    return const <String>[];
   }
 
   /// 首页直播信息(/live/api/shop/getTopRoom)

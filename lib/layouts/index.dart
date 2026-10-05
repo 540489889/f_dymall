@@ -2,7 +2,6 @@
 library;
 
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import '../controller/video_store.dart';
 import '../components/keepalive_wrapper.dart';
 // 引入pages页面
@@ -31,35 +30,53 @@ final videoStore = VideoStore.to;
   KeepAliveWrapper(child: EarnPage()),
    MyPage(),
  ];
-  // tabs选项
+  // tabs选项(图标使用 newico 目录下的 png)
+  Widget _tabIcon(String name, {bool selected = false}) {
+    return Opacity(
+      opacity: selected ? 1.0 : 0.5,
+      child: Image.asset('assets/images/newico/$name', width: 26.0, height: 26.0, fit: BoxFit.contain),
+    );
+  }
+
   List<BottomNavigationBarItem> buildNavItems() {
     return [
-     BottomNavigationBarItem(
-      icon: Icon(Icons.local_mall),
-      label: '商城'
-    ),
-    BottomNavigationBarItem(
-      icon: Badge(
-       isLabelVisible: true,
-        backgroundColor: Colors.redAccent,
-       alignment: Alignment(1.5, -1.0),
-      smallSize: 8.0,
-       child: Icon(Icons.play_circle_outline),
+      BottomNavigationBarItem(
+        icon: _tabIcon('tab_shop_selected.png'),
+        activeIcon: _tabIcon('tab_shop_selected.png', selected: true),
+        label: '商城',
       ),
-      label: '视频'
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.live_tv_rounded),
-      label: '直播',
-    ),
-    BottomNavigationBarItem(
-      icon: Icon(Icons.card_giftcard_outlined),
-     label: '赚钱'
-    ),
-    BottomNavigationBarItem(
-     icon: Icon(Icons.person_pin),
-      label: '我'
-     )
+      BottomNavigationBarItem(
+        icon: Badge(
+          isLabelVisible: true,
+          backgroundColor: Colors.redAccent,
+          alignment: const Alignment(1.5, -1.0),
+          smallSize: 8.0,
+          child: _tabIcon('tab_video.png'),
+        ),
+        activeIcon: Badge(
+          isLabelVisible: true,
+          backgroundColor: Colors.redAccent,
+          alignment: const Alignment(1.5, -1.0),
+          smallSize: 8.0,
+          child: _tabIcon('tab_video.png', selected: true),
+        ),
+        label: '视频',
+      ),
+      BottomNavigationBarItem(
+        icon: _tabIcon('tab_live.png'),
+        activeIcon: _tabIcon('tab_live.png', selected: true),
+        label: '直播',
+      ),
+      BottomNavigationBarItem(
+        icon: _tabIcon('tab_money.png'),
+        activeIcon: _tabIcon('tab_money.png', selected: true),
+        label: '赚钱',
+      ),
+      BottomNavigationBarItem(
+        icon: _tabIcon('tab_mine.png'),
+        activeIcon: _tabIcon('tab_mine.png', selected: true),
+        label: '我',
+      ),
     ];
   }
 
@@ -71,28 +88,18 @@ final videoStore = VideoStore.to;
 
   // 底部导航栏背景色
  Color bottomNavigationBgcolor() {
-  int pageVideoTabIndex = videoStore.videoTabIndex.value;
-   Color color = Colors.white;
+   Color color = const Color(0xFFFDFAF7);
     if(pageCurrent == 1) {
-     if([0, 1, 3, 4, 5].contains(pageVideoTabIndex)) {
-       color = Colors.white;
-      }else {
-      color = Colors.black;
-     }
+      color = const Color(0xFFFDFAF7);
     }
    return color;
   }
   // 底部导航栏颜色
   Color bottomNavigationItemcolor({bool centerDocked = false}) {
-    int pageVideoTabIndex = videoStore.videoTabIndex.value;
     Color color = Colors.black54;
     if(pageCurrent == 1) {
-    if([0, 1, 3, 4, 5].contains(pageVideoTabIndex)) {
       color = Colors.black54;
-    }else {
-      color = Colors.white60;
-    }
-  }else if(pageCurrent == 2 && centerDocked) {
+    }else if(pageCurrent == 2 && centerDocked) {
     color = Color(0xFFFF2C55);
     }
     return color;
@@ -122,9 +129,8 @@ final videoStore = VideoStore.to;
         highlightColor: Colors.transparent,
        hoverColor: Colors.transparent,
       ),
-      child: Obx(() {
-        return Stack(
-          children: [
+      child: Stack(
+        children: [
           Container(
             decoration: BoxDecoration(
             border: Border(top: BorderSide(color: Colors.black45, width: .1)),
@@ -143,8 +149,7 @@ final videoStore = VideoStore.to;
              ),
              ),
          ],
-        );
-       }),
+        ),
       ),
     );
   }

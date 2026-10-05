@@ -22,6 +22,7 @@ import '../../utils/player_config.dart';
 import '../../api/goods.dart';
 import '../../api/live.dart';
 import '../../api/seckill.dart';
+import '../../api/cart.dart';
 import '../../controller/auth_store.dart';
 import '../../api/index.dart';
 class IndexPage extends StatefulWidget {
@@ -164,10 +165,13 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   List navList = [];
   Map<String, dynamic> popupInfo = {};
   bool _popupShown = false;
+  int cartCount = 0;
 
 late ScrollController scrollController = ScrollController();
+
 // 金刚区翻页控制器(PageView, 每页 5 个, 配合下方 CustomPageViewIndicator)
 final PageController pageController = PageController();
+
 // 轮播图翻页控制器(配合底部 CustomPageViewIndicator, 下标与金刚区一致)
 final PageController bannerController = PageController();
 // 记录滚动位置
@@ -469,6 +473,8 @@ void initState() {
   loadCategory();
   // 首页聚合配置(banner / nav / popup)
   loadIndexConfig();
+  // 购物车数量(搜索栏角标)
+  loadCartCount();
   // 秒杀倒计时(每秒局部刷新)
   seckillTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickSeckill());
   }
@@ -524,6 +530,17 @@ void initState() {
     }
   }
 
+  /// 购物车商品数量(用于搜索栏购物车角标)
+  Future<void> loadCartCount() async {
+    try {
+      final int total = await CartApi.count();
+      if (!mounted) return;
+      setState(() => cartCount = total);
+    } catch (e) {
+      debugPrint('[index]购物车数量加载失败: $e');
+    }
+  }
+
   /// 启动弹窗广告
   void _showPopupAd() {
     _popupShown = true;
@@ -532,46 +549,39 @@ void initState() {
       final String img = '${popupInfo['adv_image'] ?? ''}';
       showDialog(
         context: context,
+        barrierColor: Colors.black54,
         barrierDismissible: true,
-        builder: (BuildContext ctx) => Stack(
-          children: <Widget>[
-            GestureDetector(
-              onTap: () => Navigator.of(ctx).pop(),
-              child: Container(color: Colors.black54),
-            ),
-            Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.of(ctx).pop();
-                      _handleNavUrl('${popupInfo['adv_url'] ?? ''}');
-                    },
-                    child: CachedNetworkImage(
-                      imageUrl: img,
-                      width: 300.0,
-                      fit: BoxFit.contain,
-                      placeholder: (BuildContext c, String u) => const SizedBox.shrink(),
-                    ),
-                  ),
-                  const SizedBox(height: 16.0),
-                  GestureDetector(
-                    onTap: () => Navigator.of(ctx).pop(),
-                    child: Container(
-                      width: 36.0,
-                      height: 36.0,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(Icons.close, color: Colors.black54, size: 22.0),
-                    ),
-                  ),
-                ],
+        builder: (BuildContext ctx) => Center(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              GestureDetector(
+                onTap: () {
+                  Navigator.of(ctx).pop();
+                  _handleNavUrl('${popupInfo['adv_url'] ?? ''}');
+                },
+                child: CachedNetworkImage(
+                  imageUrl: img,
+                  width: 300.0,
+                  fit: BoxFit.contain,
+                  placeholder: (BuildContext c, String u) => const SizedBox.shrink(),
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: 16.0),
+              GestureDetector(
+                onTap: () => Navigator.of(ctx).pop(),
+                child: Container(
+                  width: 36.0,
+                  height: 36.0,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.85),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.close, color: Colors.black54, size: 22.0),
+                ),
+              ),
+            ],
+          ),
         ),
       );
     });
@@ -783,7 +793,7 @@ void initState() {
         child: PreferredSize(
           preferredSize: const Size.fromHeight(45.0),
           child: Container(
-            color: Colors.white,
+            color: Color(0xFFFCF7EE),
             height: 45.0,
             child: Row(
               children: [
@@ -833,19 +843,25 @@ void initState() {
   }
 
   // 金刚区: 后端 nav_info 渲染(图片图标 + 名称 + 点击跳转), 每页 5 个翻页
+  // 金刚区: 后端 nav_info 渲染(图片图标 + 名称 + 点击跳转), 每页 4 个翻页
   Widget _buildNavGrid() {
     return PageView.builder(
       controller: pageController,
-      itemCount: (navList.length / 5).ceil(),
+      itemCount: (navList.length / 4).ceil(),
       itemBuilder: (BuildContext context, int index) {
-        final int start = index * 5;
-        final int end = min(start + 5, navList.length);
+        final int start = index * 4;
+        final int end = min(start + 4, navList.length);
         final List group = navList.sublist(start, end);
         return GridView.builder(
           shrinkWrap: true,
           padding: EdgeInsets.zero,
-          physics: NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 5, mainAxisExtent: 82.0),
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 4,
+            mainAxisExtent: 94.0,
+            crossAxisSpacing: 0.0,
+            mainAxisSpacing: 12.0,
+          ),
           itemCount: group.length,
           itemBuilder: (BuildContext context, int i) {
             final Map<String, dynamic> n = group[i] as Map<String, dynamic>;
@@ -856,18 +872,18 @@ void initState() {
                 padding: const EdgeInsets.symmetric(vertical: 10.0),
                 alignment: Alignment.center,
                 child: Column(
-                  spacing: 3.0,
+                  spacing: 4.0,
                   children: [
                     CachedNetworkImage(
                       imageUrl: '${n['nav_image'] ?? ''}',
-                      width: 38.0,
-                      height: 38.0,
+                      width: 48.0,
+                      height: 48.0,
                       fit: BoxFit.contain,
                       placeholder: (BuildContext c, String u) => const SizedBox.shrink(),
                       errorWidget: (BuildContext c, String u, Object e) =>
-                          const Icon(Icons.image, size: 38.0, color: Colors.grey),
+                          const Icon(Icons.image, size: 48.0, color: Colors.grey),
                     ),
-                    Text('${n['nav_name'] ?? ''}', style: const TextStyle(fontSize: 12.0)),
+                    Text('${n['nav_name'] ?? ''}', style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600)),
                   ],
                 ),
               ),
@@ -892,11 +908,11 @@ void initState() {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-    backgroundColor: Colors.grey[50],
+    backgroundColor: Color(0xFFFCF7EE),
     body: ScrollConfiguration(
       behavior: CustomScrollBehavior().copyWith(scrollbars: false),
       child: RefreshIndicator(
-        backgroundColor: Colors.white,
+        backgroundColor: Color(0xFFFCF7EE),
         color: Color(0xFFFF2C55),
         displacement: 10.0,
         onRefresh: handleRefresh,
@@ -906,136 +922,165 @@ void initState() {
           controller: scrollController,
           slivers: [
             SliverAppBar(
-              backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
-          pinned: true,
-          expandedHeight: 220.0,
-          toolbarHeight: 94.0,
-          titleSpacing: 0.0,
-          automaticallyImplyLeading: false,
-          centerTitle: false,
-          title: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              // 第一行: logo + 品牌名  |  去绑定门店 + 购物车
-              Padding(
-                padding: EdgeInsets.only(left: 10.0, right: 10.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Image.asset('assets/images/t-logo.png', width: 140.0, height: 30.0, alignment: Alignment.centerLeft, fit: BoxFit.contain, isAntiAlias: true),
-                    Spacer(),
-                    // 绑定门店入口: 已绑定显示门店名, 未绑定才显示"去绑定门店"(点进去绑定)
-                    Obx(() {
-                      final bool bound = AuthStore.to.hasStore;
-                      final String name = AuthStore.to.storeName;
-                      return Material(
-                        color: Colors.white24,
-                        borderRadius: BorderRadius.circular(15.0),
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(15.0),
-                          onTap: () {
-                            // 未绑定: 去绑定门店页
-                            if (!bound) {
-                              Get.toNamed('/bind_store');
-                              return;
-                            }
-                            // 已绑定: 进门店详情(/api/store/info?store_id=)
-                            final int sid = AuthStore.to.storeId.value;
-                            if (sid == 0) {
-                              Get.snackbar('提示', name.isNotEmpty ? '已绑定门店：$name' : '已绑定门店');
-                              return;
-                            }
-                            Get.toNamed('/store/detail', arguments: <String, dynamic>{'store_id': sid});
-                          },
+              backgroundColor: Color(0xFFFCF7EE),
+              foregroundColor: Colors.black87,
+              pinned: true,
+              toolbarHeight: 94.0,
+              elevation: 0,
+              scrolledUnderElevation: 0,
+              shadowColor: Colors.transparent,
+              titleSpacing: 0.0,
+              automaticallyImplyLeading: false,
+              centerTitle: false,
+              title: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // 第一行: logo | 内部门店
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Image.asset(
+                          'assets/images/home_logo.png',
+                          width: 110.0,
+                          height: 34.0,
+                          fit: BoxFit.contain,
+                          isAntiAlias: true,
+                          errorBuilder: (context, error, stackTrace) => const SizedBox(width: 110.0, height: 34.0),
+                        ),
+                        Spacer(),
+                        Obx(() {
+                          final bool bound = AuthStore.to.hasStore;
+                          final String name = AuthStore.to.storeName;
+                          return Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(15.0),
+                              onTap: () {
+                                if (!bound) {
+                                  Get.toNamed('/bind_store');
+                                  return;
+                                }
+                                final int sid = AuthStore.to.storeId.value;
+                                if (sid == 0) {
+                                  Get.snackbar('提示', name.isNotEmpty ? '已绑定门店：$name' : '已绑定门店');
+                                  return;
+                                }
+                                Get.toNamed('/store/detail', arguments: <String, dynamic>{'store_id': sid});
+                              },
+                              child: Container(
+                                padding: EdgeInsets.fromLTRB(4.0, 3.0, 8.0, 3.0),
+                                decoration: BoxDecoration(
+                                  gradient: const LinearGradient(
+                                    colors: [Color(0xFFFF8A75), Color(0xFFFF5A4D)],
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                  ),
+                                  borderRadius: BorderRadius.circular(14.0),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.store, color: Colors.white, size: 13.0),
+                                    SizedBox(width: 4.0),
+                                    Text('内部门店', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w500)),
+                                    Icon(Icons.chevron_right, color: Colors.white, size: 14.0),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  SizedBox(height: 8.0),
+                  // 搜索框 + 购物车(在搜索框外右侧)
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 10.0),
+                    child: Row(
+                      children: [
+                        Expanded(
                           child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-                            child: Text(
-                              bound ? (name.isNotEmpty ? name : '已绑定门店') : '去绑定门店',
-                              style: TextStyle(color: Colors.white, fontSize: 13.0),
+                            height: 36.0,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(30.0),
+                              border: Border.all(color: Color(0xFFEEEEEE), width: 1.0),
+                              boxShadow: const [
+                                BoxShadow(
+                                  color: Color(0x14000000),
+                                  blurRadius: 8.0,
+                                  offset: Offset(0.0, 2.0),
+                                ),
+                              ],
+                            ),
+                            child: Row(
+                              children: [
+                                SizedBox(width: 12.0),
+                                Icon(Icons.search, color: Color(0xFF999999), size: 20.0),
+                                SizedBox(width: 8.0),
+                                Expanded(
+                                  child: TextField(
+                                    decoration: InputDecoration(
+                                      isDense: true,
+                                      hintText: '请输入关键字搜索',
+                                      hintStyle: TextStyle(color: Color(0xFFBBBBBB), fontSize: 14.0),
+                                      contentPadding: EdgeInsets.zero,
+                                      border: InputBorder.none,
+                                    ),
+                                    style: TextStyle(fontSize: 15.0),
+                                    cursorColor: Color(0xFFFF2C55),
+                                    onChanged: (val) => debugPrint(val),
+                                  ),
+                                ),
+                                InkWell(
+                                  onTap: () {},
+                                  child: Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 8.0),
+                                    child: Image.asset('assets/images/icon_sm.png', width: 22.0, height: 22.0, fit: BoxFit.contain, isAntiAlias: true),
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-              SizedBox(height: 6.0),
-              // 搜索框(高斯模糊背景) + 右侧购物车
-              Padding(
-                padding: EdgeInsets.symmetric(horizontal: 10.0),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ClipRRect(
-            borderRadius: BorderRadius.circular(30.0),
-            child: Container(
-                height: 42.0,
-            decoration: BoxDecoration(
-              color: Colors.white.withAlpha(215),
-            ),
-            child: TextField(
-                decoration: InputDecoration(
-                  isDense: true,
-              hintText: "请输入关键字搜索",
-              prefixIcon: Icon(Icons.search, color: Colors.black54, size: 20.0,),
-              suffixIcon: Container(
-                padding: EdgeInsets.only(right: 8.0),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: 10.0,
-                  children: [
-                    // 扫码图标(自定义 png)
-                    Image.asset('assets/images/icon_sm.png', width: 20.0, height: 20.0, fit: BoxFit.contain, isAntiAlias: true),
-                  ],
-                ),
-                  ),
-                  contentPadding: EdgeInsets.symmetric(vertical: 0, horizontal: 10.0),
-                  border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.circular(30.0))
-                ),
-                style: TextStyle(fontSize: 15.0),
-                cursorColor: Colors.black,
-                onChanged: (val) {
-                  debugPrint(val);
-                },
-                  ),
-                ),
+                        SizedBox(width: 10.0),
+                        InkWell(
+                          onTap: () => Get.toNamed('/cart'),
+                          child: Padding(
+                            padding: EdgeInsets.only(right: 2.0),
+                            child: Badge.count(
+                              count: cartCount,
+                              isLabelVisible: cartCount > 0,
+                              backgroundColor: Color(0xFFFB431D),
+                              child: Image.asset('assets/images/newico/cat-ico.png', width: 24.0, height: 24.0, fit: BoxFit.contain, isAntiAlias: true),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  SizedBox(width: 4.0),
-                  IconButton(
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(minWidth: 30.0, minHeight: 30.0),
-                    icon: Image.asset('assets/images/cart-1.png', width: 22.0, height: 22.0, fit: BoxFit.contain, isAntiAlias: true),
-                    onPressed: () { Get.toNamed('/cart'); },
                   ),
                 ],
               ),
-              ),
-            ],
-          ),
-            // 自定义伸缩区域(轮播图)
-            flexibleSpace: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Color(0xFFFF2C55), Color(0xFFFF9C55)
-                  ]
-                )
-              ),
-              child: FlexibleSpaceBar(
-                // pin: 折叠时背景不跟随视差做 transform/裁剪合成,滚动更省
-                collapseMode: CollapseMode.pin,
-                background: Stack(
+            ),
+            // 轮播图卡片
+            SliverToBoxAdapter(
+              child: Container(
+                margin: EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 6.0),
+                height: 150.0,
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12.0),
+                ),
+                child: Stack(
                   children: <Widget>[
                     PageView(
                       controller: bannerController,
                       children: bannerList.isEmpty
-                          ? <Widget>[Container(color: Colors.grey[200])]
+                          ? <Widget>[Container(color: Color(0xFFFF9C55))]
                           : bannerList.map<Widget>((dynamic b) {
                               final String img = '${b['adv_image'] ?? ''}';
                               return GestureDetector(
@@ -1043,13 +1088,13 @@ void initState() {
                                 child: CachedNetworkImage(
                                   imageUrl: img,
                                   memCacheWidth: 1080,
-                                  placeholder: (BuildContext c, String u) => Container(color: Colors.grey[50]),
-                                  fit: BoxFit.fill,
+                                  placeholder: (BuildContext c, String u) => Container(color: Color(0xFFFF9C55)),
+                                  fit: BoxFit.cover,
                                 ),
                               );
                             }).toList(),
                     ),
-                    // 轮播下标(与金刚区一致的 CustomPageViewIndicator 药丸点)
+                    // 轮播下标
                     Positioned(
                       left: 0.0,
                       right: 0.0,
@@ -1063,36 +1108,16 @@ void initState() {
                         ),
                       ),
                     ),
-                    // 顶部渐变遮罩: 让悬浮标题栏(白字/搜索框)在亮色轮播图上清晰可见
-                    Positioned(
-                      top: 0.0,
-                      left: 0.0,
-                      right: 0.0,
-                      height: 110.0,
-                      child: IgnorePointer(
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: <Color>[Colors.black.withAlpha(110), Colors.transparent],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
                   ],
                 ),
               ),
             ),
-          ),
 
-          // 金刚区(来自 /api/index/index 的 nav_info;每页 5 个, 左右翻页;无数据时整体隐藏)
+          // 金刚区(来自 /api/index/index 的 nav_info;每页 5 个, 可翻页)
           if (navList.isNotEmpty) SliverToBoxAdapter(
             child: Container(
-              margin: const EdgeInsets.all(10.0),
-              padding: const EdgeInsets.only(bottom: 6.0),
-              height: 96.0,
+              margin: EdgeInsets.fromLTRB(10.0, 6.0, 10.0, 10.0),
+              height: 112.0,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 color: Colors.white,
@@ -1103,11 +1128,14 @@ void initState() {
                   Expanded(
                     child: _buildNavGrid(),
                   ),
-                  CustomPageViewIndicator(
-                    controller: pageController,
-                    count: (navList.length / 5).ceil(),
-                    color: const Color(0xFFCECECE),
-                    activeColor: const Color(0xFFFF2C55),
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10.0, top: 2.0),
+                    child: CustomPageViewIndicator(
+                      controller: pageController,
+                      count: (navList.length / 4).ceil(),
+                      color: const Color(0xFFCECECE),
+                      activeColor: const Color(0xFFFF2C55),
+                    ),
                   ),
                 ],
               ),
@@ -1133,7 +1161,7 @@ void initState() {
                         Text('App', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 20.0, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, fontFamily: 'Arial')),
                         Text('直播', style: TextStyle(color: Colors.black87, fontSize: 20.0, fontWeight: FontWeight.w900)),
                         Spacer(),
-                        Text('更多', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
+                        Text('全部', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
                         Icon(Icons.chevron_right, color: Colors.grey, size: 18.0),
                       ],
                     ),

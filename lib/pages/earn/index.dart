@@ -1,5 +1,5 @@
-/// 赚钱页(推广中心): 收益概览 + 签到 + 立即提现 + 日常任务
-/// * 界面参考用户提供的截图: 顶部红色收益卡 / 签到 / 提现 / 任务列表
+/// 赚钱页(推广中心): 收益概览 + 签到 + 立即提现 + 热门任务
+/// * 界面参考用户提供的 UI 图
 library;
 
 import 'package:flutter/material.dart';
@@ -16,7 +16,7 @@ class EarnPage extends StatefulWidget {
 
 class _EarnPageState extends State<EarnPage> {
   // 主色
-  static const Color primary = Color(0xFFFF2C55);
+  static const Color primary = Color(0xFFFF5C33);
   static const Color coinGold = Color(0xFFFFE08A);
 
   // 收益数据: 接接口后替换
@@ -37,51 +37,52 @@ class _EarnPageState extends State<EarnPage> {
   // 立即提现
   final double todayWithdraw = 0.30;
 
-  // 日常任务
+  // 热门任务
   final List<Map<String, dynamic>> tasks = const <Map<String, dynamic>>[
     {
-      'icon': Icons.live_tv_rounded,
-      'bg': Color(0xFFEBF5FF),
-      'iconColor': Color(0xFF4A90FF),
-      'title': '看视频获取金币',
-      'top': '最高共',
-      'topValue': 160,
-      'unit': '金币',
-      'desc': '看视频可得丰厚金币奖励',
-      'progress': '',
-      'btn': '去领取',
-      // 看视频 -> 激励视频, 看完才发金币
-      'adType': 'reward',
+      'icon': 'assets/images/make/money_task_redpacket.png',
+      'title': '签到领红包',
+      'desc': '连续签到7天，最高可得10元红包',
+      'reward': '+1.00 ~ 10.00 元',
+      'btn': '去完成',
       'done': false,
+      'adType': 'interstitial',
     },
     {
-      'icon': Icons.ramen_dining_rounded,
-      'bg': Color(0xFFFFF1F2),
-      'iconColor': Color(0xFFFF2C55),
-      'title': '吃饭领金币',
-      'top': '最高共',
-      'topValue': 210,
-      'unit': '金币',
-      'desc': '午餐补贴发放中·每日 11:30-13:30',
-      'progress': '',
-      'btn': '去领取',
-      // 其他任务 -> 插屏广告
-      'adType': 'interstitial',
+      'icon': 'assets/images/make/money_task_invite.png',
+      'title': '邀请好友得佣金',
+      'desc': '好友首次下载并注册，双方都得奖励',
+      'reward': '+3.00 ~ 20.00 元',
+      'btn': '去完成',
       'done': false,
+      'adType': 'interstitial',
     },
     {
-      'icon': Icons.local_florist_rounded,
-      'bg': Color(0xFFFFF7F7),
-      'iconColor': Color(0xFFFF6B8A),
-      'title': '逛乐惠圈赚金币',
-      'top': '最高共',
-      'topValue': 100,
-      'unit': '金币',
-      'desc': '发布动态、点赞、评论均可获得',
-      'progress': '',
-      'btn': '去逛逛',
-      'adType': 'interstitial',
+      'icon': 'assets/images/make/money_task_browse.png',
+      'title': '浏览商品赚金币',
+      'desc': '浏览商品30秒，轻松赚金币',
+      'reward': '+50 ~ 200 金币',
+      'btn': '去完成',
       'done': false,
+      'adType': 'interstitial',
+    },
+    {
+      'icon': 'assets/images/make/money_task_share.png',
+      'title': '分享直播间',
+      'desc': '分享直播间到社交平台，获得奖励',
+      'reward': '+0.50 ~ 5.00 元',
+      'btn': '去完成',
+      'done': false,
+      'adType': 'interstitial',
+    },
+    {
+      'icon': 'assets/images/make/money_task_order.png',
+      'title': '完成订单返积分',
+      'desc': '下单并确认收货，获得积分奖励',
+      'reward': '+100 ~ 500 积分',
+      'btn': '去完成',
+      'done': false,
+      'adType': 'interstitial',
     },
   ];
 
@@ -95,13 +96,13 @@ class _EarnPageState extends State<EarnPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF0F2),
+      backgroundColor: const Color(0xFFFFF8F5),
       body: CustomScrollView(
         slivers: <Widget>[
           SliverToBoxAdapter(child: _buildHeader()),
           SliverToBoxAdapter(child: _buildSignIn()),
           SliverToBoxAdapter(child: _buildWithdraw()),
-          SliverToBoxAdapter(child: _buildDailyTasks()),
+          SliverToBoxAdapter(child: _buildHotTasks()),
           // Banner 广告位(未配置广告位时不展示)
           if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
             SliverToBoxAdapter(child: _buildBanner()),
@@ -111,106 +112,176 @@ class _EarnPageState extends State<EarnPage> {
     );
   }
 
-  // 顶部红色收益卡
+  // 顶部橙色区域：标题 + 收益概览 + 去领取
   Widget _buildHeader() {
-    // 用顶部外边距把整张卡挪到状态栏下方,而不是 SafeArea 在卡内留白(否则红底上延显得卡片变高)
-    final double topPad = MediaQuery.of(context).padding.top;
+    final double statusTop = MediaQuery.of(context).padding.top;
     return Container(
-      margin: EdgeInsets.fromLTRB(12.0, topPad + 12.0, 12.0, 0.0),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFFFF4D5F), Color(0xFFFF2C55)],
+          colors: <Color>[Color(0xFFFF7A50), Color(0xFFFF5C33)],
         ),
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(24.0),
+          bottomRight: Radius.circular(24.0),
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(18.0, 18.0, 18.0, 14.0),
-        child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: <Widget>[
-              // 我的金币 / 可提现 / 去领取
-              Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          SizedBox(height: statusTop),
+          // 标题
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            child: Row(
+              children: <Widget>[
+                const Text(
+                  '赚钱',
+                  style: TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900),
+                ),
+                const SizedBox(width: 4.0),
+                Icon(Icons.sync, color: Colors.white.withAlpha(230), size: 16.0),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8.0),
+          // 收益概览
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 12.0),
+            child: IntrinsicHeight(
+              child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  // 我的金币
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        Row(
-                          children: <Widget>[
-                            const Text('我的金币', style: TextStyle(color: Colors.white70, fontSize: 12.0)),
-                            const SizedBox(width: 2.0),
-                            Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 12.0),
-                          ],
-                        ),
-                        const SizedBox(height: 4.0),
-                        Text(
-                          _fmtCoin(goldCoin),
-                          style: const TextStyle(color: coinGold, fontSize: 28.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 可提现
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: <Widget>[
-                        const Text('可提现（元）', style: TextStyle(color: Colors.white70, fontSize: 12.0)),
-                        const SizedBox(height: 4.0),
-                        Text(
-                          balance.toStringAsFixed(2),
-                          style: const TextStyle(color: Colors.white, fontSize: 28.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
-                        ),
-                      ],
-                    ),
-                  ),
-                  // 去领取
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 6.0),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      borderRadius: BorderRadius.circular(20.0),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: <Widget>[
-                        Icon(Icons.check, color: primary, size: 14.0),
-                        SizedBox(width: 2.0),
-                        Text('去领取', style: TextStyle(color: primary, fontSize: 13.0, fontWeight: FontWeight.w700)),
-                      ],
-                    ),
-                  ),
+                  Expanded(child: _headerCoinColumn()),
+                  const SizedBox(width: 8.0),
+                  Expanded(child: _headerWithdrawColumn()),
+                  const SizedBox(width: 8.0),
+                  Expanded(child: _headerPendingColumn()),
+                  const SizedBox(width: 10.0),
+                  _headerClaimButton(),
                 ],
               ),
-              const SizedBox(height: 10.0),
-              // 昨日待结算
-              Row(
-                children: <Widget>[
-                  const Text('昨日待结算：', style: TextStyle(color: Colors.white70, fontSize: 11.0)),
-                  Text('¥${yesterdayPending.toStringAsFixed(2)}', style: const TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
-                ],
-              ),
-              const SizedBox(height: 8.0),
-              // 底部说明
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(26),
-                  borderRadius: BorderRadius.circular(8.0),
-                ),
-                child: const Text(
-                  '现金余额可提现至微信账户',
-                  style: TextStyle(color: Colors.white70, fontSize: 11.0),
-                ),
-              ),
-            ],
+            ),
           ),
+          // 底部说明
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(26),
+                borderRadius: BorderRadius.circular(20.0),
+              ),
+              child: const Text(
+                '现金余额可提现至微信账户',
+                style: TextStyle(color: Colors.white70, fontSize: 11.0),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerCoinColumn() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Flexible(
+              child: Text('我的金币', style: const TextStyle(color: Colors.white70, fontSize: 10.0), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 2.0),
+            Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
+          ],
         ),
+        const SizedBox(height: 6.0),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                _fmtCoin(goldCoin),
+                style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _headerWithdrawColumn() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        Row(
+          children: <Widget>[
+            Flexible(
+              child: Text('可提现（元）', style: const TextStyle(color: Colors.white70, fontSize: 10.0), maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+            const SizedBox(width: 2.0),
+            Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
+          ],
+        ),
+        const SizedBox(height: 6.0),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                balance.toStringAsFixed(2),
+                style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _headerPendingColumn() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text('昨日待结算', style: TextStyle(color: Colors.white70, fontSize: 10.0)),
+        const SizedBox(height: 6.0),
+        Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                '${yesterdayPending.toStringAsFixed(2)}',
+                style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _headerClaimButton() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.0),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: const <Widget>[
+          Icon(Icons.monetization_on, color: primary, size: 12.0),
+          SizedBox(width: 2.0),
+          Text('去领取', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 
@@ -230,6 +301,8 @@ class _EarnPageState extends State<EarnPage> {
           // 标题行
           Row(
             children: <Widget>[
+              const Icon(Icons.calendar_today, color: primary, size: 20.0),
+              const SizedBox(width: 6.0),
               const Text('签到领 ', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
               Text('$signBase', style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w800)),
               const Text(' 金币', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
@@ -244,8 +317,8 @@ class _EarnPageState extends State<EarnPage> {
               ),
             ],
           ),
-          const SizedBox(height: 12.0),
-          // 7 天签到
+          const SizedBox(height: 14.0),
+          // 6 天签到
           Row(
             children: List<Widget>.generate(signRewards.length, (int i) {
               final DateTime day = now.add(Duration(days: i));
@@ -254,21 +327,33 @@ class _EarnPageState extends State<EarnPage> {
               return Expanded(
                 child: Container(
                   margin: EdgeInsets.only(right: i == signRewards.length - 1 ? 0.0 : 6.0),
-                  padding: const EdgeInsets.symmetric(vertical: 8.0),
-                  decoration: BoxDecoration(
-                    color: isToday ? const Color(0xFFFFF1F2) : const Color(0xFFF9F9F9),
-                    borderRadius: BorderRadius.circular(8.0),
-                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      if (isToday)
-                        const Icon(Icons.monetization_on, color: primary, size: 16.0)
-                      else
-                        const Icon(Icons.monetization_on, color: Color(0xFFFFD6A0), size: 16.0),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 6.0),
+                        decoration: BoxDecoration(
+                          color: isToday ? primary : const Color(0xFFF9F9F9),
+                          borderRadius: BorderRadius.circular(12.0),
+                        ),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Image.asset(
+                              isToday
+                                  ? 'assets/images/make/money_icon_sign_1.png'
+                                  : 'assets/images/make/money_icon_sign_${i + 1}.png',
+                              width: isToday ? 28.0 : 22.0,
+                              height: isToday ? 28.0 : 22.0,
+                              fit: BoxFit.contain,
+                            ),
+                            const SizedBox(height: 4.0),
+                            Text('+${signRewards[i]}', style: TextStyle(color: isToday ? Colors.white : const Color(0xFFFFA500), fontSize: 11.0, fontWeight: FontWeight.w700)),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 2.0),
-                      Text('+${signRewards[i]}', style: TextStyle(color: isToday ? primary : const Color(0xFFFFA500), fontSize: 11.0, fontWeight: FontWeight.w700)),
-                      const SizedBox(height: 4.0),
                       Text(dateText, style: const TextStyle(color: Colors.black54, fontSize: 10.0)),
                     ],
                   ),
@@ -276,37 +361,25 @@ class _EarnPageState extends State<EarnPage> {
               );
             }),
           ),
-          const SizedBox(height: 12.0),
-          // 领取按钮
+          const SizedBox(height: 14.0),
+          // 签到按钮
           Container(
             width: double.infinity,
             padding: const EdgeInsets.symmetric(vertical: 12.0),
             decoration: BoxDecoration(
-              color: primary,
+              gradient: const LinearGradient(
+                colors: <Color>[Color(0xFFFF9A70), primary],
+              ),
               borderRadius: BorderRadius.circular(24.0),
             ),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: <Widget>[
-                const Icon(Icons.check, color: Colors.white, size: 16.0),
-                const SizedBox(width: 4.0),
-                // 两段文案都可伸缩: 小屏窄卡片上也不会把按钮撑爆(原来会右溢出)
-                Flexible(
-                  child: const Text(
-                    '已领取 120 金币',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700),
-                  ),
-                ),
-                const Text('·', style: TextStyle(color: Colors.white70, fontSize: 14.0)),
-                Flexible(
-                  child: const Text(
-                    '明天再来领 +30',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700),
-                  ),
+              children: const <Widget>[
+                Icon(Icons.calendar_today, color: Colors.white, size: 16.0),
+                SizedBox(width: 4.0),
+                Text(
+                  '签到领120金币',
+                  style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700),
                 ),
               ],
             ),
@@ -328,13 +401,20 @@ class _EarnPageState extends State<EarnPage> {
       child: Row(
         children: <Widget>[
           Container(
-            width: 46.0,
-            height: 46.0,
+            width: 56.0,
+            height: 56.0,
             decoration: BoxDecoration(
               color: primary.withAlpha(18),
-              borderRadius: BorderRadius.circular(12.0),
+              borderRadius: BorderRadius.circular(28.0),
             ),
-            child: const Icon(Icons.card_giftcard, color: primary, size: 24.0),
+            child: Center(
+              child: Image.asset(
+                'assets/images/make/money_icon_gift.png',
+                width: 44.0,
+                height: 44.0,
+                fit: BoxFit.contain,
+              ),
+            ),
           ),
           const SizedBox(width: 12.0),
           Expanded(
@@ -346,146 +426,158 @@ class _EarnPageState extends State<EarnPage> {
                   children: <Widget>[
                     const Text('立即提现', style: TextStyle(color: Colors.black87, fontSize: 15.0, fontWeight: FontWeight.w700)),
                     const SizedBox(width: 6.0),
+                    Text(
+                      todayWithdraw.toStringAsFixed(1),
+                      style: const TextStyle(color: Colors.black87, fontSize: 15.0, fontWeight: FontWeight.w700),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4.0),
+                Row(
+                  children: <Widget>[
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0),
                       decoration: BoxDecoration(
                         color: primary.withAlpha(18),
                         borderRadius: BorderRadius.circular(4.0),
                       ),
-                      child: Text('+${todayWithdraw.toStringAsFixed(1)}', style: const TextStyle(color: primary, fontSize: 10.0, fontWeight: FontWeight.w700)),
+                      child: const Text('天天提', style: TextStyle(color: primary, fontSize: 10.0, fontWeight: FontWeight.w700)),
                     ),
-                    const SizedBox(width: 4.0),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0),
-                      decoration: BoxDecoration(
-                        color: primary,
-                        borderRadius: BorderRadius.circular(4.0),
-                      ),
-                      child: const Text('天天赚', style: TextStyle(color: Colors.white, fontSize: 10.0)),
-                    ),
+                    const SizedBox(width: 6.0),
+                    const Text('福利用户专属，每日可提', style: TextStyle(color: Colors.black45, fontSize: 11.0)),
                   ],
                 ),
-                const SizedBox(height: 4.0),
-                const Text('福利用户专属，每日可提', style: TextStyle(color: Colors.black45, fontSize: 11.0)),
               ],
             ),
           ),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 7.0),
+            padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
             decoration: BoxDecoration(
               color: primary,
-              borderRadius: BorderRadius.circular(20.0),
+              borderRadius: BorderRadius.circular(16.0),
             ),
-            child: const Text('去提现', style: TextStyle(color: Colors.white, fontSize: 13.0, fontWeight: FontWeight.w700)),
+            child: const Text('去提现', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
     );
   }
 
-  // 日常任务
-  Widget _buildDailyTasks() {
+  // 热门任务
+  Widget _buildHotTasks() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 0.0),
-      padding: const EdgeInsets.fromLTRB(14.0, 14.0, 14.0, 8.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.0),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Icon(Icons.redeem, color: primary, size: 20.0),
-              const SizedBox(width: 6.0),
-              const Text('日常任务', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
-            ],
-          ),
-          const SizedBox(height: 6.0),
-          Column(
-            children: tasks.map((Map<String, dynamic> task) {
-              final bool done = task['done'] == true;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 10.0),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: <Widget>[
-                    Container(
-                      width: 44.0,
-                      height: 44.0,
-                      decoration: BoxDecoration(
-                        color: task['bg'] as Color,
-                        borderRadius: BorderRadius.circular(12.0),
-                      ),
-                      child: Icon(task['icon'] as IconData, color: task['iconColor'] as Color, size: 22.0),
-                    ),
-                    const SizedBox(width: 10.0),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Row(
-                            children: <Widget>[
-                              // 标题可伸缩: 任务名过长时省略, 不会把右侧的"最高共xxx金币"挤出边界
-                              Flexible(
-                                child: Text(
-                                  '${task['title']}',
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(color: Colors.black87, fontSize: 14.0, fontWeight: FontWeight.w700),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(16.0),
+        child: Stack(
+          children: <Widget>[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14.0, 14.0, 14.0, 14.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Row(
+                    children: const <Widget>[
+                      Icon(Icons.local_fire_department, color: primary, size: 20.0),
+                      SizedBox(width: 6.0),
+                      Text('热门任务', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
+                    ],
+                  ),
+                  const SizedBox(height: 4.0),
+                  Column(
+                    children: tasks.map((Map<String, dynamic> task) {
+                      final bool done = task['done'] == true;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 10.0),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: <Widget>[
+                            Container(
+                              width: 56.0,
+                              height: 56.0,
+                              decoration: BoxDecoration(
+                                color: primary.withAlpha(18),
+                                borderRadius: BorderRadius.circular(28.0),
+                              ),
+                              child: Center(
+                                child: Image.asset(
+                                  '${task['icon']}',
+                                  width: 44.0,
+                                  height: 44.0,
+                                  fit: BoxFit.contain,
                                 ),
                               ),
-                              const SizedBox(width: 4.0),
-                              Text(
-                                '${task['top']}',
-                                style: const TextStyle(color: Colors.black45, fontSize: 11.0),
+                            ),
+                            const SizedBox(width: 10.0),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: <Widget>[
+                                  Text(
+                                    '${task['title']}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.black87, fontSize: 14.0, fontWeight: FontWeight.w700),
+                                  ),
+                                  const SizedBox(height: 2.0),
+                                  Text(
+                                    '${task['desc']}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.black45, fontSize: 11.0),
+                                  ),
+                                  const SizedBox(height: 2.0),
+                                  Text(
+                                    '${task['reward']}',
+                                    style: const TextStyle(color: Color(0xFFFFA500), fontSize: 12.0, fontWeight: FontWeight.w700),
+                                  ),
+                                ],
                               ),
-                              Text(
-                                '${task['topValue']}',
-                                style: const TextStyle(color: Color(0xFFFFA500), fontSize: 11.0, fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(width: 8.0),
+                            GestureDetector(
+                              onTap: () => _onTaskTap(task),
+                              behavior: HitTestBehavior.opaque,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                                decoration: BoxDecoration(
+                                  color: done ? const Color(0xFFF5F5F5) : primary,
+                                  borderRadius: BorderRadius.circular(16.0),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: <Widget>[
+                                    Text(
+                                      done ? '已完成' : '${task['btn']}',
+                                      style: TextStyle(
+                                        color: done ? Colors.black38 : Colors.white,
+                                        fontSize: 11.0,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                    if (!done) ...[
+                                      const SizedBox(width: 2.0),
+                                      const Icon(Icons.chevron_right, color: Colors.white, size: 12.0),
+                                    ],
+                                  ],
+                                ),
                               ),
-                              const Text(' 金币', style: TextStyle(color: Colors.black45, fontSize: 11.0)),
-                            ],
-                          ),
-                          const SizedBox(height: 2.0),
-                          Text(
-                            // 看视频任务显示真实进度(0/20)
-                            '${task['desc']}${task['adType'] == 'reward' ? ' ($videoWatched/$videoTotal)' : '${task['progress']}'}',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(color: Colors.black45, fontSize: 11.0),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8.0),
-                    GestureDetector(
-                      onTap: () => _onTaskTap(task),
-                      behavior: HitTestBehavior.opaque,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
-                        decoration: BoxDecoration(
-                          color: done ? const Color(0xFFF5F5F5) : primary,
-                          borderRadius: BorderRadius.circular(16.0),
+                            ),
+                          ],
                         ),
-                        child: Text(
-                          done ? '已完成' : '${task['btn']}',
-                          style: TextStyle(
-                            color: done ? Colors.black38 : Colors.white,
-                            fontSize: 12.0,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-          ),
-        ],
+                      );
+                    }).toList(),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
