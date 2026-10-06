@@ -8,6 +8,8 @@ import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
 import '../../components/backtop.dart';
 import '../../api/live.dart';
+import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
+import 'package:flutter/services.dart';
 
 class LivePage extends StatefulWidget {
   const LivePage({super.key});
@@ -101,6 +103,77 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  /// 扫码: 打开全屏扫码界面,扫到结果后弹窗展示并支持复制
+  Future<void> _handleScan(BuildContext context) async {
+    final BarcodeCapture? capture = await showAiBarcodeScanner(
+      context,
+      labels: const ScannerLabels(
+        galleryButton: '从相册选择',
+        galleryTooltip: '从图片中识别二维码',
+        torchOnTooltip: '关闭闪光灯',
+        torchOffTooltip: '打开闪光灯',
+        torchAutoTooltip: '闪光灯为自动模式',
+        switchCameraTooltip: '切换摄像头',
+        switchLensTooltip: '切换镜头',
+        closeTooltip: '关闭',
+        zoomTooltip: '缩放',
+        resetZoomTooltip: '重置缩放',
+        scanHint: '将二维码放入框内,即可自动扫描',
+        scanHintIdle: '保持稳定,稍微靠近一些',
+        doneButton: '完成',
+        retryButton: '重试',
+        openSettingsButton: '去设置',
+        cameraErrorTitle: '相机启动失败',
+        cameraErrorMessage: '请检查相机权限或稍后重试',
+        permissionDeniedTitle: '未获取相机权限',
+        permissionDeniedMessage: '请在系统设置中开启相机权限后重试',
+        cameraUnsupportedTitle: '无法使用扫码功能',
+        cameraUnsupportedMessage: '当前设备没有可用的摄像头',
+        startingCamera: '正在启动相机…',
+        noBarcodeFoundInImage: '该图片中未找到二维码',
+        galleryUnsupported: '当前平台不支持从相册识别',
+        invalidBarcode: '该二维码无法识别',
+        copiedConfirmation: '已复制',
+      ),
+      validator: (BarcodeCapture capture) => _firstRawValue(capture).isNotEmpty,
+    );
+
+    final String code = _firstRawValue(capture);
+    if (code.isEmpty) return;
+    if (!context.mounted) return;
+    await showDialog(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('扫码结果'),
+        content: SelectableText(code, style: const TextStyle(fontSize: 14.0)),
+        actions: <Widget>[
+          TextButton(
+            onPressed: () {
+              Clipboard.setData(ClipboardData(text: code));
+              Navigator.of(ctx).pop();
+              Get.snackbar('提示', '已复制到剪贴板');
+            },
+            child: const Text('复制'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('关闭'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 取扫码结果里第一个非空原始值
+  String _firstRawValue(BarcodeCapture? capture) {
+    if (capture == null) return '';
+    for (final Barcode barcode in capture.barcodes) {
+      final String raw = (barcode.rawValue ?? '').trim();
+      if (raw.isNotEmpty) return raw;
+    }
+    return '';
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -147,7 +220,7 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
           IconButton(
             // 扫码图标(自定义 png)
             icon: Image.asset('assets/images/icon_sm.png', width: 22.0, height: 22.0, fit: BoxFit.contain, isAntiAlias: true),
-            onPressed: () {},
+            onPressed: () => _handleScan(context),
           ),
         ],
         bottom: PreferredSize(

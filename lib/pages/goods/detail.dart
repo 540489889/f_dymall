@@ -923,14 +923,14 @@ Widget _buildBottomBar(BuildContext context) {
     color: Colors.white,
     padding: EdgeInsets.only(bottom: bottomInset),
     child: Container(
-      height: 50.0,
+      height: 54.0,
       color: Colors.white,
       padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
       child: Row(
       children: [
       Expanded(
         child: Row(
-        spacing: 15.0,
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           GestureDetector(
             behavior: HitTestBehavior.opaque,
@@ -995,7 +995,7 @@ Widget _buildBarIcon(IconData icon, String label, Color color, {int badge = 0}) 
       Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 18.0,),
+          Icon(icon, color: color, size: 22.0,),
           Text(label, style: TextStyle(fontSize: 12.0),)
         ],
       ),

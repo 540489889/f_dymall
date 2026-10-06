@@ -16,18 +16,58 @@ import 'utils/content.dart';
 import 'router/index.dart';
 
 void main() async {
-  // 初始化get_storage存储
- await GetStorage.init();
-  // 注册GetxController
- Get.put(AuthStore());
-Get.put(VideoStore());
-  // 初始化media_kit视频套件
+  // 必须先初始化绑定, 才能使用插件/存储
   WidgetsFlutterBinding.ensureInitialized();
-  MediaKit.ensureInitialized();
+
+  // 各原生插件初始化单独 try/catch: 任一个在 iOS 上抛异常都绝不能让整个 App 白屏
+  try {
+    await GetStorage.init();
+  } catch (e) {
+    debugPrint('[main] GetStorage.init 异常: $e');
+  }
+
+  // 注册GetxController
+  Get.put(AuthStore());
+  Get.put(VideoStore());
+
+  // 初始化media_kit视频套件
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e) {
+    debugPrint('[main] MediaKit.ensureInitialized 异常: $e');
+  }
+
   // 初始化穿山甲广告SDK(未配置 appId 时内部直接跳过, 不影响启动)
-  await Ads.init();
+  try {
+    await Ads.init();
+  } catch (e) {
+    debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
+  }
+
   // 穿山甲内容SDK(短剧/小视频): 依赖上面的广告SDK, 失败/H5 自动跳过, 页面走兜底
-  await Content.init();
+  try {
+    await Content.init();
+  } catch (e) {
+    debugPrint('[main] Content.init 异常(已忽略): $e');
+  }
+
+  // 全局错误兜底: 即使后续 UI 构建抛错也能在日志看到, 而不是纯白屏
+  FlutterError.onError = (FlutterErrorDetails details) {
+    FlutterError.dumpErrorToConsole(details);
+  };
+
+  // 诊断用兜底(确认 iOS 正常后可删除): 构建出错时显示具体错误, 而不是纯白屏
+  ErrorWidget.builder = (FlutterErrorDetails details) {
+    return Scaffold(
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          '页面渲染出错(请截图反馈):\n${details.exception}\n\n${details.stack}',
+          style: const TextStyle(color: Colors.red, fontSize: 12),
+        ),
+      ),
+    );
+  };
 
   runApp(const MyApp());
 }

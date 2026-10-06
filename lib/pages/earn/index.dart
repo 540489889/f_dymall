@@ -116,6 +116,7 @@ class _EarnPageState extends State<EarnPage> {
   Widget _buildHeader() {
     final double statusTop = MediaQuery.of(context).padding.top;
     return Container(
+      clipBehavior: Clip.antiAlias,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topLeft,
@@ -127,7 +128,12 @@ class _EarnPageState extends State<EarnPage> {
           bottomRight: Radius.circular(24.0),
         ),
       ),
-      child: Column(
+      child: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: CustomPaint(painter: const HeaderPatternPainter()),
+          ),
+          Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(height: statusTop),
@@ -182,7 +188,9 @@ class _EarnPageState extends State<EarnPage> {
           ),
         ],
       ),
-    );
+    ],
+  ),
+);
   }
 
   Widget _headerCoinColumn() {
@@ -643,4 +651,62 @@ class _EarnPageState extends State<EarnPage> {
       ),
     );
   }
+}
+
+/// 赚钱页顶部背景装饰花纹：右上角大弧形光斑 + 底部波浪 + 小圆点
+class HeaderPatternPainter extends CustomPainter {
+  const HeaderPatternPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // 顶部右侧大弧形光斑
+    final Paint highlight = Paint()
+      ..color = const Color(0xFFFFF8F5).withAlpha(35)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.82, size.height * 0.18),
+      size.width * 0.45,
+      highlight,
+    );
+
+    // 底部波浪纹理
+    final Paint wave = Paint()
+      ..color = const Color(0xFFFFF8F5).withAlpha(22)
+      ..style = PaintingStyle.fill;
+
+    final Path wavePath = Path()
+      ..moveTo(0, size.height * 0.78)
+      ..quadraticBezierTo(
+        size.width * 0.25,
+        size.height * 0.68,
+        size.width * 0.55,
+        size.height * 0.80,
+      )
+      ..quadraticBezierTo(
+        size.width * 0.80,
+        size.height * 0.92,
+        size.width,
+        size.height * 0.74,
+      )
+      ..lineTo(size.width, size.height)
+      ..lineTo(0, size.height)
+      ..close();
+
+    canvas.drawPath(wavePath, wave);
+
+    // 小装饰圆点
+    final Paint dot = Paint()
+      ..color = const Color(0xFFFFF8F5).withAlpha(40)
+      ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(
+      Offset(size.width * 0.12, size.height * 0.35),
+      size.width * 0.08,
+      dot,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
