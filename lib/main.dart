@@ -1,6 +1,7 @@
 /// 入口文件main.dart
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -19,6 +20,12 @@ void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 全局未捕获错误兜底(含首帧绘制/回调中的异步错误), 至少能打到日志, 不再静默白屏
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('[uncaught] $error\n$stack');
+    return true;
+  };
+
   // 各原生插件初始化单独 try/catch: 任一个在 iOS 上抛异常都绝不能让整个 App 白屏
   try {
     await GetStorage.init();
@@ -26,29 +33,12 @@ void main() async {
     debugPrint('[main] GetStorage.init 异常: $e');
   }
 
-  // 注册GetxController
-  Get.put(AuthStore());
-  Get.put(VideoStore());
-
-  // 初始化media_kit视频套件
+  // 注册GetxController(也包裹, 避免在 runApp 前抛异常导致纯白屏)
   try {
-    MediaKit.ensureInitialized();
+    Get.put(AuthStore());
+    Get.put(VideoStore());
   } catch (e) {
-    debugPrint('[main] MediaKit.ensureInitialized 异常: $e');
-  }
-
-  // 初始化穿山甲广告SDK(未配置 appId 时内部直接跳过, 不影响启动)
-  try {
-    await Ads.init();
-  } catch (e) {
-    debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
-  }
-
-  // 穿山甲内容SDK(短剧/小视频): 依赖上面的广告SDK, 失败/H5 自动跳过, 页面走兜底
-  try {
-    await Content.init();
-  } catch (e) {
-    debugPrint('[main] Content.init 异常(已忽略): $e');
+    debugPrint('[main] Get.put 异常: $e');
   }
 
   // 全局错误兜底: 即使后续 UI 构建抛错也能在日志看到, 而不是纯白屏
@@ -69,7 +59,38 @@ void main() async {
     );
   };
 
+  // 先启动 UI, 不要被原生 SDK 初始化阻塞。
+  // 关键: Ads.init() 内部在 iOS 会 await requestIDFA(弹 ATT 跟踪授权框),
+  // 首启时该 await 会卡住 / 与系统网络授权框互相干扰, 导致 runApp 迟迟不执行 -> 白屏;
+  // 二次启动 ATT 已授权会立即返回才正常。所以必须在 runApp 之后再做这类初始化。
   runApp(const MyApp());
+
+  // 以下为不阻塞首帧的后台初始化, 各自兜底, 任一失败不影响首屏使用
+  unawaited(_initSdks());
+}
+
+/// 后台初始化原生 SDK(广告/内容/媒体), 不在启动关键路径上
+Future<void> _initSdks() async {
+  // 初始化media_kit视频套件
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e) {
+    debugPrint('[main] MediaKit.ensureInitialized 异常: $e');
+  }
+
+  // 初始化穿山甲广告SDK(内部 iOS 会弹 ATT 授权框, 已放到首帧之后, 不阻塞启动)
+  try {
+    await Ads.init();
+  } catch (e) {
+    debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
+  }
+
+  // 穿山甲内容SDK(短剧/小视频): 依赖上面的广告SDK, 失败/H5 自动跳过, 页面走兜底
+  try {
+    await Content.init();
+  } catch (e) {
+    debugPrint('[main] Content.init 异常(已忽略): $e');
+  }
 }
 
 class MyApp extends StatelessWidget {
