@@ -96,7 +96,7 @@ class _EarnPageState extends State<EarnPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF8F5),
+      backgroundColor: const Color(0xFFFCF7EE),
       body: CustomScrollView(
         slivers: <Widget>[
           SliverToBoxAdapter(child: _buildHeader()),

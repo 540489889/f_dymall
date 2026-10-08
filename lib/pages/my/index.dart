@@ -404,8 +404,40 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  // 我的服务
+  // 我的服务(4 列网格,从左到右依次排列,自动换行)
   Widget _buildServiceCard() {
+    final List<Map<String, dynamic>> items = <Map<String, dynamic>>[
+      <String, dynamic>{
+        'image': 'assets/images/me/mine_icon_svc_livemic.png',
+        'label': '直播连麦',
+        'onTap': () => _checkLogin(() => Get.toNamed('/live')),
+      },
+      <String, dynamic>{
+        'image': 'assets/images/me/mine_icon_svc_account.png',
+        'label': '我的账户',
+        'onTap': () => _checkLogin(() => Get.toNamed('/my/withdraw_account')),
+      },
+      <String, dynamic>{
+        'image': 'assets/images/me/mine_icon_svc_address.png',
+        'label': '收货地址',
+        'onTap': () => _checkLogin(() => Get.toNamed('/address')),
+      },
+      <String, dynamic>{
+        'image': 'assets/images/me/mine_icon_svc_medal.png',
+        'label': '看播集章',
+        'onTap': () => _checkLogin(() => Get.toNamed('/stamp')),
+      },
+      <String, dynamic>{
+        'image': 'assets/images/me/mine_icon_svc_support.png',
+        'label': '联系客服',
+        'onTap': () => _checkLogin(() => Get.toNamed('/chat')),
+      },
+      <String, dynamic>{
+        'image': 'assets/images/me/mine_icon_svc_invite.png',
+        'label': '邀请好友',
+        'onTap': () => Get.snackbar('提示', '邀请功能开发中'),
+      },
+    ];
     return _whiteCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -413,63 +445,24 @@ class _MyPageState extends State<MyPage> {
         children: [
           const Text('我的服务', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
           const SizedBox(height: 12.0),
-          Row(
-            children: [
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_livemic.png',
-                  label: '直播连麦',
-                  onTap: () => _checkLogin(() => Get.toNamed('/live')),
-                ),
-              ),
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_account.png',
-                  label: '我的账户',
-                  onTap: () => _checkLogin(() => Get.toNamed('/my/withdraw_account')),
-                ),
-              ),
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_address.png',
-                  label: '收货地址',
-                  onTap: () => _checkLogin(() => Get.toNamed('/address')),
-                ),
-              ),
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_medal.png',
-                  label: '看播集章',
-                  onTap: () => _checkLogin(() => Get.toNamed('/stamp')),
-                ),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_support.png',
-                  label: '联系客服',
-                  onTap: () => _checkLogin(() => Get.toNamed('/chat')),
-                ),
-              ),
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_invite.png',
-                  label: '邀请好友',
-                  onTap: () => Get.snackbar('提示', '邀请功能开发中'),
-                ),
-              ),
-              Expanded(
-                child: _menuItem(
-                  image: 'assets/images/me/mine_icon_svc_about.png',
-                  label: '关于我们',
-                  onTap: () => Get.toNamed('/agreement'),
-                ),
-              ),
-              Expanded(child: const SizedBox.shrink()),
-            ],
+          LayoutBuilder(
+            builder: (BuildContext ctx, BoxConstraints constraints) {
+              final double itemW = (constraints.maxWidth - 3 * 4.0) / 4;
+              return Wrap(
+                spacing: 4.0,
+                runSpacing: 4.0,
+                children: items
+                    .map((Map<String, dynamic> e) => SizedBox(
+                          width: itemW,
+                          child: _menuItem(
+                            image: e['image'] as String,
+                            label: e['label'] as String,
+                            onTap: e['onTap'] as VoidCallback,
+                          ),
+                        ))
+                    .toList(),
+              );
+            },
           ),
         ],
       ),
@@ -512,7 +505,7 @@ class _MyPageState extends State<MyPage> {
         statusBarBrightness: Brightness.dark,
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFFFFF8F5),
+        backgroundColor: const Color(0xFFFCF7EE),
         body: Obx(() {
           // 显式订阅登录态/会员信息/优惠券数量, 让 GetX 能正确刷新本页
           final _ = <dynamic>[authStore.authorization.value, authStore.memberInfo.length, authStore.couponNum.value];

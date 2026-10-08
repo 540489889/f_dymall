@@ -136,7 +136,7 @@ class _DramaModuleState extends State<DramaModule> {
     // 内容SDK已就绪: 直接渲染穿山甲短剧聚合页
     if (Content.ready) {
       return const Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFFCF7EE),
         body: SafeArea(
           child: DramaHomeNativeView(
             config: DramaHomeConfig(
@@ -150,7 +150,7 @@ class _DramaModuleState extends State<DramaModule> {
     }
     // 兜底: 没开通内容合作/H5/初始化失败时, 仍是本地演示列表
     return Scaffold(
-      backgroundColor: const Color(0xFFFFF8F5),
+      backgroundColor: const Color(0xFFFCF7EE),
       appBar: AppBar(
         toolbarHeight: 0,
         forceMaterialTransparency: true,
@@ -223,11 +223,11 @@ class _DramaModuleState extends State<DramaModule> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // 左侧标题: 直接用 drama_logo.png 代替整个标题板块
+        // 左侧标题: 直接用 drama_logo.png 代替整个标题板块(高度与直播页顶 logo 统一为 50)
         Expanded(
           child:         Image.asset(
             'assets/images/newico/drama_logo.png',
-            height: 52.0,
+            height: 50.0,
             fit: BoxFit.contain,
             alignment: Alignment.centerLeft,
           ),

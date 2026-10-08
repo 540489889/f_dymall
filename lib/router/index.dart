@@ -48,6 +48,8 @@ import '../pages/my/address_list.dart';
 import '../pages/my/address_edit.dart';
 // 设置/个人资料
 import '../pages/setting/personal_info.dart';
+// 关于我们
+import '../pages/setting/about.dart';
 // 协议详情(隐私协议 / 用户协议)
 import '../pages/setting/agreement.dart';
 // 限时秒杀
@@ -100,6 +102,8 @@ final Map<String, Widget> routes = {
   '/address': const AddressListPage(),
   '/address/edit': const AddressEditPage(),
   '/personal_info': const PersonalInfoPage(),
+  // 关于我们(游客可见,不进 authRoutes)
+  '/about': const AboutPage(),
   // 协议详情: 游客也可查看,不进 authRoutes
   '/agreement': const AgreementPage(),
   '/seckill': const SeckillListPage(),

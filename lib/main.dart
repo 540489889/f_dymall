@@ -4,6 +4,7 @@ library;
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
@@ -134,6 +135,16 @@ class MyApp extends StatelessWidget {
           ShirneDialogTheme(toastStyle: ToastStyle().center()),
         ],
       ),
+        // 中文本地化: 日期选择器等需要 MaterialLocalizations(zh_CN),否则报错
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+        ],
+        supportedLocales: const [
+          Locale('zh', 'CN'),
+          Locale('en', 'US'),
+        ],
         // 初始化路由(默认进入首页,不强制先登录)
        initialRoute: '/',
         // 路由页面

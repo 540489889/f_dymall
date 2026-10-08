@@ -101,7 +101,7 @@ class _LayoutState extends State<Layout> {
     return fallback;
   }
 
-  /// 本地兜底图标(无网络图标 / 加载失败时用), 尺寸与 diy 图标保持一致
+  /// 本地兜底图标(diy 图标加载失败 / 无网络时用), 尺寸与 diy 图标保持一致
   Widget _localIcon(String type, bool selected, [double size = 26.0]) {
     String asset;
     switch (type) {
@@ -153,54 +153,18 @@ class _LayoutState extends State<Layout> {
     );
   }
 
-  /// 默认静态导航(与历史 5 个 tab 一致, 配置未就绪时兜底)
+  /// 默认静态导航(与历史 5 个 tab 一致, 配置未就绪时兜底, 仅展示文字无图标)
   List<BottomNavigationBarItem> _defaultNavItems() {
-    Widget tabIcon(String name, {bool selected = false}) => Opacity(
-          opacity: selected ? 1.0 : 0.5,
-          child: Image.asset('assets/images/newico/$name', width: 26.0, height: 26.0, fit: BoxFit.contain),
-        );
-    return [
-      BottomNavigationBarItem(
-        icon: tabIcon('tab_shop_selected.png'),
-        activeIcon: tabIcon('tab_shop_selected.png', selected: true),
-        label: '商城',
-      ),
-      BottomNavigationBarItem(
-        icon: Badge(
-          isLabelVisible: true,
-          backgroundColor: Colors.redAccent,
-          alignment: const Alignment(1.5, -1.0),
-          smallSize: 8.0,
-          child: tabIcon('tab_video.png'),
-        ),
-        activeIcon: Badge(
-          isLabelVisible: true,
-          backgroundColor: Colors.redAccent,
-          alignment: const Alignment(1.5, -1.0),
-          smallSize: 8.0,
-          child: tabIcon('tab_video.png', selected: true),
-        ),
-        label: '视频',
-      ),
-      BottomNavigationBarItem(
-        icon: tabIcon('tab_live.png'),
-        activeIcon: tabIcon('tab_live.png', selected: true),
-        label: '直播',
-      ),
-      BottomNavigationBarItem(
-        icon: tabIcon('tab_money.png'),
-        activeIcon: tabIcon('tab_money.png', selected: true),
-        label: '赚钱',
-      ),
-      BottomNavigationBarItem(
-        icon: tabIcon('tab_mine.png'),
-        activeIcon: tabIcon('tab_mine.png', selected: true),
-        label: '我',
-      ),
+    return const [
+      BottomNavigationBarItem(icon: SizedBox.shrink(), activeIcon: SizedBox.shrink(), label: '商城'),
+      BottomNavigationBarItem(icon: SizedBox.shrink(), activeIcon: SizedBox.shrink(), label: '视频'),
+      BottomNavigationBarItem(icon: SizedBox.shrink(), activeIcon: SizedBox.shrink(), label: '直播'),
+      BottomNavigationBarItem(icon: SizedBox.shrink(), activeIcon: SizedBox.shrink(), label: '赚钱'),
+      BottomNavigationBarItem(icon: SizedBox.shrink(), activeIcon: SizedBox.shrink(), label: '我'),
     ];
   }
 
-  /// 构建底部导航 items(diy / 默认)
+  /// 构建底部导航 items(diy 用接口图标 / 默认无图标)
   List<BottomNavigationBarItem> _navItems() {
     if (!_useDiy) return _defaultNavItems();
     return _diyList.map<BottomNavigationBarItem>((dynamic e) {
@@ -239,7 +203,7 @@ class _LayoutState extends State<Layout> {
           : Colors.black54;
 
       return Scaffold(
-        backgroundColor: Colors.grey[50],
+        backgroundColor: const Color(0xFFFCF7EE),
         body: PageView(
           controller: pageController,
           physics: const NeverScrollableScrollPhysics(),
@@ -266,6 +230,9 @@ class _LayoutState extends State<Layout> {
                   elevation: 1.0,
                   unselectedFontSize: 12.0,
                   selectedFontSize: 12.0,
+                  // tab 文字加粗(选中/未选中均加粗,字号保持 12)
+                  selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0),
+                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0),
                   currentIndex: pageCurrent,
                   items: items,
                   onTap: onNavTap,

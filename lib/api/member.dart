@@ -78,10 +78,40 @@ class MemberApi {
 
   /// 修改头像(/api/member/modifyheadimg)
   /// * [headimg] 上传接口返回的 pic_path(/api/upload/headimg)
-  static Future<dynamic> modifyHeadImg(String headimg) {
-    return Request().post(
+  /// * 该接口成功码也可能为非 0(如 10067),用 postRaw 取原始响应,
+  ///   仅当 code < 0 视为失败,其余(0 / 10067 等)均当作成功
+  static Future<dynamic> modifyHeadImg(String headimg) async {
+    final Map<String, dynamic> res = await Request().postRaw(
       '/api/member/modifyheadimg',
       data: <String, dynamic>{'headimg': headimg},
+    );
+    final int code = int.tryParse('${res['code'] ?? -1}') ?? -1;
+    if (code < 0) {
+      throw DioException(
+        requestOptions: RequestOptions(path: ''),
+        message: '${res['message'] ?? '头像修改失败'}',
+      );
+    }
+    return res['data'];
+  }
+
+  /// 上传头像文件(/api/upload/headimg)
+  /// * 以 multipart/form-data 提交,表单字段名 file
+  /// * 该接口成功码为 10067(非 0),用 postRaw 取原始响应,再取 data.pic_path
+  /// * 返回 pic_path(供 modifyHeadImg 使用)
+  static Future<String> uploadHeadImg(String filePath) async {
+    final FormData formData = FormData.fromMap(<String, dynamic>{
+      'file': await MultipartFile.fromFile(filePath),
+    });
+    final Map<String, dynamic> res = await Request().postRaw('/api/upload/headimg', data: formData);
+    final dynamic data = res['data'];
+    if (data is Map) {
+      final dynamic pic = data['pic_path'] ?? data['pic'] ?? data['src'] ?? data['url'] ?? data['path'];
+      if (pic is String && pic.isNotEmpty) return pic;
+    }
+    throw DioException(
+      requestOptions: RequestOptions(path: ''),
+      message: '${res['message'] ?? '头像上传失败'}',
     );
   }
 
