@@ -50,6 +50,8 @@ dependencies:
   fluwx: ^6.0.4
   # 阿里云号码认证: APP 一键登录(需 Config.aliAndroidSk / aliIosSk)
   ali_auth: ^1.3.9
+  # 网络可用性监听: iOS 首启网络授权后可触发首页重刷
+  connectivity_plus: ^6.1.0
 
 dev_dependencies:
   flutter_test:

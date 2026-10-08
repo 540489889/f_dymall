@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../controller/auth_store.dart';
+import '../../controller/app_config.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -164,10 +165,9 @@ class _MyPageState extends State<MyPage> {
         (authStore.mobile.isNotEmpty || authStore.nickname.isNotEmpty);
     return Container(
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFFF9A70), Color(0xFFFF7A50)],
+        image: DecorationImage(
+          image: AssetImage('assets/images/me/mine_header_bg.png'),
+          fit: BoxFit.cover,
         ),
       ),
       child: Column(
@@ -189,7 +189,7 @@ class _MyPageState extends State<MyPage> {
           ),
           // 用户信息
           Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
+            padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 16.0),
             child: Row(
               children: [
                 // 头像
@@ -476,24 +476,30 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  // 底部版权
+  // 底部版权(取 /api/config/init 的 copyright.copyright_desc,缺失用兜底文案)
   Widget _buildFooter() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: const [
-          Expanded(
-            child: Divider(indent: 30.0, endIndent: 8.0, color: Color(0xFFDDDDDD), height: 1.0),
-          ),
-          Text('Copyright © 2023-2026 乐惠新零售 All Rights Reserved.',
-              style: TextStyle(fontSize: 11.0, color: Color(0xFFBBBBBB))),
-          Expanded(
-            child: Divider(indent: 8.0, endIndent: 30.0, color: Color(0xFFDDDDDD), height: 1.0),
-          ),
-        ],
-      ),
-    );
+    return Obx(() {
+      final dynamic copyright = AppConfig.to.get('copyright');
+      final String desc = copyright is Map ? '${copyright['copyright_desc'] ?? ''}' : '';
+      final String text = desc.isNotEmpty
+          ? desc
+          : 'Copyright © 2023-2026 乐惠新零售 All Rights Reserved.';
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 24.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Expanded(
+              child: Divider(indent: 30.0, endIndent: 8.0, color: Color(0xFFDDDDDD), height: 1.0),
+            ),
+            Text(text, style: TextStyle(fontSize: 11.0, color: Color(0xFFBBBBBB))),
+            Expanded(
+              child: Divider(indent: 8.0, endIndent: 30.0, color: Color(0xFFDDDDDD), height: 1.0),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   @override

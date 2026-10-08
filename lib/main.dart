@@ -11,6 +11,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
+import 'controller/app_config.dart';
 import 'utils/ads.dart';
 import 'utils/content.dart';
 // 引入路由管理
@@ -37,6 +38,7 @@ void main() async {
   try {
     Get.put(AuthStore());
     Get.put(VideoStore());
+    Get.put(AppConfig()); // 进入 App 即拉取 /api/config/init 全局配置
   } catch (e) {
     debugPrint('[main] Get.put 异常: $e');
   }

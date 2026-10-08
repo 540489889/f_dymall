@@ -117,22 +117,18 @@ class _EarnPageState extends State<EarnPage> {
     final double statusTop = MediaQuery.of(context).padding.top;
     return Container(
       clipBehavior: Clip.antiAlias,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFFFF7A50), Color(0xFFFF5C33)],
+      decoration: BoxDecoration(
+        image: const DecorationImage(
+          image: AssetImage('assets/images/make/qianyin_header_bg.png'),
+          fit: BoxFit.cover,
         ),
-        borderRadius: BorderRadius.only(
+        borderRadius: const BorderRadius.only(
           bottomLeft: Radius.circular(24.0),
           bottomRight: Radius.circular(24.0),
         ),
       ),
       child: Stack(
         children: <Widget>[
-          Positioned.fill(
-            child: CustomPaint(painter: const HeaderPatternPainter()),
-          ),
           Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
@@ -148,41 +144,57 @@ class _EarnPageState extends State<EarnPage> {
                 ),
                 const SizedBox(width: 4.0),
                 Icon(Icons.sync, color: Colors.white.withAlpha(230), size: 16.0),
+                const Spacer(),
+                _headerClaimButton(),
               ],
             ),
           ),
           const SizedBox(height: 8.0),
-          // 收益概览
+          // 收益概览（整块统一橙色盒子）
           Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 12.0),
-            child: IntrinsicHeight(
-              child: Row(
+            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 6.0),
+            child: Container(
+              padding: const EdgeInsets.all(12.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFE7A4E),
+                borderRadius: BorderRadius.circular(14.0),
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
-                  Expanded(child: _headerCoinColumn()),
-                  const SizedBox(width: 8.0),
-                  Expanded(child: _headerWithdrawColumn()),
-                  const SizedBox(width: 8.0),
-                  Expanded(child: _headerPendingColumn()),
-                  const SizedBox(width: 10.0),
-                  _headerClaimButton(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Expanded(child: _headerCoinColumn()),
+                      const SizedBox(width: 8.0),
+                      Expanded(child: _headerWithdrawColumn()),
+                      const SizedBox(width: 8.0),
+                      Expanded(child: _headerPendingColumn()),
+                    ],
+                  ),
+                  const SizedBox(height: 12.0),
+                  // 底部说明（盒内：半透明白底白字 + 盾牌图标）
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withAlpha(40),
+                      borderRadius: BorderRadius.circular(20.0),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: const <Widget>[
+                        Icon(Icons.verified_user, color: Colors.white, size: 14.0),
+                        SizedBox(width: 4.0),
+                        Text(
+                          '现金余额可提现至微信账户',
+                          style: TextStyle(color: Colors.white, fontSize: 11.0),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-              ),
-            ),
-          ),
-          // 底部说明
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 16.0),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
-              decoration: BoxDecoration(
-                color: Colors.white.withAlpha(26),
-                borderRadius: BorderRadius.circular(20.0),
-              ),
-              child: const Text(
-                '现金余额可提现至微信账户',
-                style: TextStyle(color: Colors.white70, fontSize: 11.0),
               ),
             ),
           ),
@@ -284,10 +296,10 @@ class _EarnPageState extends State<EarnPage> {
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
-        children: const <Widget>[
-          Icon(Icons.monetization_on, color: primary, size: 12.0),
-          SizedBox(width: 2.0),
-          Text('去领取', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w700)),
+        children: <Widget>[
+          Image.asset('assets/images/make/money_icon_sign_2.png', width: 16.0, height: 16.0, fit: BoxFit.contain),
+          const SizedBox(width: 2.0),
+          const Text('去领取', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -297,7 +309,7 @@ class _EarnPageState extends State<EarnPage> {
   Widget _buildSignIn() {
     final DateTime now = DateTime.now();
     return Container(
-      margin: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 0.0),
+      margin: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 0.0),
       padding: const EdgeInsets.all(14.0),
       decoration: BoxDecoration(
         color: Colors.white,

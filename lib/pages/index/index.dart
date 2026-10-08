@@ -13,14 +13,17 @@ import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/custom_sticky_header.dart';
 import '../../components/loading.dart';
+import '../../components/live_playing_bars.dart';
 import '../../components/backtop.dart';
 import '../../components/custom_pageview_indicator.dart';
 import '../../utils/player_config.dart';
 import '../../api/goods.dart';
 import '../../api/live.dart';
+import '../../pages/live/index.dart';
 import '../../api/seckill.dart';
 import '../../api/cart.dart';
 import '../../controller/auth_store.dart';
@@ -33,7 +36,7 @@ class IndexPage extends StatefulWidget {
   State<IndexPage> createState() => _IndexPageState();
 }
 
-class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMixin {
+class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   List<String> tabList = ['推荐', '新品', '手机', '酒水饮料', '男装', '女装', '爱车', '食品', '生鲜', '家电', '生活旅行'];
 
   // 瀑布流列表
@@ -133,12 +136,24 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   // tab 板块的吸顶滚动偏移(SliverLayoutBuilder 布局时记录, 即该 sliver 到达视口顶部的偏移)
   double tabStickyOffset = 0;
 
+  // iOS 首启网络授权弹窗拦截后, 生命周期 resumed 时自动重试首页数据
+  Timer? _resumeRetryTimer;
+  int _resumeRetryCount = 0;
+  static const int _maxResumeRetries = 3;
+
+  // 网络可用性监听: 网络从无到有时触发首页重刷
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySub;
+  ConnectivityResult? _lastConnectivity;
+
   // 首页直播信息(无直播间时为 null,直播板块不展示)
   Map<String, dynamic>? liveRoom;
   // 首页直播预览播放器(静音播放 push_link,点进直播间才有声音)
   Player? livePlayer;
   VideoController? liveVideoController;
   LiveReconnector? liveReconnector;
+  // 重入锁: 防止 loadLiveRoom 并发进入(首启时 initState 与生命周期 resumed 重试可能同时调用,
+  // 两者都会 dispose 旧 Player 再新建, 并发会互相 dispose 掉正在创建的 Player, 导致起播失败、封面一直盖住画面)
+  bool _liveLoading = false;
   // 直播卡片key: 用于判断卡片是否滚出视口
   final GlobalKey liveCardKey = GlobalKey();
   // 直播预览是否已出首帧(出帧后隐藏封面,避免封面盖住画面)
@@ -379,7 +394,12 @@ String _firstRawValue(BarcodeCapture? capture) {
 }
 
 // 首页直播信息(无直播间时不展示直播板块): 拿到拉流地址后首页静音预览
+// * 用 _liveLoading 防止并发重入: initState 的调用与生命周期 resumed 重试可能同时进入,
+//   并发会互相 dispose 掉正在创建的 Player, 导致起播失败(封面一直盖着视频, 观感=不播放)
 Future<void> loadLiveRoom() async {
+  if (_liveLoading) return;
+  _liveLoading = true;
+  try {
   final Map<String, dynamic>? room = await LiveApi.topRoom();
   if(!mounted) return;
   setState(() {
@@ -454,6 +474,9 @@ Future<void> loadLiveRoom() async {
   WidgetsBinding.instance.addPostFrameCallback((_) => syncLivePlayState());
   // 卡片若已滚出视口则不播放
   syncLivePlayState();
+  } finally {
+    _liveLoading = false;
+  }
 }
 
 // 直播预览播放状态: 卡片滚出视口自动暂停,滚回视口恢复播放
@@ -553,6 +576,16 @@ void initState() {
   loadCartCount();
   // 秒杀倒计时(每秒局部刷新)
   seckillTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickSeckill());
+
+  // 监听 App 生命周期: iOS 首次网络授权后 resumed 触发首页重试
+  WidgetsBinding.instance.addObserver(this);
+
+  // 监听网络可用性: 网络从无到有时重刷首页(监听授权后网络真正可用)
+  try {
+    _connectivitySub = Connectivity().onConnectivityChanged.listen(_onConnectivityChanged);
+  } catch (e) {
+    debugPrint('[index] 网络监听注册异常: $e');
+  }
   }
 
   // 首页 tab 分类: 取一级分类树(/api/goodscategory/tree)
@@ -972,6 +1005,9 @@ void initState() {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _resumeRetryTimer?.cancel();
+    _connectivitySub?.cancel();
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();
@@ -980,6 +1016,47 @@ void initState() {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _tryReloadOnResume();
+    }
+  }
+
+  /// 网络可用性变化: 仅在「无网络 -> 有网络」跳变时重刷首页
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    if (results.isEmpty) return;
+    final ConnectivityResult current = results.first;
+    final ConnectivityResult? last = _lastConnectivity;
+    _lastConnectivity = current;
+    // 状态未变化则跳过(避免重复触发)
+    if (last != null && last == current) return;
+    if (current == ConnectivityResult.none) return;
+    debugPrint('[index] 网络恢复($current), 触发首页重刷');
+    _tryReloadOnResume();
+  }
+
+  /// iOS 首次安装: 网络授权弹窗后 App resumed, 若首页关键数据仍为空则自动重试
+  void _tryReloadOnResume() {
+    if (!mounted) return;
+    // 数据已就绪则不再重试
+    if (dataList.isNotEmpty && bannerList.isNotEmpty && categoryList.isNotEmpty) return;
+    if (_resumeRetryCount >= _maxResumeRetries) return;
+    _resumeRetryTimer?.cancel();
+    _resumeRetryTimer = Timer(const Duration(milliseconds: 500), () {
+      if (!mounted) return;
+      // 500ms 后再次检查, 防止在途请求已返回
+      if (dataList.isNotEmpty && bannerList.isNotEmpty && categoryList.isNotEmpty) return;
+      _resumeRetryCount += 1;
+      debugPrint('[index] 生命周期 resumed, 首页数据为空, 触发第 $_resumeRetryCount 次重试');
+      handleRefresh();
+      loadLiveRoom();
+      loadSeckill();
+      loadCategory();
+      loadIndexConfig();
+      loadCartCount();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -990,7 +1067,7 @@ void initState() {
       child: RefreshIndicator(
         backgroundColor: Color(0xFFFCF7EE),
         color: Color(0xFFFF2C55),
-        displacement: 100.0,
+        displacement: 10.0,
         onRefresh: handleRefresh,
         child: DefaultTabController(
           length: tabList.length,
@@ -1237,8 +1314,17 @@ void initState() {
                         Text('App', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 20.0, fontWeight: FontWeight.w900, fontStyle: FontStyle.italic, fontFamily: 'Arial')),
                         Text('直播', style: TextStyle(color: Colors.black87, fontSize: 20.0, fontWeight: FontWeight.w900)),
                         Spacer(),
-                        Text('全部', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
-                        Icon(Icons.chevron_right, color: Colors.grey, size: 18.0),
+                        GestureDetector(
+                          onTap: () => Get.to(() => const LivePage()),
+                          behavior: HitTestBehavior.opaque,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text('全部', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
+                              Icon(Icons.chevron_right, color: Colors.grey, size: 18.0),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                     SizedBox(height: 10.0),
@@ -1291,23 +1377,6 @@ void initState() {
                                       fill: const Color(0xFF2A0A0B),
                                     ),
                                   ),
-                                // 遮罩: 上下都压一点深色(顶部标签/居中文字都可读), 中间留轻一点保持通透
-                                Positioned.fill(
-                                  child: Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        stops: const [0.0, 0.5, 1.0],
-                                        colors: [
-                                          Colors.black.withAlpha(110),
-                                          Colors.black.withAlpha(60),
-                                          Colors.black.withAlpha(130),
-                                        ],
-                                      ),
-                                    ),
-                                  ),
-                                ),
                                 // 观看人数 + 直播中标签
                                 Positioned(
                                   top: 10.0,
@@ -1341,8 +1410,8 @@ void initState() {
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Container(width: 5.0, height: 5.0, decoration: BoxDecoration(color: Colors.white, shape: BoxShape.circle)),
-                                            SizedBox(width: 4.0),
+                                            LivePlayingBars(color: Colors.white, height: 11.0),
+                                            SizedBox(width: 5.0),
                                             Text('直播中', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
                                           ],
                                         ),
@@ -1359,33 +1428,18 @@ void initState() {
                                         crossAxisAlignment: CrossAxisAlignment.center,
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
-                                          Text(
-                                            liveText(const ['name', 'room_name', 'title'], '欧拿优选专场'),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(color: Colors.white, fontSize: 16.0, fontWeight: FontWeight.w700, height: 1.2),
-                                          ),
-                                          SizedBox(height: 2.0),
-                                          Text(
-                                            liveSubtitle,
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                            textAlign: TextAlign.center,
-                                            style: TextStyle(color: Colors.white.withAlpha(200), fontSize: 11.0),
-                                          ),
-                                          SizedBox(height: 6.0),
                                           Container(
-                                            padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                                            padding: EdgeInsets.symmetric(horizontal: 14.0, vertical: 7.0),
                                             decoration: BoxDecoration(
                                               color: Colors.white,
-                                              borderRadius: BorderRadius.circular(14.0),
+                                              borderRadius: BorderRadius.circular(18.0),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Icon(Icons.play_arrow_rounded, color: Color(0xFFFF2C55), size: 14.0),
-                                                Text('看直播', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0, fontWeight: FontWeight.w700)),
+                                                Icon(Icons.play_arrow_rounded, color: Color(0xFFFF2C55), size: 18.0),
+                                                SizedBox(width: 4.0),
+                                                Text('点击看直播', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 14.0, fontWeight: FontWeight.w700)),
                                               ],
                                             ),
                                           ),
@@ -1401,7 +1455,7 @@ void initState() {
                           Container(
                             height: 54.0,
                             padding: EdgeInsets.symmetric(horizontal: 12.0),
-                            color: Color(0xFFFFF1F2),
+                            color: Colors.white,
                             child: Row(
                               children: [
                                 Container(

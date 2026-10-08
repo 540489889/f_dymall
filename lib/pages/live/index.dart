@@ -7,6 +7,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
 import '../../components/backtop.dart';
+import '../../components/live_playing_bars.dart';
 import '../../api/live.dart';
 import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
 import 'package:flutter/services.dart';
@@ -86,7 +87,9 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
     scrollController.addListener(() {
       scrollOffset.value = scrollController.offset;
 
-      if (scrollController.position.pixels == scrollController.position.maxScrollExtent) {
+      // 滚到底部附近(留 30px 余量)才加载下一页; maxScrollExtent>0 防止短列表误触发持续翻页
+      if (scrollController.position.maxScrollExtent > 0 &&
+          scrollController.position.pixels >= scrollController.position.maxScrollExtent - 30) {
         debugPrint('[live]滚动到底部');
         if (!isLoading && hasMore) {
           loadRoomPage();
@@ -183,38 +186,14 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
         elevation: 0,
         scrolledUnderElevation: 0,
         shadowColor: Colors.transparent,
-        toolbarHeight: 70.0,
+        toolbarHeight: 56.0,
         automaticallyImplyLeading: false,
         centerTitle: false,
-        leadingWidth: 60.0,
-        leading: const Center(
-          child: _PlayIcon(),
-        ),
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ShaderMask(
-              shaderCallback: (Rect bounds) {
-                return const LinearGradient(
-                  colors: [Color(0xFFFF8A75), Color(0xFFFF5A4D)],
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ).createShader(bounds);
-              },
-              child: const Text(
-                '乐惠直播',
-                style: TextStyle(fontSize: 22.0, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-            ),
-            Row(
-              children: [
-                const Text('好物·邻里·一起看', style: TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
-                const SizedBox(width: 3.0),
-                Icon(Icons.favorite, size: 10.0, color: Colors.pink[300]),
-              ],
-            ),
-          ],
+        leadingWidth: 0.0,
+        title: Image.asset(
+          'assets/images/leuhui_logo_live.png',
+          height: 50.0,
+          fit: BoxFit.contain,
         ),
         actions: [
           IconButton(
@@ -295,6 +274,8 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
           onRefresh: handleRefresh,
           child: ListView(
             controller: scrollController,
+            // 即便列表为空/很短也保持可滚动, 保证下拉刷新始终可用
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 10.0),
             children: [
               // 空态
@@ -365,28 +346,6 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
   }
 }
 
-// 顶部播放图标
-class _PlayIcon extends StatelessWidget {
-  const _PlayIcon();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 40.0,
-      height: 40.0,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFFFF8A75), Color(0xFFFF5A4D)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        shape: BoxShape.circle,
-      ),
-      child: const Icon(Icons.play_arrow, color: Colors.white, size: 24.0),
-    );
-  }
-}
-
 // 卡片组件
 class CardItem extends StatelessWidget {
   final dynamic item;
@@ -411,17 +370,24 @@ class CardItem extends StatelessWidget {
     return const <String>[];
   }
 
+  // 模拟数据兜底: 接口缺少标签时, 用固定文案撑出 UI 图效果
+  List<String> _mockTags(String title) {
+    if (title.contains('草莓')) return ['新鲜草莓', '农家直发', '现摘现发'];
+    if (title.contains('蟹') || title.contains('海鲜')) return ['品质蟹', '个大肥美', '现货速发'];
+    if (title.contains('水果')) return ['芒果', '蓝莓', '阳光玫瑰'];
+    if (title.contains('四件套') || title.contains('床品')) return ['纯棉四件套', '柔软舒适', '限时特惠'];
+    if (title.contains('坚果')) return ['坚果礼盒', '营养健康', '全家适用'];
+    return ['精选好物', '限时优惠', '品质保证'];
+  }
+
   @override
   Widget build(BuildContext context) {
     final Map<String, dynamic> room = item is Map ? (item as Map).cast<String, dynamic>() : <String, dynamic>{};
     final String cover = LiveApi.imageOf(room['feeds_img']);
     final String avatar = LiveApi.imageOf(room['anchor_img']);
     final String name = '${room['anchor_name'] ?? ''}'.trim();
-    final String title = '${room['name'] ?? ''}'.trim();
-    final String desc = '${room['desc'] ?? ''}'.trim();
-    final String community = '${room['community'] ?? ''}'.trim();
+    final String title = '${room['name'] ?? ''}'.trim().isEmpty ? '精选好物直播专场' : '${room['name'] ?? ''}'.trim();
     final bool isLive = LiveApi.statusOf(room) == 1;
-    final bool verified = room['is_verified'] == true;
 
     return InkWell(
       borderRadius: BorderRadius.circular(12.0),
@@ -435,13 +401,13 @@ class CardItem extends StatelessWidget {
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(10.0),
+        padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12.0),
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             // 缩略图
             ClipRRect(
@@ -450,13 +416,13 @@ class CardItem extends StatelessWidget {
                 children: [
                   CachedNetworkImage(
                     imageUrl: cover,
-                    width: 120.0,
-                    height: 150.0,
+                    width: 130.0,
+                    height: 90.0,
                     fit: BoxFit.cover,
-                    placeholder: (BuildContext context, String url) => Container(width: 120.0, height: 150.0, color: Colors.grey[200]),
+                    placeholder: (BuildContext context, String url) => Container(width: 130.0, height: 100.0, color: Colors.grey[200]),
                     errorWidget: (BuildContext context, String url, Object error) => Container(
-                      width: 120.0,
-                      height: 150.0,
+                      width: 130.0,
+                      height: 90.0,
                       color: Colors.grey[200],
                       alignment: Alignment.center,
                       child: const Icon(Icons.image, color: Colors.grey),
@@ -469,21 +435,20 @@ class CardItem extends StatelessWidget {
                     child: Container(
                       padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 3.0),
                       decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF8A75), Color(0xFFFF5A4D)],
-                          begin: Alignment.centerLeft,
-                          end: Alignment.centerRight,
-                        ),
+                        color: const Color(0xFFFDEDDF),
                         borderRadius: BorderRadius.circular(12.0),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.wifi_tethering, color: Colors.white, size: 10.0),
+                          // 直播中: 用跳动均衡器条代替静态图标(与首页直播卡片一致); 预告状态保留原图标
+                          isLive
+                              ? LivePlayingBars(color: const Color(0xFFFF5A4D), height: 10.0)
+                              : const Icon(Icons.wifi_tethering, color: Color(0xFFFF5A4D), size: 10.0),
                           const SizedBox(width: 3.0),
                           Text(
                             LiveApi.statusName(room),
-                            style: const TextStyle(color: Colors.white, fontSize: 10.0, fontWeight: FontWeight.w600),
+                            style: const TextStyle(color: Color(0xFFFF5A4D), fontSize: 10.0, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -516,109 +481,82 @@ class CardItem extends StatelessWidget {
             const SizedBox(width: 12.0),
             // 右侧信息
             Expanded(
-              child: SizedBox(
-                height: 150.0,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700, color: Color(0xFF333333)),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (desc.isNotEmpty)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 4.0),
-                        child: Text(
-                          desc,
-                          style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999)),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.w700, color: Color(0xFF222222), height: 1.3),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 8.0),
+                  // 主播行(头像/名字+认证/直播中)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 32.0,
+                        height: 32.0,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.grey[300]!, width: 1.0),
                         ),
-                      ),
-                    const SizedBox(height: 10.0),
-                    // 主播行(头像/名字/认证/直播中/小区专享)
-                    Row(
-                      children: [
-                        ClipOval(
+                        child: ClipOval(
                           child: CachedNetworkImage(
                             imageUrl: avatar,
-                            width: 20.0,
-                            height: 20.0,
+                            width: 32.0,
+                            height: 32.0,
                             fit: BoxFit.cover,
-                            errorWidget: (BuildContext context, String url, Object error) => Container(color: Colors.grey[200], width: 20.0, height: 20.0),
+                            errorWidget: (BuildContext context, String url, Object error) => Container(color: Colors.grey[200], width: 32.0, height: 32.0),
                           ),
                         ),
-                        const SizedBox(width: 5.0),
-                        Flexible(
-                          child: Text(
-                            name,
-                            style: const TextStyle(fontSize: 12.0, color: Color(0xFF666666)),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                        if (verified)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 2.0),
-                            child: Icon(Icons.verified, size: 13.0, color: Colors.orange[400]),
-                          ),
-                        if (isLive)
-                          Padding(
-                            padding: const EdgeInsets.only(left: 8.0),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
+                      ),
+                      const SizedBox(width: 10.0),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
                               children: [
-                                Icon(Icons.check_circle, size: 11.0, color: Colors.green[400]),
-                                const SizedBox(width: 2.0),
-                                const Text('直播中', style: TextStyle(fontSize: 11.0, color: Color(0xFF999999))),
+                                Flexible(
+                                  child: Text(
+                                    name,
+                                    style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: Color(0xFF333333)),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                Padding(
+                                  padding: const EdgeInsets.only(left: 4.0),
+                                  child: Icon(Icons.verified, size: 14.0, color: Colors.orange[400]),
+                                ),
                               ],
                             ),
-                          ),
-                        if (community.isNotEmpty)
-                          Flexible(
-                            child: Padding(
-                              padding: const EdgeInsets.only(left: 8.0),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(Icons.home_filled, size: 10.0, color: Colors.orange[400]),
-                                  const SizedBox(width: 2.0),
-                                  Flexible(
-                                    child: Text(
-                                      '$community小区专享',
-                                      style: TextStyle(fontSize: 11.0, color: Colors.orange[400]),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const Spacer(),
-                    // 标签
-                    if (_tags.isNotEmpty)
-                      Wrap(
-                        spacing: 6.0,
-                        runSpacing: 6.0,
-                        children: _tags.map((String tag) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF0ED),
-                            borderRadius: BorderRadius.circular(10.0),
-                          ),
-                          child: Text(
-                            tag,
-                            style: const TextStyle(fontSize: 11.0, color: Color(0xFFFF5A4D)),
-                          ),
-                        )).toList(),
+                          ],
+                        ),
                       ),
-                  ],
-                ),
+                    ],
+                  ),
+                  const SizedBox(height: 6.0),
+                  // 标签(最多2个, 单行)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: 6.0,
+                    children: (_tags.isNotEmpty ? _tags : _mockTags(title)).take(2).map((String tag) => Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF8F6),
+                        borderRadius: BorderRadius.circular(10.0),
+                      ),
+                      child: Text(
+                        tag,
+                        style: const TextStyle(fontSize: 10.0, color: Color(0xFFFF5A4D)),
+                      ),
+                    )).toList(),
+                  ),
+                ],
               ),
             ),
           ],

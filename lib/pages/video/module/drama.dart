@@ -225,18 +225,21 @@ class _DramaModuleState extends State<DramaModule> {
       children: [
         // 左侧标题: 直接用 drama_logo.png 代替整个标题板块
         Expanded(
-          child: Image.asset(
+          child:         Image.asset(
             'assets/images/newico/drama_logo.png',
-            height: 38.0,
+            height: 52.0,
             fit: BoxFit.contain,
             alignment: Alignment.centerLeft,
           ),
         ),
         // 右侧装饰: drama_sticker.png
-        Image.asset(
-          'assets/images/newico/drama_sticker.png',
-          height: 56.0,
-          fit: BoxFit.contain,
+        Padding(
+          padding: const EdgeInsets.only(top: 10.0),
+          child: Image.asset(
+            'assets/images/newico/drama_sticker.png',
+            height: 40.0,
+            fit: BoxFit.contain,
+          ),
         ),
       ],
     );
