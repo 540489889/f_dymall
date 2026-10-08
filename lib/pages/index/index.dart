@@ -457,7 +457,10 @@ Future<void> loadLiveRoom() async {
   // * 首帧以"纹理已创建 / 首帧已渲染"为准, 才不会被过早隐藏封面
   controller.id.addListener(() {
     if(kDebugMode) debugPrint('[live]textureId=${controller.id.value}');
-    if((controller.id.value ?? -1) > 0 && !liveFirstFrame.value) liveFirstFrame.value = true;
+    // iOS 上 id 是视频 UIView 的 tag: 视图一创建就有值(此时还没有画面),
+    // 拿它当"已出首帧"会在 iOS 上过早隐藏封面 -> 露出空白;
+    // Android 的 id 是纹理 id(出画面才创建),照旧用它; iOS 只认 waitUntilFirstFrameRendered
+    if(isAndroidPlatform && (controller.id.value ?? -1) > 0 && !liveFirstFrame.value) liveFirstFrame.value = true;
   });
   if(kDebugMode) controller.rect.addListener(() => debugPrint('[live]输出rect=${controller.rect.value}'));
   controller.waitUntilFirstFrameRendered.then((_) {
@@ -465,10 +468,16 @@ Future<void> loadLiveRoom() async {
     if(mounted) liveFirstFrame.value = true;
   });
   await player.setVolume(0.0);
+  if(!mounted) return;
+  // 先把 Video 控件挂上树、等平台视图真正创建好,再起播
+  // * iOS 的 Video 是平台视图(UiKitView): 起播之后再 setState 创建视图,
+  //   画面会"一闪而过然后变空白"(视图创建时播放器已在播,画面接不上)
+  setState(() {});
+  await WidgetsBinding.instance.endOfFrame;
+  if(!mounted) return;
   // 走 LiveReconnector: 抵消 Surface 重建触发的 seek 对 RTMP 直播的打断
   await reconnector.open(src, play: true);
   if(!mounted) return;
-  setState(() {});
   // 卡片挂载可能晚于接口返回(此刻 liveCardKey.currentContext 还是 null): 首帧后再同步一次,
   // 否则这一轮同步会直接 return, 之后只有滚动才会恢复预览
   WidgetsBinding.instance.addPostFrameCallback((_) => syncLivePlayState());
@@ -1138,7 +1147,7 @@ void initState() {
                                   children: [
                                     const Icon(Icons.store, color: Colors.white, size: 13.0),
                                     SizedBox(width: 4.0),
-                                    Text('内部门店', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w500)),
+                                    Text(bound ? '内部门店' : '绑定门店', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w500)),
                                     Icon(Icons.chevron_right, color: Colors.white, size: 14.0),
                                   ],
                                 ),
