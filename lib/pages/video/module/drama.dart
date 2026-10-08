@@ -364,6 +364,13 @@ class DramaCard extends StatelessWidget {
                 CachedNetworkImage(
                   imageUrl: '${item['image']}',
                   placeholder: (context, url) => Container(color: Colors.grey[200]),
+                  // 加载/解码失败(如 web 端跨域 CORS 拦截)时显示占位, 不再抛出 "source image cannot be decoded"
+                  errorWidget: (context, url, error) => Container(
+                    color: const Color(0xFFF0F0F0),
+                    child: const Center(
+                      child: Icon(Icons.broken_image_outlined, color: Colors.grey, size: 28.0),
+                    ),
+                  ),
                   fit: BoxFit.cover,
                 ),
                 // 左上角标签

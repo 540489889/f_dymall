@@ -64,20 +64,19 @@ class _MyPageState extends State<MyPage> {
   }
 
   Widget _buildAvatar() {
-    final Widget placeholder = Image.asset(
-      'assets/images/me/mine_avatar_default.png',
-      width: 66.0,
-      height: 66.0,
-      fit: BoxFit.cover,
-      errorBuilder: (_, __, ___) => const SizedBox(width: 66.0, height: 66.0, child: Icon(Icons.person, color: Colors.grey)),
+    final Widget placeholder = Container(
+      width: 58.0,
+      height: 58.0,
+      color: Colors.white,
+      child: const Icon(Icons.person, color: Color(0xFFFF7A50), size: 32.0),
     );
     final String url = authStore.headimg;
     if (url.isEmpty) return placeholder;
     return ClipOval(
       child: Image.network(
         url,
-        width: 66.0,
-        height: 66.0,
+        width: 58.0,
+        height: 58.0,
         fit: BoxFit.cover,
         errorBuilder: (_, _, _) => placeholder,
       ),
@@ -159,6 +158,10 @@ class _MyPageState extends State<MyPage> {
 
   // 顶部橙色渐变区域
   Widget _buildHeader(double statusTop) {
+    // 已登录且能取到手机号/昵称时才按登录态渲染; 仅有 token 但会员信息未拉到(如接口失败)
+    // 时, 按未登录展示, 避免出现"无边框/空电话"的异常空状态
+    final bool hasUser = authStore.isLogin &&
+        (authStore.mobile.isNotEmpty || authStore.nickname.isNotEmpty);
     return Container(
       decoration: const BoxDecoration(
         gradient: LinearGradient(
@@ -191,19 +194,19 @@ class _MyPageState extends State<MyPage> {
               children: [
                 // 头像
                 Container(
-                  width: 70.0,
-                  height: 70.0,
+                  width: 60.0,
+                  height: 60.0,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.0),
+                    border: Border.all(color: Colors.white, width: 1.0),
                   ),
                   clipBehavior: Clip.antiAlias,
-                  child: authStore.isLogin ? _buildAvatar() : const Icon(Icons.person, color: Colors.white70, size: 40.0),
+                  child: hasUser ? _buildAvatar() : const Icon(Icons.person, color: Colors.white70, size: 32.0),
                 ),
                 const SizedBox(width: 12.0),
                 // 信息
                 Expanded(
-                  child: authStore.isLogin
+                  child: hasUser
                       ? Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,

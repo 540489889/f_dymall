@@ -1020,8 +1020,8 @@ void initState() {
                       children: [
                         Image.asset(
                           'assets/images/home_logo.png',
-                          width: 110.0,
-                          height: 34.0,
+                          width: 124.0,
+                          height: 38.0,
                           fit: BoxFit.contain,
                           isAntiAlias: true,
                           errorBuilder: (context, error, stackTrace) => const SizedBox(width: 110.0, height: 34.0),
