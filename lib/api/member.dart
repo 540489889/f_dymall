@@ -2,6 +2,7 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../utils/request.dart';
 
@@ -29,6 +30,31 @@ class MemberApi {
   /// 返回昵称/头像/余额/门店等会员资料
   static Future<dynamic> info() async {
     return Request().get('/api/member/info');
+  }
+
+  /// 我的服务导航(/api/Member/serviceNav)
+  /// * 后台返回 {code, message, data} , data 为服务项数组(或 {list: []})
+  /// * 单项字段: nav_name 名称 / nav_image 图标 / nav_url 跳转配置(JSON 字符串) / sort 排序 / is_use 是否启用
+  /// * 这里只做取数与清洗(过滤停用项 + 按 sort 升序), 跳转由页面按 nav_url.name 分发
+  static Future<List<Map<String, dynamic>>> serviceNav() async {
+    final Map<String, dynamic> res = await Request().getRaw('/api/Member/serviceNav');
+    if (kDebugMode) {
+      debugPrint('[serviceNav] code=${res['code']} message=${res['message']}');
+      debugPrint('[serviceNav] data=${res['data']}');
+    }
+    final dynamic data = res['data'];
+    final List<dynamic> raw = data is List
+        ? data
+        : (data is Map ? (data['list'] as List? ?? data['data'] as List? ?? const <dynamic>[]) : const <dynamic>[]);
+    final List<Map<String, dynamic>> list = raw
+        .whereType<Map>()
+        .map((Map<dynamic, dynamic> e) => e.cast<String, dynamic>())
+        // is_use 缺省视为启用, 只有显式 0 才剔除
+        .where((Map<String, dynamic> e) => '${e['is_use'] ?? 1}' != '0')
+        .toList();
+    list.sort((Map<String, dynamic> a, Map<String, dynamic> b) =>
+        (num.tryParse('${a['sort'] ?? 0}') ?? 0).compareTo(num.tryParse('${b['sort'] ?? 0}') ?? 0));
+    return list;
   }
 
   // ===== 个人资料修改(对齐 H5 pages_tool/member/public/js/info.js) =====

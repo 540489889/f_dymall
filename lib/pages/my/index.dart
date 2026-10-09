@@ -1,9 +1,14 @@
 /// 我的模板
 library;
 
+import 'dart:convert';
+
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import '../../api/member.dart';
 import '../../controller/auth_store.dart';
 import '../../controller/app_config.dart';
 
@@ -16,9 +21,13 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   final authStore = AuthStore.to;
 
+  // 我的服务: /api/Member/serviceNav 的配置项(空则回退本地默认项)
+  final List<Map<String, dynamic>> serviceList = <Map<String, dynamic>>[];
+
   @override
   void initState() {
     super.initState();
+    loadServiceNav();
     // 已登录但会员信息为空(如启动时拉取失败),进入页面补拉一次
     if (authStore.isLogin && authStore.memberInfo.isEmpty) {
       authStore.loadMemberInfo();
@@ -26,6 +35,22 @@ class _MyPageState extends State<MyPage> {
     // 券数量: 进入页面刷一次(接口轻量, 内部已做异常兜底)
     if (authStore.isLogin) {
       authStore.loadCouponNum();
+    }
+  }
+
+  /// 我的服务: 拉 /api/Member/serviceNav 的配置
+  /// * 失败 / 后台没配时保留空列表, 渲染回退到本地默认项
+  Future<void> loadServiceNav() async {
+    try {
+      final List<Map<String, dynamic>> list = await MemberApi.serviceNav();
+      if (!mounted || list.isEmpty) return;
+      setState(() {
+        serviceList
+          ..clear()
+          ..addAll(list);
+      });
+    } catch (e) {
+      if (kDebugMode) debugPrint('[serviceNav] 请求失败, 回退默认项: $e');
     }
   }
 
@@ -111,7 +136,19 @@ class _MyPageState extends State<MyPage> {
   }
 
   /// 菜单入口(图标 + 文字)
+  /// * [image] http(s) 开头走网络图标, 否则按本地资源加载
   Widget _menuItem({required String label, required String image, required VoidCallback onTap}) {
+    final Widget icon = image.startsWith('http')
+        ? CachedNetworkImage(
+            imageUrl: image,
+            width: 32.0,
+            height: 32.0,
+            fit: BoxFit.contain,
+            placeholder: (BuildContext c, String u) => const SizedBox(width: 32.0, height: 32.0),
+            errorWidget: (BuildContext c, String u, Object e) => const SizedBox(width: 32.0, height: 32.0),
+          )
+        : Image.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain,
+            errorBuilder: (_, __, ___) => const SizedBox(width: 32.0, height: 32.0));
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -119,14 +156,87 @@ class _MyPageState extends State<MyPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 32.0, height: 32.0)),
+            icon,
             const SizedBox(height: 8.0),
             Text(label, style: const TextStyle(fontSize: 12.0, color: Color(0xFF333333))),
           ],
         ),
       ),
     );
+  }
+
+  /// 本地默认服务项(接口没配 / 请求失败时兜底)
+  /// * 结构与 /api/Member/serviceNav 保持一致, 图标用本地资源(非 http 即走 Image.asset)
+  static List<Map<String, dynamic>> _defaultServices() {
+    return <Map<String, dynamic>>[
+      <String, dynamic>{'nav_name': '直播连麦', 'nav_image': 'assets/images/me/mine_icon_svc_livemic.png', 'nav_url': '{"name":"LIVE_CONNECT"}'},
+      <String, dynamic>{'nav_name': '我的账户', 'nav_image': 'assets/images/me/mine_icon_svc_account.png', 'nav_url': '{"name":"MEMBER_ACCOUNT"}'},
+      <String, dynamic>{'nav_name': '收货地址', 'nav_image': 'assets/images/me/mine_icon_svc_address.png', 'nav_url': '{"name":"ADDRESS_LIST"}'},
+      <String, dynamic>{'nav_name': '看播集章', 'nav_image': 'assets/images/me/mine_icon_svc_medal.png', 'nav_url': '{"name":"STAMP"}'},
+      <String, dynamic>{'nav_name': '联系客服', 'nav_image': 'assets/images/me/mine_icon_svc_support.png', 'nav_url': '{"name":"CHAT"}'},
+      <String, dynamic>{'nav_name': '邀请好友', 'nav_image': 'assets/images/me/mine_icon_svc_invite.png', 'nav_url': '{"name":"INVITE"}'},
+    ];
+  }
+
+  /// 我的服务跳转: nav_url 为 JSON 字符串(与首页金刚区同一套约定), name 是动作码
+  void _handleServiceNav(Map<String, dynamic> item) {
+    final dynamic rawUrl = item['nav_url'];
+    Map<String, dynamic> info = <String, dynamic>{};
+    if (rawUrl is Map) {
+      info = rawUrl.cast<String, dynamic>();
+    } else {
+      final String text = '${rawUrl ?? ''}'.trim();
+      if (text.isEmpty) {
+        Get.snackbar('提示', '该入口暂未配置', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+      try {
+        final dynamic decoded = jsonDecode(text);
+        if (decoded is Map) info = decoded.cast<String, dynamic>();
+      } catch (_) {
+        Get.snackbar('提示', '该入口暂未配置', snackPosition: SnackPosition.BOTTOM);
+        return;
+      }
+    }
+    final String name = '${info['name'] ?? ''}';
+    _checkLogin(() {
+      switch (name) {
+        case 'LIVE_CONNECT':
+          Get.toNamed('/live');
+          break;
+        case 'MEMBER_ACCOUNT':
+          Get.toNamed('/my/withdraw_account');
+          break;
+        case 'ADDRESS_LIST':
+          Get.toNamed('/address');
+          break;
+        case 'STAMP':
+          Get.toNamed('/stamp');
+          break;
+        case 'CHAT':
+          Get.toNamed('/chat');
+          break;
+        // 复用首页金刚区已有的动作码
+        case 'SIGN_IN':
+          Get.toNamed('/my/signin');
+          break;
+        case 'SECKILL_PREFECTURE':
+          Get.toNamed('/seckill');
+          break;
+        case 'MEMBER_CENTER':
+          Get.toNamed('/my/wallet');
+          break;
+        case 'GOODS_CATEGORY_PAGE':
+          Get.toNamed('/goods', arguments: <String, dynamic>{'category_id': '${info['category_id'] ?? ''}'});
+          break;
+        case 'INVITE':
+          Get.snackbar('提示', '邀请功能开发中', snackPosition: SnackPosition.BOTTOM);
+          break;
+        default:
+          Get.snackbar('提示', name.isNotEmpty ? '暂不支持的入口:$name' : '该入口暂未配置',
+              snackPosition: SnackPosition.BOTTOM);
+      }
+    });
   }
 
   // 会员徽章: 普通会员直接显示完整徽章图; 其他等级用白底胶囊 + 图标 + 文字
@@ -405,39 +515,9 @@ class _MyPageState extends State<MyPage> {
   }
 
   // 我的服务(4 列网格,从左到右依次排列,自动换行)
+  // * 优先用 /api/Member/serviceNav 的后台配置, 没数据时回退本地默认项
   Widget _buildServiceCard() {
-    final List<Map<String, dynamic>> items = <Map<String, dynamic>>[
-      <String, dynamic>{
-        'image': 'assets/images/me/mine_icon_svc_livemic.png',
-        'label': '直播连麦',
-        'onTap': () => _checkLogin(() => Get.toNamed('/live')),
-      },
-      <String, dynamic>{
-        'image': 'assets/images/me/mine_icon_svc_account.png',
-        'label': '我的账户',
-        'onTap': () => _checkLogin(() => Get.toNamed('/my/withdraw_account')),
-      },
-      <String, dynamic>{
-        'image': 'assets/images/me/mine_icon_svc_address.png',
-        'label': '收货地址',
-        'onTap': () => _checkLogin(() => Get.toNamed('/address')),
-      },
-      <String, dynamic>{
-        'image': 'assets/images/me/mine_icon_svc_medal.png',
-        'label': '看播集章',
-        'onTap': () => _checkLogin(() => Get.toNamed('/stamp')),
-      },
-      <String, dynamic>{
-        'image': 'assets/images/me/mine_icon_svc_support.png',
-        'label': '联系客服',
-        'onTap': () => _checkLogin(() => Get.toNamed('/chat')),
-      },
-      <String, dynamic>{
-        'image': 'assets/images/me/mine_icon_svc_invite.png',
-        'label': '邀请好友',
-        'onTap': () => Get.snackbar('提示', '邀请功能开发中'),
-      },
-    ];
+    final List<Map<String, dynamic>> items = serviceList.isNotEmpty ? serviceList : _defaultServices();
     return _whiteCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -455,9 +535,9 @@ class _MyPageState extends State<MyPage> {
                     .map((Map<String, dynamic> e) => SizedBox(
                           width: itemW,
                           child: _menuItem(
-                            image: e['image'] as String,
-                            label: e['label'] as String,
-                            onTap: e['onTap'] as VoidCallback,
+                            image: '${e['nav_image'] ?? ''}',
+                            label: '${e['nav_name'] ?? ''}',
+                            onTap: () => _handleServiceNav(e),
                           ),
                         ))
                     .toList(),
