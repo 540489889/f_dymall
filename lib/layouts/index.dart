@@ -101,39 +101,11 @@ class _LayoutState extends State<Layout> {
     return fallback;
   }
 
-  /// 本地兜底图标(diy 图标加载失败 / 无网络时用), 尺寸与 diy 图标保持一致
-  Widget _localIcon(String type, bool selected, [double size = 26.0]) {
-    String asset;
-    switch (type) {
-      case 'home':
-        asset = 'tab_shop_selected.png';
-        break;
-      case 'video':
-        asset = 'tab_video.png';
-        break;
-      case 'live':
-        asset = 'tab_live.png';
-        break;
-      case 'earn':
-        asset = 'tab_money.png';
-        break;
-      case 'mine':
-        asset = 'tab_mine.png';
-        break;
-      default:
-        asset = 'tab_shop_selected.png';
-    }
-    return Opacity(
-      opacity: selected ? 1.0 : 0.5,
-      child: Image.asset('assets/images/newico/$asset', width: size, height: size, fit: BoxFit.contain),
-    );
-  }
-
-  /// diy 网络图标: 取选中/未选中两态图片(失败回退本地)
+  /// diy 网络图标: 只显示接口返回的两态图片
+  /// * 不用本地静态图标兜底: BottomNavigationBar 选中态用 activeIcon 插槽、未选中用 icon 插槽,
+  ///   切 tab 时图片控件在两个插槽间重新挂载, placeholder 会先闪一下本地图标再变接口图标
+  /// * 加载中 / 失败 / 地址为空一律用同尺寸空白占位, 图标区域高度不变
   Widget _diyIcon(Map<String, dynamic> item, bool selected) {
-    final Map<String, dynamic> link =
-        item['link'] is Map ? item['link'] as Map<String, dynamic> : <String, dynamic>{};
-    final String type = '${link['type'] ?? ''}';
     final String url = selected
         ? '${item['selectedIconPath'] ?? ''}'
         : '${item['iconPath'] ?? ''}';
@@ -141,15 +113,15 @@ class _LayoutState extends State<Layout> {
     double size = 40.0;
     final double? w = double.tryParse('${item['imgWidth'] ?? ''}');
     if (w != null && w > 0) size = w;
-    if (url.isEmpty) return _localIcon(type, selected, size);
+    if (url.isEmpty) return SizedBox(width: size, height: size);
     return CachedNetworkImage(
       imageUrl: url,
       width: size,
       height: size,
       fit: BoxFit.contain,
       fadeInDuration: Duration.zero,
-      placeholder: (BuildContext c, String u) => _localIcon(type, selected, size),
-      errorWidget: (BuildContext c, String u, Object e) => _localIcon(type, selected, size),
+      placeholder: (BuildContext c, String u) => SizedBox(width: size, height: size),
+      errorWidget: (BuildContext c, String u, Object e) => SizedBox(width: size, height: size),
     );
   }
 

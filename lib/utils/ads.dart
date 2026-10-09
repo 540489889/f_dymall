@@ -39,6 +39,13 @@ class Ads {
       debugPrint('[ads] 未配置 appId, 跳过初始化');
       return false;
     }
+    // 开发调试: 临时关闭穿山甲, 不初始化也不请求广告(见 AdsConfig.debugDisable)
+    if (AdsConfig.debugDisable) {
+      debugPrint('[ads] 开发调试已关闭广告SDK, 跳过初始化');
+      _inited = true;
+      _sdkReady = false;
+      return false;
+    }
     // 上次初始化失败时允许重试(热重启/网络抖动都会导致失败)
     if (_inited && _sdkReady) return true;
 
@@ -186,7 +193,8 @@ class _AdsBannerState extends State<AdsBanner> {
   @override
   Widget build(BuildContext context) {
     // H5 不渲染广告(插件无 web 实现, 渲染会抛 MissingPluginException)
-    if (!Ads.supported) return const SizedBox.shrink();
+    // 开发调试关闭广告时也直接占位, 否则 AdBannerWidget 会去调原生插件报错
+    if (!Ads.supported || !AdsConfig.usable) return const SizedBox.shrink();
     return AdBannerWidget(
       key: ValueKey<int>(_refreshKey),
       posId: widget.posId,

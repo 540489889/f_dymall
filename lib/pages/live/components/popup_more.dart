@@ -62,7 +62,6 @@ void initState() {
     backgroundColor: Colors.transparent,
    body: ScrollConfiguration(
     behavior: CustomScrollBehavior().copyWith(scrollbars: false),
-    child: SafeArea(
     child: Column(
       children: [
         Expanded(
@@ -78,7 +77,9 @@ void initState() {
       Material(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(10.0)),
-        child: Column(
+        child: SafeArea(
+          top: false,
+          child: Column(
           children: [
             Container(
               height: 95.0,
@@ -127,10 +128,10 @@ void initState() {
               ],
             ),
           ),
+        ),
         ],
         ),
       ),
-    ),
-  );
+    );
   }
 }

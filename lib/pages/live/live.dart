@@ -349,6 +349,7 @@ Future<void> _loadRoomInfo() async {
   if (started) unawaited(liveReconnector.open(entrySrc));
   final String url = (await urlFuture).trim();
   if (!mounted) return;
+  if (kDebugMode) debugPrint('[live]详情页 getPullUrl: sn=$sn url=$url 入口src=$entrySrc');
   setState(() {
     pullUrl = url;
     // 拉流地址同步到列表(竖滑回本房间时直接用, 不用再取一次)
@@ -548,6 +549,7 @@ Future<void> _openEntryStream() async {
   String liveSrc = index == entryIndex ? pullUrl : '${_roomItem(index)['src'] ?? ''}'.trim();
   if (liveSrc.isEmpty) liveSrc = '${roomInfo?['push_link'] ?? ''}'.trim();
   if (liveSrc.isEmpty) liveSrc = '${arguments['src'] ?? ''}'.trim();
+  if (kDebugMode) debugPrint('[live]详情页起播地址: index=$index sn=$roomSn src=$liveSrc');
   // 拿不到拉流地址就不起播(由封面 + 状态提示兜底), 不再回落到演示地址
   if (liveSrc.isEmpty) return;
   // 预告片是静音播的, 起直播流时恢复音量
@@ -621,6 +623,7 @@ Future<void> _switchRoom(int index) async {
   if (started) unawaited(liveReconnector.open(listSrc));
   final String url = (await urlFuture).trim();
   if (!mounted) return;
+  if (kDebugMode) debugPrint('[live]切房 getPullUrl: sn=$sn url=$url 列表src=$listSrc');
   setState(() {
     if (url.isNotEmpty && index < roomList.length) roomList[index]['src'] = url;
   });
@@ -1833,40 +1836,40 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     // * 加载失败(服务端默认头像 404 等)同样回落灰底圆, 不再抛 NetworkImageLoadException
                                     ClipOval(
                                       child: '${item['logo']}'.isEmpty
-                                          ? Container(height: 30.0, width: 30.0, color: Colors.white24)
+                                          ? Container(height: 36.0, width: 36.0, color: Colors.white24)
                                           : Image.network(
                                               '${item['logo']}',
-                                              height: 30.0,
-                                              width: 30.0,
+                                              height: 36.0,
+                                              width: 36.0,
                                               fit: BoxFit.cover,
                                               errorBuilder: (_, __, ___) =>
-                                                  Container(height: 30.0, width: 30.0, color: Colors.white24),
+                                                  Container(height: 36.0, width: 36.0, color: Colors.white24),
                                             ),
                                     ),
                                     SizedBox(width: 3.0,),
                                     // 昵称/点赞数: 顶部信息条在 Row 中是无界约束, 不限制宽度时长文案会把整条撑破
                                     // (曾报 RenderFlex overflowed by 566 pixels), 这里收口到 150 并单行省略
                                     ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 150.0),
+                                      constraints: const BoxConstraints(maxWidth: 170.0),
                                       child: Column(
                                         crossAxisAlignment: CrossAxisAlignment.start,
                                         children: [
-                                          Text(anchorNameOf(item), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontSize: 12.0),),
-                                          Text(_zanText(index, item), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white70, fontSize: 8.0),),
+                                          Text(anchorNameOf(item), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white, fontSize: 14.0),),
+                                          Text(_zanText(index, item), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.white70, fontSize: 10.0),),
                                         ],
                                       ),
                                     ),
                                     GestureDetector(
                                       child: Container(
-                                        height: 26.0,
-                                        width: 50.0,
+                                        height: 30.0,
+                                        width: 56.0,
                                         margin: EdgeInsets.all(2.0),
                                         alignment: Alignment.center,
                                         decoration: BoxDecoration(
                                           color: item['isFollow'] ? Colors.white : Color(0xFFFF2C55),
                                             borderRadius: BorderRadius.circular(50.0),
                                           ),
-                                          child: Text(item['isFollow'] ? '已关注' : '关注', style: TextStyle(color: item['isFollow'] ? Color(0xFFFF2C55) : Colors.white, fontSize: 12.0),),
+                                          child: Text(item['isFollow'] ? '已关注' : '关注', style: TextStyle(color: item['isFollow'] ? Color(0xFFFF2C55) : Colors.white, fontSize: 13.0),),
                                         ),
                                         onTap: () => _onFollowTap(index, item),
                                           )
@@ -1881,25 +1884,25 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                             if (index == entryIndex && roomOnline > 0)
                                               Container(
                                                 margin: const EdgeInsets.only(right: 7.0),
-                                                padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                                                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
                                                 decoration: BoxDecoration(
                                                   color: Colors.black12,
                                                   borderRadius: BorderRadius.circular(50.0),
                                                 ),
                                                 child: Row(
                                                   children: [
-                                                    const Icon(Icons.visibility_outlined, color: Colors.white70, size: 12.0),
-                                                    const SizedBox(width: 3.0),
-                                                    Text('$roomOnline人', style: const TextStyle(color: Colors.white, fontSize: 12.0),),
+                                                    const Icon(Icons.visibility_outlined, color: Colors.white70, size: 15.0),
+                                                    const SizedBox(width: 4.0),
+                                                    Text('$roomOnline人', style: const TextStyle(color: Colors.white, fontSize: 14.0),),
                                                   ],
                                                 ),
                                               ),
                                             Container(
-                                              height: 25.0,
-                                              width: 25.0,
+                                              height: 32.0,
+                                              width: 32.0,
                                               alignment: Alignment.center,
                                               child: IconButton(
-                                                icon: const Icon(Icons.close, color: Colors.white70, size: 16.0),
+                                                icon: const Icon(Icons.close, color: Colors.white70, size: 20.0),
                                                 style: ButtonStyle(backgroundColor: WidgetStateProperty.all(Colors.black12)),
                                                 padding: EdgeInsets.zero,
                                                 onPressed: () {Get.back();},
@@ -2318,7 +2321,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                       child: InkWell(
                                     child: Container(
                                       alignment: Alignment.centerLeft,
-                                    height: 35.0,
+                                    height: 38.0,
                                     padding: const EdgeInsets.symmetric(horizontal: 15.0),
                                     decoration: BoxDecoration(
                                       color: Colors.black26,
@@ -2339,13 +2342,13 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     InkWell(
                                       child: Container(
                                           alignment: Alignment.center,
-                                          height: 35.0,
-                                          width: 35.0,
+                                          height: 38.0,
+                                          width: 38.0,
                                           decoration: BoxDecoration(
                                             color: Colors.black26,
                                             borderRadius: BorderRadius.circular(50.0),
                                           ),
-                                          child: Image.asset('assets/images/icon-cart.png', width: 20.0,),
+                                          child: Image.asset('assets/images/icon-cart.png', width: 23.0,),
                                         ),
                                         onTap: () {
                                           // 真实直播间拿不到带货商品时不做演示数据兜底, 避免演示商品串进真实房间
@@ -2371,13 +2374,13 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                       onTap: _onLikeButtonTap,
                                       child: Container(
                                         alignment: Alignment.center,
-                                        height: 35.0,
-                                        width: 35.0,
+                                        height: 38.0,
+                                        width: 38.0,
                                         decoration: BoxDecoration(
                                           color: Colors.black26,
                                           borderRadius: BorderRadius.circular(50.0),
                                         ),
-                                        child: Image.asset('assets/images/icon-aixin.png', width: 20.0,),
+                                        child: Image.asset('assets/images/icon-aixin.png', width: 23.0,),
                                       ),
                                     ),
                                     // 底部礼物入口: 先停用(礼物弹窗 + 钻石不足充值弹窗), 需要时取消下面整段注释即可
@@ -2417,13 +2420,13 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                   InkWell(
                                     child: Container(
                                     alignment: Alignment.center,
-                                    height: 36.0,
-                                    width: 36.0,
+                                    height: 38.0,
+                                    width: 38.0,
                                   decoration: BoxDecoration(
                                     color: Colors.black26,
                                     borderRadius: BorderRadius.circular(50.0),
                                   ),
-                                  child: const Icon(Icons.more_horiz_outlined, color: Colors.white, size: 20),
+                                  child: const Icon(Icons.more_horiz_outlined, color: Colors.white, size: 23),
                                 ),
                                 onTap: () {
                                       navigator?.push(FadeRoute(

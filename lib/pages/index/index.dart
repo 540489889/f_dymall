@@ -17,6 +17,8 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/custom_sticky_header.dart';
 import '../../components/loading.dart';
+import '../../components/skeleton.dart';
+import '../../utils/app_splash.dart';
 import '../../components/live_playing_bars.dart';
 import '../../components/backtop.dart';
 import '../../components/custom_pageview_indicator.dart';
@@ -37,7 +39,9 @@ class IndexPage extends StatefulWidget {
 }
 
 class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMixin, WidgetsBindingObserver {
-  List<String> tabList = ['推荐', '新品', '手机', '酒水饮料', '男装', '女装', '爱车', '食品', '生鲜', '家电', '生活旅行'];
+  // 首页分类 tab: 只取 /api/goodscategory/tree(「推荐」固定第一), 不再内置默认分类
+  // * 接口未返回前 tabList 为空 -> 不渲染分类吸顶条(见 SliverLayoutBuilder 里的空判断), 只显示推荐瀑布流
+  List<String> tabList = <String>[];
 
   // 瀑布流列表
   List waterfallData = [
@@ -116,6 +120,9 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   List dataList = [];
   // 是否加载中
   bool isLoading = false;
+  // 是否首次加载(首屏进入 / 切换分类): 该阶段用骨架屏占位,不落到"暂无商品"空态,
+  // 避免数据没回来时先闪一下空态、再跳成列表
+  bool firstLoad = true;
   // 是否下拉刷新中(刷新时不显示底部"加载中",列表本身也不清空)
   bool isRefreshing = false;
   // 商品列表是否横向单列布局(默认横向单列)
@@ -154,10 +161,15 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   // 重入锁: 防止 loadLiveRoom 并发进入(首启时 initState 与生命周期 resumed 重试可能同时调用,
   // 两者都会 dispose 旧 Player 再新建, 并发会互相 dispose 掉正在创建的 Player, 导致起播失败、封面一直盖住画面)
   bool _liveLoading = false;
+  // 已起播的拉流地址: 首页重刷时若还是同一条地址, 就不要销毁重建播放器
+  // * 重建会把刚出来的画面弄没(旧 player 被 dispose, 新的要重新建连 + 缓冲), 观感就是"播了一下又没了"
+  String _livePlayingSrc = '';
   // 直播卡片key: 用于判断卡片是否滚出视口
   final GlobalKey liveCardKey = GlobalKey();
   // 直播预览是否已出首帧(出帧后隐藏封面,避免封面盖住画面)
   final ValueNotifier<bool> liveFirstFrame = ValueNotifier(false);
+  // 排障用(仅 debug): 起播后的状态巡检定时器
+  Timer? _liveDiagTimer;
 
   // 限时秒杀板块: 当前场次
   SeckillTime? seckillTime;
@@ -243,11 +255,15 @@ Future<void> loadMoreData({bool refresh = false}) async {
       page += 1;
       hasMore = page <= pageCount;
       isLoading = false;
+      // 首屏数据已到位(可能为空): 结束骨架屏,空的话才显示"暂无商品"
+      firstLoad = false;
     });
   } catch (e) {
     if(!mounted || seq != requestSeq) return;
     setState(() {
       isLoading = false;
+      // 请求失败同样结束骨架屏: 否则会一直转占位,空态也出不来
+      firstLoad = false;
     });
     debugPrint('[index]商品列表加载失败: $e');
   }
@@ -274,6 +290,8 @@ void _onTabTap(int index) {
     page = 1;
     hasMore = true;
     isLoading = false;
+    // 切分类等同于一次首屏加载: 同样先用骨架屏占位
+    firstLoad = true;
   });
   // 首屏数据回来后再滚到 tab 吸顶位置: 列表清空瞬间滚动范围变小,
   // 此时滚动会被 clamp, tab 栏会掉出吸顶态(甚至看不见)
@@ -315,6 +333,8 @@ Future<void> handleRefresh() async {
     await loadSeckill();
   } finally {
     isRefreshing = false;
+    // 首屏(商品第一页 + 秒杀板块)已到位: 通知关闭启动图,直接露出渲染好的首页
+    AppSplash.dismiss();
     if(mounted) setState(() {});
   }
 }
@@ -405,8 +425,29 @@ Future<void> loadLiveRoom() async {
   setState(() {
     liveRoom = room;
   });
-  final String src = room == null ? '' : '${room['push_link'] ?? ''}';
+  final String sn = room == null ? '' : '${room['sn'] ?? ''}';
+  final String pushLink = room == null ? '' : '${room['push_link'] ?? ''}';
+  if(kDebugMode) debugPrint('[live]首页直播间字段: ${room == null ? 'null' : room.keys.toList()}');
+  if(pushLink.isEmpty && sn.isEmpty) return;
+  // 起播地址统一用 push_link(与直播间详情页一致), 不再等 getPullUrl
+  // * 之前 iOS 会先请求 getPullUrl 并用它的返回值覆盖 push_link, 实测首页在 iOS 上播不出来;
+  //   而详情页在 iOS 上能播 —— 详情页进房用的就是首页传过去的 push_link(rtmp),
+  //   说明 iOS 上 push_link 这条 rtmp 是能播的, 问题出在接口返回的那条地址上(同一条链接在两端表现不一致)
+  // * 接口地址不再参与起播, 只作兜底: push_link 起不来时由 LiveReconnector 重连换用它(见 srcProvider)
+  // * 少等一个接口往返, 起播也更快
+  String src = pushLink;
+  // getTopRoom 有些环境下不下发 push_link: 这时只能走接口拿一条地址, 否则首页永远不起播
+  if(src.isEmpty && sn.isNotEmpty) {
+    src = (await LiveApi.pullUrl(sn)).trim();
+    if(kDebugMode) debugPrint('[live]首页 push_link 为空, 改用 getPullUrl: sn=$sn url=$src');
+  }
   if(src.isEmpty) return;
+  if(kDebugMode) debugPrint('[live]首页预览起播地址: sn=$sn push_link=$pushLink src=$src');
+  // 同一条地址已在播: 首页重刷时不要再销毁重建(重建会把刚出来的画面弄没)
+  if(_livePlayingSrc == src && livePlayer != null && liveVideoController != null) {
+    if(kDebugMode) debugPrint('[live]首页预览已在播同一地址, 跳过重建');
+    return;
+  }
   // 重新加载时先释放上一个播放器
   // 注意: VideoController 没有 dispose,随 Player 释放
   liveReconnector?.dispose();
@@ -415,6 +456,16 @@ Future<void> loadLiveRoom() async {
   livePlayer = player;
   final LiveReconnector reconnector = LiveReconnector(
     player,
+    // 重连时才取接口地址兜底(起播不用它), 且只对 iOS 生效
+    // * Android 不能换: Surface 重建打断 rtmp 后要靠"用同一个 push_link 重连一次"来恢复,
+    //   换成接口那条地址反而连不上, 重连 3 次后就是黑屏(之前 Android 能播就是这个原因)
+    srcProvider: (sn.isNotEmpty && isIosPlatform)
+        ? () async {
+            final String url = await LiveApi.pullUrl(sn);
+            if(kDebugMode) debugPrint('[live]iOS 兜底拉流地址: sn=$sn url=$url');
+            return url;
+          }
+        : null,
     // 重连时把封面显示回来: "首帧已渲染"后封面是隐藏的, 重连这几秒 Video 没画面就会露出白板
     onReconnecting: () {
       if (mounted) liveFirstFrame.value = false;
@@ -467,6 +518,19 @@ Future<void> loadLiveRoom() async {
     if(kDebugMode) debugPrint('[live]首帧已渲染');
     if(mounted) liveFirstFrame.value = true;
   });
+  // 兜底: 解码出尺寸(视频轨就绪)也算已出帧, 隐藏封面
+  // * 必须两端都启用, 两个原因:
+  //   1. waitUntilFirstFrameRendered 是个 Future, 只会完成一次; 重连时被 onReconnecting 置回 false 的
+  //      封面不会再被它打开 -> 重连成功后画面一直被封面盖着, 观感就是"播了一下又没了"
+  //   2. waitUntilFirstFrameRendered 在部分 iOS 机型/版本上根本不回调
+  // * Android 那条 textureId > 0 的判定实测也不生效(真机打出来 textureId=0), 只能靠这里
+  // * Video 有 fill 深色兜底, 提前 1~2 帧隐藏封面不会露出白板
+  player.stream.width.listen((int? width) {
+    if((width ?? 0) > 0 && mounted && !liveFirstFrame.value) {
+      if(kDebugMode) debugPrint('[live]视频轨就绪, 隐藏封面(兜底)');
+      liveFirstFrame.value = true;
+    }
+  });
   await player.setVolume(0.0);
   if(!mounted) return;
   // 先把 Video 控件挂上树、等平台视图真正创建好,再起播
@@ -475,8 +539,21 @@ Future<void> loadLiveRoom() async {
   setState(() {});
   await WidgetsBinding.instance.endOfFrame;
   if(!mounted) return;
+  // iOS 的 Video 是平台视图(UiKitView),一帧的时间不够它真正创建出来:
+  // 这时起播就会命中上面的"画面接不上"问题 -> 一直空白。
+  // controller.id 在 iOS 上是视频视图的 tag, 视图一创建就有值, 拿它当"视图就绪"信号
+  // * 最多等 3s, 超时也照常起播(卡片可能在视口外要等滚动才创建, 不让起播无限延后)
+  if(isIosPlatform) {
+    for(int i = 0; i < 30 && mounted; i++) {
+      if((controller.id.value ?? -1) > 0) break;
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+    if(kDebugMode) debugPrint('[live]iOS 视频视图就绪: id=${controller.id.value}');
+  }
   // 走 LiveReconnector: 抵消 Surface 重建触发的 seek 对 RTMP 直播的打断
   await reconnector.open(src, play: true);
+  _livePlayingSrc = src;
+  _startLiveDiag();
   if(!mounted) return;
   // 卡片挂载可能晚于接口返回(此刻 liveCardKey.currentContext 还是 null): 首帧后再同步一次,
   // 否则这一轮同步会直接 return, 之后只有滚动才会恢复预览
@@ -486,6 +563,36 @@ Future<void> loadLiveRoom() async {
   } finally {
     _liveLoading = false;
   }
+}
+
+// 排障用(仅 debug): 起播后定时打印预览链路的关键状态, 区分"播放器没画面"和"画面出来了但 UI 没画出来"
+// * 播放器层: playing / buffering / 视频宽高(有没有解码出画面)
+// * 输出层:   textureId / rect / notifier(纹理有没有交给 Flutter)
+// * UI 层:    卡片有没有挂载、尺寸多少、封面是不是还盖着
+// * 打印 6 次(约 12s)后自动停, 覆盖一次起播 + 一次自动重连的完整过程
+void _startLiveDiag() {
+  if (!kDebugMode) return;
+  _liveDiagTimer?.cancel();
+  int tick = 0;
+  _liveDiagTimer = Timer.periodic(const Duration(seconds: 2), (Timer timer) {
+    tick += 1;
+    if (!mounted) {
+      timer.cancel();
+      return;
+    }
+    final VideoController? c = liveVideoController;
+    final Player? p = livePlayer;
+    final RenderObject? obj = liveCardKey.currentContext?.findRenderObject();
+    debugPrint('[live]巡检$tick'
+        ' 播放器: playing=${p?.state.playing} buffering=${p?.state.buffering} 尺寸=${p?.state.width}x${p?.state.height}'
+        ' | 输出: notifier=${c?.notifier.value != null} textureId=${c?.id.value} rect=${c?.rect.value}'
+        ' | UI: 卡片挂载=${liveCardKey.currentContext != null} 卡片尺寸=${obj is RenderBox ? obj.size : null}'
+        ' 封面隐藏=${liveFirstFrame.value}');
+    if (tick >= 6) {
+      timer.cancel();
+      _liveDiagTimer = null;
+    }
+  });
 }
 
 // 直播预览播放状态: 卡片滚出视口自动暂停,滚回视口恢复播放
@@ -575,8 +682,6 @@ void initState() {
   handleRefresh();
   // 首页直播信息
   loadLiveRoom();
-  // 首页限时秒杀板块
-  loadSeckill();
   // 首页 tab 分类(一级分类树)
   loadCategory();
   // 首页聚合配置(banner / nav / popup)
@@ -599,7 +704,7 @@ void initState() {
 
   // 首页 tab 分类: 取一级分类树(/api/goodscategory/tree)
   // * 第一个 tab 固定「推荐」(对应首页瀑布流), 后面接接口返回的分类
-  // * 接口失败/为空时保留默认 tabList, 不影响首页
+  // * 接口失败/为空时不显示分类吸顶条(首页仍是完整的推荐瀑布流), 不内置兜底分类
   Future<void> loadCategory() async {
     try {
       final List<Map<String, dynamic>> list = await GoodsApi.categoryTree();
@@ -906,6 +1011,12 @@ void initState() {
   //   现在在流里就显示,滚到顶部时吸顶固定,出现更早
   Widget _buildStickyTabs(bool sticky) {
     return SliverPersistentHeader(
+      // tab 内容变化时换 key 强制重建 header
+      // * CustomStickyHeader.shouldRebuild 只比高度(吸顶/普通两个 header 都是 45), 恒为 false,
+      //   不换 key 就会一直复用首次构建的旧 TabBar(旧 tabs)
+      // * 分类接口返回后 DefaultTabController 的 length 变成新值, 而 TabBar 还是旧 tabs,
+      //   于是断言 "Controller's length property (13) does not match the number of tabs (11)"
+      key: ValueKey<String>(tabList.join('|')),
       pinned: true,
       delegate: CustomStickyHeader(
         child: PreferredSize(
@@ -1020,6 +1131,7 @@ void initState() {
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();
+    _liveDiagTimer?.cancel();
     liveReconnector?.dispose();
     livePlayer?.dispose();
     super.dispose();
@@ -1038,8 +1150,11 @@ void initState() {
     final ConnectivityResult current = results.first;
     final ConnectivityResult? last = _lastConnectivity;
     _lastConnectivity = current;
+    // 首次回调只是把当前网络状态同步过来(插件一注册就会推一次), 不是"网络从无到有", 不能触发重刷
+    // * 之前首启就会误判成网络恢复 -> 多刷一整轮首页(每个接口都重复一遍)
+    if (last == null) return;
     // 状态未变化则跳过(避免重复触发)
-    if (last != null && last == current) return;
+    if (last == current) return;
     if (current == ConnectivityResult.none) return;
     debugPrint('[index] 网络恢复($current), 触发首页重刷');
     _tryReloadOnResume();
@@ -1056,11 +1171,17 @@ void initState() {
       if (!mounted) return;
       // 500ms 后再次检查, 防止在途请求已返回
       if (dataList.isNotEmpty && bannerList.isNotEmpty && categoryList.isNotEmpty) return;
+      // 首屏请求还在途就别再发一轮: 500ms 时接口通常还没回来, 之前这里必然多刷一整轮
+      // * 只有真的失败了(请求都已结束且数据仍为空)才重试
+      if (isLoading || isRefreshing) {
+        debugPrint('[index] 首屏请求仍在途, 跳过本次重试');
+        return;
+      }
       _resumeRetryCount += 1;
       debugPrint('[index] 生命周期 resumed, 首页数据为空, 触发第 $_resumeRetryCount 次重试');
+      // handleRefresh 内部已经包含 loadSeckill, 这里不要再单独调一次(之前秒杀接口会重复发)
       handleRefresh();
       loadLiveRoom();
-      loadSeckill();
       loadCategory();
       loadIndexConfig();
       loadCartCount();
@@ -1079,7 +1200,8 @@ void initState() {
         displacement: 10.0,
         onRefresh: handleRefresh,
         child: DefaultTabController(
-          length: tabList.length,
+          // 分类未返回时 tabList 为空, 先按 1 占位(TabController 长度不能为 0); 此时也不会渲染 TabBar
+          length: tabList.isEmpty ? 1 : tabList.length,
           child: CustomScrollView(
           controller: scrollController,
           slivers: [
@@ -1363,15 +1485,23 @@ void initState() {
                         child: Column(
                         children: [
                           // 直播画面
+                          // * 必须给 width: double.infinity: 外层 Column 是 crossAxisAlignment.start,
+                          //   宽度约束是松的(0..320); 而封面隐藏时 Stack 里那个 SizedBox.shrink() 是非定位子元素,
+                          //   非定位子元素决定 Stack 尺寸 -> 宽度会塌成 0, Positioned.fill 的 Video 也跟着变 0 宽,
+                          //   画面一点都画不出来(观感就是一块白板)。
+                          // * 给了 infinity 后宽度变紧约束, 塌不下去(直播间详情页就是这么写的)
                           SizedBox(
                             height: 200.0,
+                            width: double.infinity,
                             child: Stack(
                               children: [
                                 // 背景: 有封面用封面,无封面用渐变;已出帧则隐藏,避免封面盖住画面
                                 ValueListenableBuilder<bool>(
                                   valueListenable: liveFirstFrame,
                                   builder: (BuildContext context, bool hasFrame, Widget? child) {
-                                    return hasFrame ? const SizedBox.shrink() : Positioned.fill(child: liveBg());
+                                    // 出帧后不能再返回非定位的 SizedBox.shrink(): 它是 Stack 里唯一的非定位子元素,
+                                    // 0x0 会把 Stack 尺寸带塌(见上方 width: double.infinity 的说明)
+                                    return hasFrame ? const SizedBox.expand() : Positioned.fill(child: liveBg());
                                   },
                                 ),
                                 // 直播画面(首页静音预览)
@@ -1589,6 +1719,8 @@ void initState() {
                 tabStickyOffset = constraints.precedingScrollExtent;
                 // SliverLayoutBuilder 滚动中每帧都会回调: 同状态复用缓存的 header,
                 // 不再每帧重建 TabBar 子树(之前每帧都在重建,是滑动掉帧的来源之一)
+                // 分类接口未返回前 tabList 为空: 不渲染空的分类条(否则是一条 45 高的空白)
+                if (tabList.isEmpty) return const SliverToBoxAdapter(child: SizedBox.shrink());
                 return sticky
                   ? (_stickyTabsHeader ??= _buildStickyTabs(true))
                   : (_normalTabsHeader ??= _buildStickyTabs(false));
@@ -1600,16 +1732,20 @@ void initState() {
             padding: const EdgeInsets.only(left: 10, right: 10, bottom: 10),
               sliver: isHorizontalList
                 ? SliverList.separated(
-                    itemCount: dataList.length,
-                    itemBuilder: (BuildContext context, int index) => SizedBox(width: double.infinity, child: CardItem(item: dataList[index], horizontal: true)),
+                    itemCount: firstLoad && dataList.isEmpty ? 4 : dataList.length,
+                    itemBuilder: (BuildContext context, int index) => firstLoad && dataList.isEmpty
+                        ? const SkeletonGoodsCard(horizontal: true)
+                        : SizedBox(width: double.infinity, child: CardItem(item: dataList[index], horizontal: true)),
                     separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 10.0),
                   )
                 : SliverMasonryGrid.count(
                     crossAxisCount: 2,
                     mainAxisSpacing: 10,
                     crossAxisSpacing: 10,
-                    childCount: dataList.length,
-                    itemBuilder: (BuildContext context, int index) => CardItem(item: dataList[index]),
+                    childCount: firstLoad && dataList.isEmpty ? 4 : dataList.length,
+                    itemBuilder: (BuildContext context, int index) => firstLoad && dataList.isEmpty
+                        ? const SkeletonGoodsCard()
+                        : CardItem(item: dataList[index]),
                   ),
             ),
           SliverToBoxAdapter(
@@ -1621,8 +1757,10 @@ void initState() {
               : Padding(
                   padding: const EdgeInsets.only(bottom: 20, top: 40),
                   child: Center(
-                    child: dataList.isEmpty
-                        ? const CommonEmpty(text: '暂无商品', imageWidth: 80.0)
+                    child: firstLoad && dataList.isEmpty
+                        ? const SizedBox.shrink()
+                        : dataList.isEmpty
+                            ? const CommonEmpty(text: '暂无商品', imageWidth: 80.0)
                         : (hasMore
                             ? const SizedBox.shrink()
                             : const Text('没有更多了', style: TextStyle(color: Colors.grey, fontSize: 12.0))),

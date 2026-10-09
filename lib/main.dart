@@ -13,10 +13,12 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
 import 'controller/app_config.dart';
-import 'utils/ads.dart';
-import 'utils/content.dart';
+// 开发调试: 暂时注释穿山甲相关 import(恢复广告时与本文件里的 Ads.init / Content.init 一起解开)
+// import 'utils/ads.dart';
+// import 'utils/content.dart';
 // 引入路由管理
 import 'router/index.dart';
+import 'components/splash_cover.dart';
 
 void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
@@ -82,18 +84,20 @@ Future<void> _initSdks() async {
   }
 
   // 初始化穿山甲广告SDK(内部 iOS 会弹 ATT 授权框, 已放到首帧之后, 不阻塞启动)
-  try {
-    await Ads.init();
-  } catch (e) {
-    debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
-  }
+  // 开发调试: 暂时注释掉(见 AdsConfig.debugDisable), 恢复时把下面 5 行解开
+  // try {
+  //   await Ads.init();
+  // } catch (e) {
+  //   debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
+  // }
 
   // 穿山甲内容SDK(短剧/小视频): 依赖上面的广告SDK, 失败/H5 自动跳过, 页面走兜底
-  try {
-    await Content.init();
-  } catch (e) {
-    debugPrint('[main] Content.init 异常(已忽略): $e');
-  }
+  // 开发调试: 广告SDK 关了它也起不来, 一并注释; 恢复时把下面 5 行解开
+  // try {
+  //   await Content.init();
+  // } catch (e) {
+  //   debugPrint('[main] Content.init 异常(已忽略): $e');
+  // }
 }
 
 class MyApp extends StatelessWidget {
@@ -110,6 +114,7 @@ class MyApp extends StatelessWidget {
 
    return AnnotatedRegion(
    value: const SystemUiOverlayStyle(
+     // 启动图期间状态栏透明: 由启动图自己决定底色,避免出现一条白/黑边
      // 状态栏透明,由各页面自己决定顶部背景;默认深色图标(适配白底页面)
     statusBarColor: Colors.transparent,
      statusBarIconBrightness: Brightness.dark, // Android 深色图标
@@ -117,7 +122,13 @@ class MyApp extends StatelessWidget {
     systemNavigationBarColor: Colors.transparent,
    systemNavigationBarIconBrightness: Brightness.dark,
    ),
-      child: GetMaterialApp(
+      child: Stack(
+        fit: StackFit.expand,
+        // Stack 在 GetMaterialApp 之外,拿不到 MaterialApp 注入的 Directionality,
+        // 这里显式给 textDirection,否则默认 AlignmentDirectional.topStart 会报错
+        textDirection: TextDirection.ltr,
+        children: <Widget>[
+          GetMaterialApp(
        title: '乐惠新零售',
         debugShowCheckedModeBanner: false,
         // 排查路由跳转用: debug 下打印路由变化
@@ -151,6 +162,10 @@ class MyApp extends StatelessWidget {
        getPages: routePages,
       navigatorKey: MyDialog.navigatorKey,
      ),
+          // 启动图遮罩: 盖在 App 最上层,首页首屏数据加载完成后淡出(见 utils/app_splash.dart)
+          const SplashCover(),
+        ],
+      ),
     );
   }
 }

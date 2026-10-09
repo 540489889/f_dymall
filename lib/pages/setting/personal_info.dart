@@ -63,31 +63,39 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
         statusBarBrightness: Brightness.light, // iOS 黑色图标
       ),
       child: Scaffold(
-        backgroundColor: Colors.white,
+        backgroundColor: const Color(0xFFF6F7F9), // 浅灰底: 分组卡片浮在上方
         body: Column(
           children: [
-            // 顶部状态栏占位
-            SizedBox(height: statusTop),
-            // 标题栏
+            // 状态栏占位 + 标题栏: 整体白底,保证状态栏区域也是白色
             Container(
               color: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
-              child: Row(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  GestureDetector(
-                    onTap: () => Get.back(),
-                    child: const Padding(
-                      padding: EdgeInsets.all(8.0),
-                      child: Icon(Icons.chevron_left, size: 26.0, color: Colors.black87),
+                  // 顶部状态栏占位
+                  SizedBox(height: statusTop),
+                  // 标题栏
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
+                    child: Row(
+                      children: [
+                        GestureDetector(
+                          onTap: () => Get.back(),
+                          child: const Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: Icon(Icons.chevron_left, size: 26.0, color: Colors.black87),
+                          ),
+                        ),
+                        const Expanded(
+                          child: Center(
+                            child: Text('设置',
+                                style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Colors.black87)),
+                          ),
+                        ),
+                        const SizedBox(width: 42.0), // 占位平衡左右
+                      ],
                     ),
                   ),
-                  const Expanded(
-                    child: Center(
-                      child: Text('设置',
-                          style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Colors.black87)),
-                    ),
-                  ),
-                  const SizedBox(width: 42.0), // 占位平衡左右
                 ],
               ),
             ),
@@ -104,33 +112,38 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
             Expanded(
               child: Obx(
                 () => ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    _personalInfoEntry(),
-                    _divider(),
-                    _actionItem(
-                      '微信',
-                      auth.wxBound ? '重新绑定' : '未绑定',
-                      _bindWechat,
-                      actionColor: auth.wxBound ? const Color(0xFF19C650) : const Color(0xFFFF4D5F),
+                  padding: const EdgeInsets.only(bottom: 30.0),
+                  children: <Widget>[
+                    const SizedBox(height: 12.0),
+                    // 账号: 个人资料 / 微信绑定 / 账户安全
+                    _group(
+                      items: <Widget>[
+                        _personalInfoEntry(),
+                        _wxItem(),
+                        _navItem('账户安全', _openAccountSecurity),
+                      ],
                     ),
-                    _divider(),
-                    _navItem('账户安全', _openAccountSecurity),
-                    _divider(),
-                    _navItem('隐私协议',
-                        () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'})),
-                    _divider(),
-                    _navItem('用户协议',
-                        () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'})),
-                    _divider(),
-                    _navItem('关于我们', () => Get.toNamed('/about')),
-                    _divider(),
-                    _versionItem(),
-                    _divider(),
-                    _switchItem(),
+                    const SizedBox(height: 16.0),
+                    // 协议 / 关于我们
+                    _group(
+                      items: <Widget>[
+                        _navItem('隐私协议',
+                            () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'})),
+                        _navItem('用户协议',
+                            () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'})),
+                        _navItem('关于我们', () => Get.toNamed('/about')),
+                      ],
+                    ),
+                    const SizedBox(height: 16.0),
+                    // 个性化推荐 / 版本号
+                    _group(
+                      items: <Widget>[
+                        _switchItem(),
+                        _versionItem(),
+                      ],
+                    ),
                     const SizedBox(height: 24.0),
                     _logoutButton(),
-                    const SizedBox(height: 30.0),
                   ],
                 ),
               ),
@@ -142,6 +155,30 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   }
 
   // ============== 组件 ==============
+
+  /// 分组卡片: 白底圆角,组内条目之间自动插入分隔线
+  Widget _group({required List<Widget> items}) {
+    final List<Widget> rows = <Widget>[];
+    for (int i = 0; i < items.length; i++) {
+      rows.add(items[i]);
+      if (i != items.length - 1) rows.add(_divider());
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: <Widget>[
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 12.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12.0),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: Column(mainAxisSize: MainAxisSize.min, children: rows),
+        ),
+      ],
+    );
+  }
 
   /// 顶部「个人信息」入口: 头像 + 昵称 + 进入箭头,跳转独立个人信息页
   Widget _personalInfoEntry() {
@@ -207,45 +244,98 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
 
 
 
-  Widget _actionItem(String label, String value, VoidCallback onTap,
-      {Color actionColor = const Color(0xFF666666)}) {
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        color: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-        child: Row(
-          children: [
-            SizedBox(
-                width: 80.0,
-                child: Text(label, style: const TextStyle(fontSize: 15.0, color: Colors.black87))),
-            Expanded(
-              child: Text(value,
-                  textAlign: TextAlign.right,
-                  style: TextStyle(fontSize: 15.0, color: actionColor)),
-            ),
-            const Icon(Icons.chevron_right, size: 18.0, color: Colors.black26),
-          ],
+  Widget _navItem(String label, VoidCallback onTap, {Color textColor = Colors.black87}) {
+    // 提交中(loading)时整项置灰,提示当前不可点
+    return Opacity(
+      opacity: loading ? 0.45 : 1.0,
+      child: GestureDetector(
+        onTap: loading ? null : onTap,
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+          child: Row(
+            children: [
+              Expanded(child: Text(label, style: TextStyle(fontSize: 15.0, color: textColor))),
+              const Icon(Icons.chevron_right, size: 18.0, color: Colors.black26),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _navItem(String label, VoidCallback onTap, {Color textColor = Colors.black87}) {
-    return GestureDetector(
-      onTap: loading ? null : onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        color: Colors.white,
-        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
-        child: Row(
-          children: [
-            Expanded(child: Text(label, style: TextStyle(fontSize: 15.0, color: textColor))),
-            const Icon(Icons.chevron_right, size: 18.0, color: Colors.black26),
-          ],
+  /// 微信绑定项: 状态与操作分开展示(徽章 = 是否已绑定,右侧文案 = 点击后的动作)
+  /// * 当前端不支持微信授权(web/桌面端 或 未配置 AppID)时整项置灰,文案改「暂不支持」
+  Widget _wxItem() {
+    final bool bound = auth.wxBound;
+    final bool enabled = WxAuth.supported && WxAuth.configured;
+    final bool tappable = enabled && !loading;
+    return Opacity(
+      opacity: tappable ? 1.0 : 0.45,
+      child: GestureDetector(
+        onTap: loading
+            ? null
+            : () {
+                if (!enabled) {
+                  MyDialog.toast('当前环境不支持微信绑定,请在 App 内操作');
+                  return;
+                }
+                _bindWechat();
+              },
+        behavior: HitTestBehavior.opaque,
+        child: Container(
+          color: Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+          child: Row(
+            children: [
+              const SizedBox(
+                  width: 80.0, child: Text('微信', style: TextStyle(fontSize: 15.0, color: Colors.black87))),
+              Expanded(child: _boundBadge(bound)),
+              Text(
+                !enabled ? '暂不支持' : (bound ? '重新绑定' : '去绑定'),
+                style: TextStyle(
+                  fontSize: 15.0,
+                  color: !enabled
+                      ? const Color(0xFFBBBBBB)
+                      : (bound ? const Color(0xFF666666) : FStyle.primaryColor),
+                ),
+              ),
+              const Icon(Icons.chevron_right, size: 18.0, color: Colors.black26),
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// 绑定状态徽章: 已绑定绿色打勾 / 未绑定灰色叹号
+  Widget _boundBadge(bool bound) {
+    final Color color = bound ? const Color(0xFF19C650) : const Color(0xFF999999);
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.10),
+            borderRadius: BorderRadius.circular(10.0),
+            border: Border.all(color: color.withValues(alpha: 0.35), width: 0.5),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(bound ? Icons.check_circle : Icons.error_outline, size: 12.0, color: color),
+              const SizedBox(width: 3.0),
+              Text(
+                bound ? '已绑定' : '未绑定',
+                style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w500),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 8.0),
+      ],
     );
   }
 

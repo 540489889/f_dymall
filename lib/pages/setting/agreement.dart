@@ -6,9 +6,9 @@ library;
 
 import 'package:flutter/material.dart';
 import '../../components/common_empty.dart';
-import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 import '../../api/member.dart';
+import '../../widgets/html_content.dart';
 
 class AgreementPage extends StatefulWidget {
   const AgreementPage({super.key, this.type = 'SERVICE'});
@@ -98,7 +98,7 @@ class _AgreementPageState extends State<AgreementPage> {
     }
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(16.0, 8.0, 16.0, 24.0),
-      child: Html(data: content),
+      child: HtmlContent(content),
     );
   }
 }

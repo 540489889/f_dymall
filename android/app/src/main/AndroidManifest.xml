@@ -59,10 +59,15 @@
             android:screenOrientation="behind"
             android:theme="@style/authsdk_activity_dialog" />
 
-        <!-- 关闭 Impeller(Vulkan): 海思/荣耀等机型上平台视图(SurfaceView)无法合成,导致直播画面不显示 -->
+        <!-- 必须开启 Impeller: media_kit_video 在 Android 用 SurfaceProducer 输出画面,
+             这套新纹理 API 只在 Impeller 下工作; 关掉后 surfaceProducer.id() 恒为 0,
+             纹理注册不进引擎 -> Texture 画不出任何东西(表现: 播放器正常解码但画面全 blank)。
+             * 之前关掉是为了解决"平台视图(SurfaceView)无法合成", 而视频走的是 Texture 不是平台视图,
+               两者不是同一条链路, 所以这里必须开。
+             * Flutter 后续版本会移除 opt-out, 这里也不能再关 -->
         <meta-data
             android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="false" />
+            android:value="true" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

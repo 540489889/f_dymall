@@ -13,6 +13,11 @@ import 'package:media_kit_video/media_kit_video.dart';
 ///   所以先判 kIsWeb; 桌面端也不需要 Android 那套硬解配置
 bool get isAndroidPlatform => !kIsWeb && Platform.isAndroid;
 
+/// 是否 iOS 平台(同样先判 kIsWeb)
+/// * iOS 的 media_kit 用的是 libmpv-darwin-build 预编译包, 其 ffmpeg 不含 rtmp,
+///   所以 iOS 拉流必须走 HLS(m3u8), 不能直接用 push_link(rtmp://)
+bool get isIosPlatform => !kIsWeb && Platform.isIOS;
+
 /// 协议白名单
 /// media_kit 默认的 PlayerConfiguration.protocolWhitelist 不含 rtmp,
 /// 直接播 rtmp:// 直播会被 ffmpeg 拦掉,这里补齐

@@ -33,6 +33,10 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
   int get roomStatus => roomStatusValue ?? 1;
   // 是否加载中
   bool isLoading = false;
+  // 是否正在拉第一页(下拉刷新 / 搜索 / 切筛选): 用于区分顶部刷新指示器与底部"加载中"
+  // * 同样用可空字段 + getter 兜底,原因同 pageValue
+  bool? isRefreshingValue;
+  bool get isRefreshing => isRefreshingValue ?? false;
   // 搜索关键字(接口 roomPage 的 keywords: 直播间标题/主播昵称)
   // * 只记值不发请求,点"搜索"/回车才带关键字重新拉列表
   String keywords = '';
@@ -43,15 +47,19 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
   final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 
   // 加载直播列表(/live/api/shop/roomPage)
-  // * [refresh] 下拉刷新: 回到第一页并清空列表; 否则按当前页码追加下一页
-  Future<void> loadRoomPage({bool refresh = false}) async {
+  // * [refresh] 重新拉第一页: 默认先清空列表(搜索 / 切筛选), keepOld = true 时保留旧列表(下拉刷新)
+  // * [keepOld] 下拉刷新用: 旧数据继续占位,拿到新列表后整体覆盖,避免中间闪一下空白
+  Future<void> loadRoomPage({bool refresh = false, bool keepOld = false}) async {
     if (isLoading) return;
     if (refresh) {
       pageValue = 1;
       hasMoreValue = true;
-      setState(() {
-        dataList.clear();
-      });
+      isRefreshingValue = true;
+      if (!keepOld) {
+        setState(() {
+          dataList = [];
+        });
+      }
     }
     if (!hasMore) return;
     setState(() {
@@ -62,16 +70,22 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
     final List<dynamic> list = res['list'] is List ? res['list'] as List<dynamic> : <dynamic>[];
     setState(() {
       isLoading = false;
-      dataList.addAll(list);
+      isRefreshingValue = false;
+      if (refresh) {
+        // 覆盖式刷新: 只有明确拿到 list 才替换,请求失败时保留旧列表不误清空
+        if (res['list'] is List) dataList = List<dynamic>.from(list);
+      } else {
+        dataList.addAll(list);
+      }
       hasMoreValue = res['hasMore'] == true;
       // 本次确实拿到数据才翻页,避免失败时空翻
       if (list.isNotEmpty) pageValue = page + 1;
     });
   }
 
-  // 下拉刷新
+  // 下拉刷新: 保留旧列表占位,新数据回来后整体覆盖(不清空,避免一闪而过)
   Future<void> handleRefresh() async {
-    await loadRoomPage(refresh: true);
+    await loadRoomPage(refresh: true, keepOld: true);
   }
 
   // 搜索(点"搜索"按钮 / 键盘回车): 带 keywords 重新拉第一页
@@ -296,9 +310,9 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
                       padding: const EdgeInsets.only(bottom: 10.0),
                       child: CardItem(item: item),
                     )),
-              // 加载更多
+              // 加载更多(下拉刷新时已经有顶部指示器,底部不再重复显示)
               Opacity(
-                opacity: dataList.isNotEmpty && isLoading ? 1 : 0,
+                opacity: dataList.isNotEmpty && isLoading && !isRefreshing ? 1 : 0,
                 child: const Loading(title: '加载中...'),
               ),
             ],

@@ -17,4 +17,12 @@ class AdsConfig {
 
   // 总开关: appId 为空则不初始化SDK, 页面也不展示广告位
   static bool get enabled => appId.isNotEmpty;
+
+  // 开发调试总开关: 临时关掉穿山甲(GroMore 广告SDK + 内容SDK), 避免调试时被大量广告日志/初始化干扰
+  // * 置为 true 时 SDK 不初始化、不请求广告、Banner 不渲染, 业务照常跑
+  // * 调试完把这里改回 false 即可恢复
+  static const bool debugDisable = true;
+
+  /// 实际生效的开关(业务统一判这个, 不要直接判 enabled)
+  static bool get usable => enabled && !debugDisable;
 }
