@@ -12,6 +12,7 @@ import 'package:ali_auth/ali_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 
 import '../config/index.dart';
+import 'ali_one_key_error.dart';
 
 class AliOneKey {
   static bool _listened = false;
@@ -116,7 +117,7 @@ class AliOneKey {
         }
         // 700000 点击返回 / 700001 点击切换账号: 用户取消
         if (code == '700000' || code == '700001') {
-          _fail('已取消一键登录');
+          _fail('已取消一键登录', code: code);
           return;
         }
         // 过程性事件,不是结果: 继续等 600000
@@ -125,7 +126,7 @@ class AliOneKey {
         if (_ignoredCodes.contains(code)) return;
         // 其余 6xxxxx 为失败(600002 唤起失败 / 600011 取号失败 / 600004 配置失败等)
         if (code.startsWith('6')) {
-          _fail(_errorText(code, msg));
+          _fail(_errorText(code, msg), code: code);
         }
       },
       onError: (dynamic error) => _fail('一键登录异常:$error'),
@@ -164,11 +165,12 @@ class AliOneKey {
     completer?.complete(token);
   }
 
-  static void _fail(String message) {
-    debugPrint('[ali] FAIL $message');
+  static void _fail(String message, {String code = ''}) {
+    debugPrint('[ali] FAIL code=$code $message');
     final Completer<String>? completer = _completer;
     _completer = null;
-    completer?.completeError(message);
+    // 带错误码抛出: 登录页据此判断是"环境不支持"(静默)还是"其他错误"(提示)
+    completer?.completeError(AliOneKeyFailure(code, message));
   }
 
   /// 拉起一键登录授权页并返回 accessToken(失败抛字符串,调用方直接 toast)

@@ -22,6 +22,12 @@ class Config {
   /// 是否打印请求/响应日志(仅debug模式生效,排查接口参数用)
   static const bool httpLog = true;
 
+  // ===== 门店地图 =====
+  /// 高德地图 Web服务 key(静态地图 restapi.amap.com/v3/staticmap 用)
+  /// * 高德开放平台 -> 应用 -> 添加key -> 服务平台选「Web服务」
+  /// * 留空时回落到 OpenStreetMap 静态图(免key), 国内加载可能偏慢
+  static const String amapWebKey = '';
+
   // ===== 微信开放平台(APP微信登录) =====
   /// 移动应用 AppID(微信开放平台创建移动应用后获取,形如 wx1234567890)
   /// * 留空表示未接入: 登录页/个人资料页不显示微信入口,相关代码不执行

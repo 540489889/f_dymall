@@ -402,11 +402,19 @@ class LiveApi {
       return '';
     }
 
-    final String id = text(const <String>['id', 'goods_id', 'goodsId', 'sku_id'], maxLen: 32);
+    // 商品id: 跳详情(/api/goodssku/detail)与下单用的是商城商品id, 即 goods_id
+    // * 接口同时下发两个 id: id(直播商品记录主键, 如 897) 与 goods_id(商城商品id, 如 38)
+    // * 拿 id 去查详情会查到别的商品(后端返回 code != 0), 所以 goods_id 优先
+    final String liveId = text(const <String>['id'], maxLen: 32);
+    final String goodsId = text(const <String>['goods_id', 'goodsId'], maxLen: 32);
+    final String id = goodsId.isNotEmpty ? goodsId : liveId;
     final String title = text(const <String>['title', 'name', 'goods_name', 'goodsName', 'goods_title']);
     final String tips = text(const <String>['tips', 'sale_tips', 'sales_tips', 'sale_text'], maxLen: 40);
     final String price = num(const <String>['price', 'goods_price', 'shop_price', 'sale_price', 'sell_price']);
-    final String mprice = num(const <String>['mprice', 'market_price', 'line_price', 'original_price', 'old_price']);
+    String mprice = num(const <String>['mprice', 'market_price', 'line_price', 'original_price', 'old_price']);
+    // 划线价为 0 视为没下发(接口 market_price 常见 0), 否则卡片上会显示一个 "¥0"
+    // * 这里不能用 num.tryParse: num 是上面那个取数字的局部函数, 会遮住 num 类型
+    if ((double.tryParse(mprice) ?? 0) <= 0) mprice = '';
     // 热卖数: 服务端字段命名不统一, hot 系(讲解中商品常用)排在销量系之后兜底
     final String saleNum = num(const <String>[
       'sale_num', 'sales_num', 'sales', 'sale', 'sold', 'sale_count',
@@ -423,7 +431,11 @@ class LiveApi {
     // 标题/图片/id 都取不到视为无效数据(避免渲染空卡片)
     if (id.isEmpty && title.isEmpty && image.isEmpty) return null;
     return <String, dynamic>{
+      // 商城商品id(跳详情/下单用这个): 没有 goods_id 时才与 live_id 相同
       'id': id,
+      'goods_id': goodsId,
+      // 直播商品记录主键(如 897): 只作兜底/排查用, 不能拿去查商品详情
+      'live_id': liveId,
       'title': title,
       'image': image,
       'tips': tips,

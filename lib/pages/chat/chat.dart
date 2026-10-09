@@ -25,7 +25,12 @@ class Chat extends StatefulWidget {
 
 class _ChatState extends State<Chat> with SingleTickerProviderStateMixin {
   // 接收参数
- dynamic arguments = Get.arguments;
+  // * 从「消息列表」进来会带 {'title','avatar',...}
+  // * 从「联系客服」(订单详情/退款详情/我的)进来不带参数, Get.arguments 是 null,
+  //   这里兜底成客服会话, 否则下面 arguments['title'] 会报 NoSuchMethodError
+  dynamic arguments = (Get.arguments is Map)
+      ? (Get.arguments as Map).cast<String, dynamic>()
+      : <String, dynamic>{'title': '在线客服'};
  List chatJson = chatData; // 聊天json
   List get chatList => renderChatList(); // 聊天消息列表
   // 表情json
@@ -886,7 +891,7 @@ sendMessage(message);
         },
       ),
       titleSpacing: 1.0,
-      title: Text('${arguments['title']}', style: TextStyle(fontSize: 18.0),),
+      title: Text('${arguments['title'] ?? '在线客服'}', style: TextStyle(fontSize: 18.0),),
       flexibleSpace: Container(
         decoration: const BoxDecoration(
       gradient: LinearGradient(

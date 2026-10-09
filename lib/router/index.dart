@@ -63,6 +63,9 @@ import '../pages/study/more.dart';
 // 看播集章
 import '../pages/stamp/index.dart';
 import '../pages/stamp/detail.dart';
+// 公告
+import '../pages/notice/list.dart';
+import '../pages/notice/detail.dart';
 // 积分商城(积分兑换)
 import '../pages/point/shop.dart';
 import '../pages/point/goods_detail.dart';
@@ -108,6 +111,9 @@ final Map<String, Widget> routes = {
   '/agreement': const AgreementPage(),
   '/seckill': const SeckillListPage(),
   '/seckill/detail': const SeckillDetailPage(),
+  // 公告: 游客也可查看,不进 authRoutes
+  '/notice': const NoticeListPage(),
+  '/notice/detail': const NoticeDetailPage(),
   '/point/shop': const PointShopPage(),
   '/point/detail': const PointGoodsDetailPage(),
   '/point/confirm': const PointOrderConfirmPage(),

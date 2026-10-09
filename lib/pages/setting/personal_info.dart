@@ -8,6 +8,7 @@ library;
 
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -15,6 +16,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member.dart';
+import '../../components/dialog_logout.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
 import '../../utils/wx.dart';
@@ -265,7 +267,8 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     );
   }
 
-  /// 微信绑定项: 状态与操作分开展示(徽章 = 是否已绑定,右侧文案 = 点击后的动作)
+  /// 微信绑定项: 左侧头像 + 两行文本(微信 / 昵称), 右侧徽章与动作文案
+  /// * 已绑定时第二行显示微信昵称, 未绑定时只有一行(高度自适应, 不与相邻行打架)
   /// * 当前端不支持微信授权(web/桌面端 或 未配置 AppID)时整项置灰,文案改「暂不支持」
   Widget _wxItem() {
     final bool bound = auth.wxBound;
@@ -286,16 +289,37 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
         behavior: HitTestBehavior.opaque,
         child: Container(
           color: Colors.white,
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
+          // 纵向 14: 未绑定时(单行)高度与相邻行一致, 已绑定时(两行)自然变高
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
           child: Row(
-            children: [
-              const SizedBox(
-                  width: 80.0, child: Text('微信', style: TextStyle(fontSize: 15.0, color: Colors.black87))),
-              Expanded(child: _boundBadge(bound)),
+            children: <Widget>[
+              _wxAvatar(bound),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const Text('微信', style: TextStyle(fontSize: 15.0, color: Colors.black87)),
+                    // 昵称作为副标题: 主标题保持「微信」, 与上下相邻行的视觉层级一致
+                    if (bound) ...<Widget>[
+                      const SizedBox(height: 3.0),
+                      Text(
+                        auth.wxNickname.isEmpty ? '微信用户' : auth.wxNickname,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF999999)),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              // 已绑定时不再挂「已绑定」徽章: 头像 + 昵称已经是状态本身, 加徽章属于重复表达
+              if (!bound) _unboundBadge(),
               Text(
                 !enabled ? '暂不支持' : (bound ? '重新绑定' : '去绑定'),
                 style: TextStyle(
-                  fontSize: 15.0,
+                  fontSize: 14.0,
                   color: !enabled
                       ? const Color(0xFFBBBBBB)
                       : (bound ? const Color(0xFF666666) : FStyle.primaryColor),
@@ -309,11 +333,46 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     );
   }
 
-  /// 绑定状态徽章: 已绑定绿色打勾 / 未绑定灰色叹号
-  Widget _boundBadge(bool bound) {
-    final Color color = bound ? const Color(0xFF19C650) : const Color(0xFF999999);
+  /// 微信头像(来自 /api/member/info 的 wx_headimg)
+  /// * 未绑定 / 接口没下发 / 加载失败: 用微信图标占位(已绑定为绿色, 未绑定为灰色)
+  Widget _wxAvatar(bool bound) {
+    const Color wechatGreen = Color(0xFF19C650);
+    final String url = auth.wxHeadimg;
+    if (url.isEmpty) {
+      return Container(
+        width: 40.0,
+        height: 40.0,
+        decoration: BoxDecoration(
+          color: bound ? wechatGreen.withValues(alpha: 0.12) : const Color(0xFFF2F2F2),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(Icons.wechat, size: 22.0, color: bound ? wechatGreen : const Color(0xFFBBBBBB)),
+      );
+    }
+    return ClipOval(
+      child: CachedNetworkImage(
+        imageUrl: url,
+        width: 40.0,
+        height: 40.0,
+        fit: BoxFit.cover,
+        placeholder: (BuildContext c, String u) =>
+            Container(width: 40.0, height: 40.0, color: const Color(0xFFF2F2F2)),
+        errorWidget: (BuildContext c, String u, Object e) => Container(
+          width: 40.0,
+          height: 40.0,
+          color: wechatGreen.withValues(alpha: 0.12),
+          child: const Icon(Icons.wechat, size: 22.0, color: wechatGreen),
+        ),
+      ),
+    );
+  }
+
+  /// 未绑定徽章(灰色叹号)
+  /// * 只在未绑定时出现: 那种情况下没有头像/昵称可表达状态, 需要显式说明
+  Widget _unboundBadge() {
+    const Color color = Color(0xFF999999);
     return Row(
-      mainAxisAlignment: MainAxisAlignment.end,
+      mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
@@ -322,13 +381,13 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
             borderRadius: BorderRadius.circular(10.0),
             border: Border.all(color: color.withValues(alpha: 0.35), width: 0.5),
           ),
-          child: Row(
+          child: const Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(bound ? Icons.check_circle : Icons.error_outline, size: 12.0, color: color),
-              const SizedBox(width: 3.0),
+              Icon(Icons.error_outline, size: 12.0, color: color),
+              SizedBox(width: 3.0),
               Text(
-                bound ? '已绑定' : '未绑定',
+                '未绑定',
                 style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w500),
               ),
             ],
@@ -426,20 +485,9 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   // ============== 注销 / 退出 ==============
 
   Future<void> _logout() async {
-    final bool? ok = await Get.dialog<bool>(
-      AlertDialog(
-        title: const Text('退出登录'),
-        content: const Text('确定要退出当前账号吗？'),
-        actions: [
-          TextButton(onPressed: () => Get.back<bool>(result: false), child: const Text('取消')),
-          TextButton(
-            onPressed: () => Get.back<bool>(result: true),
-            child: const Text('退出', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
+    // 自定义确认弹窗(替代系统 AlertDialog): 确认返回 true
+    final bool ok = await showLogoutDialog();
+    if (!ok) return;
     auth.logout();
     Get.offAllNamed('/login');
   }

@@ -2,7 +2,7 @@
 library;
 
 import 'package:dio/dio.dart';
-import 'package:flutter/foundation.dart' show kDebugMode;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:get/get.dart' hide Response, FormData;
 import '../config/index.dart';
 import '../controller/auth_store.dart';
@@ -151,12 +151,20 @@ class Request {
 
   /// 统一处理: code == 0 时返回业务data,否则抛异常
   Future<dynamic> _request(Future<Response<dynamic>> Function() task) async {
-    final dynamic body = await _handle(await task());
+    final Response<dynamic> res = await task();
+    final dynamic body = await _handle(res);
     if (body is Map) {
       if ('${body['code']}' == '0') return body['data'];
+      final String message = '${body['message'] ?? '请求失败'}';
+      // 业务失败(code != 0)也用 DioException 抛, type 没指定就是默认的 unknown
+      // * 结果就是页面/toast 上只看到 "DioException [unknown]", 真正的失败原因被吞在 message 里
+      // * 这里把 path / code / message 打全, 否则这类报错只能靠抓包才看得见
+      if (kDebugMode) {
+        debugPrint('[http]业务失败: path=${res.requestOptions.path} code=${body['code']} message=$message');
+      }
       throw DioException(
-        requestOptions: RequestOptions(path: ''),
-        message: '${body['message'] ?? '请求失败'}',
+        requestOptions: res.requestOptions,
+        message: message,
       );
     }
     return body;

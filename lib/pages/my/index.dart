@@ -21,7 +21,7 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   final authStore = AuthStore.to;
 
-  // 我的服务: /api/Member/serviceNav 的配置项(空则回退本地默认项)
+  // 我的服务: /api/Member/serviceNav 的配置项(为空则不展示「我的服务」卡片)
   final List<Map<String, dynamic>> serviceList = <Map<String, dynamic>>[];
 
   @override
@@ -39,7 +39,7 @@ class _MyPageState extends State<MyPage> {
   }
 
   /// 我的服务: 拉 /api/Member/serviceNav 的配置
-  /// * 失败 / 后台没配时保留空列表, 渲染回退到本地默认项
+  /// * 失败 / 后台没配时列表为空, 「我的服务」整块不展示
   Future<void> loadServiceNav() async {
     try {
       final List<Map<String, dynamic>> list = await MemberApi.serviceNav();
@@ -50,7 +50,7 @@ class _MyPageState extends State<MyPage> {
           ..addAll(list);
       });
     } catch (e) {
-      if (kDebugMode) debugPrint('[serviceNav] 请求失败, 回退默认项: $e');
+      if (kDebugMode) debugPrint('[serviceNav] 请求失败, 不展示我的服务: $e');
     }
   }
 
@@ -165,19 +165,6 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  /// 本地默认服务项(接口没配 / 请求失败时兜底)
-  /// * 结构与 /api/Member/serviceNav 保持一致, 图标用本地资源(非 http 即走 Image.asset)
-  static List<Map<String, dynamic>> _defaultServices() {
-    return <Map<String, dynamic>>[
-      <String, dynamic>{'nav_name': '直播连麦', 'nav_image': 'assets/images/me/mine_icon_svc_livemic.png', 'nav_url': '{"name":"LIVE_CONNECT"}'},
-      <String, dynamic>{'nav_name': '我的账户', 'nav_image': 'assets/images/me/mine_icon_svc_account.png', 'nav_url': '{"name":"MEMBER_ACCOUNT"}'},
-      <String, dynamic>{'nav_name': '收货地址', 'nav_image': 'assets/images/me/mine_icon_svc_address.png', 'nav_url': '{"name":"ADDRESS_LIST"}'},
-      <String, dynamic>{'nav_name': '看播集章', 'nav_image': 'assets/images/me/mine_icon_svc_medal.png', 'nav_url': '{"name":"STAMP"}'},
-      <String, dynamic>{'nav_name': '联系客服', 'nav_image': 'assets/images/me/mine_icon_svc_support.png', 'nav_url': '{"name":"CHAT"}'},
-      <String, dynamic>{'nav_name': '邀请好友', 'nav_image': 'assets/images/me/mine_icon_svc_invite.png', 'nav_url': '{"name":"INVITE"}'},
-    ];
-  }
-
   /// 我的服务跳转: nav_url 为 JSON 字符串(与首页金刚区同一套约定), name 是动作码
   void _handleServiceNav(Map<String, dynamic> item) {
     final dynamic rawUrl = item['nav_url'];
@@ -215,6 +202,9 @@ class _MyPageState extends State<MyPage> {
           break;
         case 'CHAT':
           Get.toNamed('/chat');
+          break;
+        case 'ABOUT':
+          Get.toNamed('/about');
           break;
         // 复用首页金刚区已有的动作码
         case 'SIGN_IN':
@@ -289,7 +279,8 @@ class _MyPageState extends State<MyPage> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
-                _topIcon('assets/images/me/mine_icon_msg.png', () => _checkLogin(() => Get.toNamed('/chat'))),
+                // 公告(/api/notice/page): 游客也可查看
+                _topIcon('assets/images/me/mine_icon_msg.png', () => Get.toNamed('/notice')),
                 _topIcon('assets/images/me/mine_icon_star.png', () {}),
                 _topIcon('assets/images/me/mine_icon_video.png', () => Get.snackbar('提示', '功能开发中')),
                 _topIcon('assets/images/me/mine_icon_scan.png', () {}),
@@ -515,9 +506,10 @@ class _MyPageState extends State<MyPage> {
   }
 
   // 我的服务(4 列网格,从左到右依次排列,自动换行)
-  // * 优先用 /api/Member/serviceNav 的后台配置, 没数据时回退本地默认项
+  // * 只渲染 /api/Member/serviceNav 的后台配置, 没数据就整块不显示(不再有本地默认项)
   Widget _buildServiceCard() {
-    final List<Map<String, dynamic>> items = serviceList.isNotEmpty ? serviceList : _defaultServices();
+    if (serviceList.isEmpty) return const SizedBox.shrink();
+    final List<Map<String, dynamic>> items = serviceList;
     return _whiteCard(
       child: Column(
         mainAxisSize: MainAxisSize.min,

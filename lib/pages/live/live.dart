@@ -1212,6 +1212,10 @@ Map<String, dynamic> _talkGoodsItem(Map<String, dynamic> item, {bool demo = true
   }
 
   return <String, dynamic>{
+    // 商品id(点讲解卡跳详情用): 商城商品id goods_id 优先, 没有再回退 id
+    // * 原来这里没往外带 id, 讲解卡点了跳不过去
+    'goods_id': pick('goods_id', ''),
+    'id': pick('id', ''),
     'image': pick('image', demo ? '${item['poster'] ?? ''}' : ''),
     'title': pick('title', demo ? '${item['desc'] ?? ''}' : ''),
     'price': pick('price', demo ? '520' : ''),
@@ -2301,7 +2305,12 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                         ),
                                       ),
                                       onTap: () {
-                                          Get.toNamed('/goods');
+                                          // 携带商品id跳详情(讲解中商品 socket goods 里带 id)
+                                          // * 详情页按 int 解析, 非数字会被兜成 goodsId=1, 打开的是别的商品, 所以这里先挡掉
+                                          // 商城商品id(goods_id)优先: id 可能是直播商品记录的主键
+                                          final int? gid = int.tryParse('${talk['goods_id'] ?? talk['id'] ?? ''}'.trim());
+                                          if (gid == null) return;
+                                          Get.toNamed('/goods', arguments: <String, dynamic>{'goodsId': gid});
                                         },
                                       ),
                                         ],
@@ -2364,6 +2373,13 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                               {'image': 'https://img12.360buyimg.com/jdcms/s240x240_jfs/t1/276851/40/403/125841/67ce85b7Fc7fb4cff/271d67aaea189a66.jpg', 'title': '茅台生肖系列酒 53度 老酒 收藏投资 春节送礼 2025年', 'tips': '销量超10万', 'price': '699.9', 'mprice': '999.9'},
                                               {'image': 'https://img14.360buyimg.com/jdcms/s240x240_jfs/t1/351318/40/12365/75748/68ee092bF4b501684/81f47e3e9ed16754.jpg', 'title': '罗蒙（ROMON）夹克男士秋冬季户外防风连帽保暖冲锋衣', 'tips': '好评1000+', 'price': '319.9', 'mprice': '359.9'},
                                             ],
+                                            // 每次打开购物车都重新拉一次(商品会上下架/改价, 进房时那份可能已过期)
+                                            onRefresh: () => LiveApi.onlineGoods(roomSn),
+                                            // 头部主播信息(真实: 当前房间 anchor_name / anchor_img / name)
+                                            // * 用 item 而不是 roomInfo: 上下滑切房后 roomInfo 未必跟着更新
+                                            anchorName: anchorNameOf(item),
+                                            anchorAvatar: '${item['logo'] ?? ''}'.trim(),
+                                            roomTitle: '${item['name'] ?? ''}'.trim(),
                                             )
                                           ));
                                             goodsTalkVisible = true;

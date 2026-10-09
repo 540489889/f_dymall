@@ -92,6 +92,10 @@ bool get hasPassword {
 }
 // 是否已绑定微信(wxopen_openid 有值即已绑定)
 bool get wxBound => '${memberInfo['wxopen_openid'] ?? ''}'.trim().isNotEmpty;
+// 微信头像(绑定后由 /api/member/info 下发 wx_headimg, 已是完整地址)
+String get wxHeadimg => '${memberInfo['wx_headimg'] ?? ''}'.trim();
+// 微信昵称(绑定后由 /api/member/info 下发 wx_nickname)
+String get wxNickname => '${memberInfo['wx_nickname'] ?? ''}'.trim();
 // 账号是否允许修改(is_edit_username == 1)
 bool get canEditUsername => '${memberInfo['is_edit_username'] ?? ''}' == '1';
 // 所在地址: 省/市/区 id

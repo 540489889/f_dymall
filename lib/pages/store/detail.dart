@@ -4,6 +4,7 @@
 /// * 结构: 门店图轮播 -> 信息卡(名称/营业状态/营业时间/标签/地址/电话) -> 门店地图
 library;
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -12,6 +13,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../api/store.dart';
 import '../../components/loading.dart';
+import '../../components/static_map.dart';
 import '../../styles/index.dart';
 
 class StoreDetailPage extends StatefulWidget {
@@ -66,6 +68,11 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
     try {
       final Map<String, dynamic> res = await StoreApi.info(storeId);
       if (!mounted) return;
+      // 排查门店地图用: 经纬度没下发时静态图画不出来, 先看这条日志确认字段
+      if (kDebugMode) {
+        debugPrint('[store]门店详情字段: ${res.keys.toList()}');
+        debugPrint('[store]经纬度: latitude=${res['latitude']} longitude=${res['longitude']}');
+      }
       setState(() {
         detail = res;
         loading = false;
@@ -146,10 +153,30 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
     if (await canLaunchUrl(uri)) await launchUrl(uri);
   }
 
+  /// 经纬度: 接口 latitude / longitude 多为字符串, 空 / 非数字 / 0 / 超范围都按没定位处理
+  /// * 取不到时静态图画不出来(地图中心都没法给), 只能回落到按地址搜索
+  double? _coord(String val) {
+    final double? v = double.tryParse(val.trim());
+    if (v == null || v == 0) return null;
+    return v;
+  }
+
+  double? get lat {
+    final double? v = _coord(latitude);
+    return (v == null || v.abs() > 90) ? null : v;
+  }
+
+  double? get lng {
+    final double? v = _coord(longitude);
+    return (v == null || v.abs() > 180) ? null : v;
+  }
+
+  bool get hasLocation => lat != null && lng != null;
+
   /// 打开地图(有经纬度定位到点,否则按地址搜索)
   Future<void> openMap() async {
-    final Uri uri = (latitude.isNotEmpty && longitude.isNotEmpty)
-        ? Uri.parse('https://uri.amap.com/marker?position=$longitude,$latitude&name=${Uri.encodeComponent(storeName)}')
+    final Uri uri = hasLocation
+        ? Uri.parse('https://uri.amap.com/marker?position=$lng,$lat&name=${Uri.encodeComponent(storeName)}')
         : Uri.parse('https://uri.amap.com/search?keyword=${Uri.encodeComponent(address)}');
     if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
@@ -411,7 +438,9 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
     );
   }
 
-  /// 门店地图(无内置地图插件,点击拉起外部地图导航)
+  /// 门店地图(静态地图图片;点击拉起外部地图导航)
+  /// * 项目没接地图SDK(高德/百度/腾讯的 Flutter 插件都没引入), 不能内嵌可交互地图,
+  ///   这里用静态地图接口出图: 有图能看清门店位置, 点一下再跳高德做导航
   Widget _buildMap() {
     return Container(
       margin: const EdgeInsets.fromLTRB(15.0, 0, 15.0, 20.0),
@@ -429,22 +458,28 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
               margin: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 12.0),
               height: 180.0,
               width: double.infinity,
+              clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(color: tagBgColor, borderRadius: BorderRadius.circular(8.0)),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  const Icon(Icons.location_on_outlined, size: 28.0, color: tagColor),
-                  const SizedBox(height: 6.0),
-                  Text(
-                    latitude.isNotEmpty && longitude.isNotEmpty ? '查看地图 / 导航' : '打开地图查看门店位置',
-                    style: const TextStyle(fontSize: 12.0, color: tagColor),
-                  ),
-                ],
-              ),
+              // 有经纬度就出地图(静态图/瓦片由 StaticMap 内部选择), 没有才回落占位块
+              child: hasLocation
+                  ? StaticMap(latitude: lat!, longitude: lng!)
+                  : _mapPlaceholder(),
             ),
           ),
         ],
       ),
+    );
+  }
+
+  /// 地图占位块: 接口没下发经纬度(画不出地图)时的兜底, 点击按地址搜索
+  Widget _mapPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: <Widget>[
+        const Icon(Icons.location_on_outlined, size: 28.0, color: tagColor),
+        const SizedBox(height: 6.0),
+        const Text('门店未配置经纬度，点击按地址搜索', style: TextStyle(fontSize: 12.0, color: tagColor)),
+      ],
     );
   }
 }

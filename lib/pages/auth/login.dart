@@ -5,13 +5,15 @@
 library;
 
 import 'dart:async';
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, defaultTargetPlatform, TargetPlatform;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../api/auth.dart';
 import '../../utils/ali_one_key.dart';
+import '../../utils/ali_one_key_error.dart';
 import '../../utils/captcha.dart';
 import '../../utils/index.dart';
 import '../../utils/wx.dart';
@@ -33,6 +35,7 @@ class _LoginState extends State<Login> {
   final authStore = AuthStore.to;
 
   /// 登录方式: mobile 手机号动态码 / account 账号密码
+  /// * 顶部只有这两个分类;一键登录不作为选项,仅进页面时自动尝试唤起
   String loginMode = 'mobile';
 
   final TextEditingController accountController = TextEditingController();
@@ -97,9 +100,26 @@ class _LoginState extends State<Login> {
     mobileFocus.addListener(() => setState(() {}));
     dynacodeFocus.addListener(() => setState(() {}));
     vercodeFocus.addListener(() => setState(() {}));
-    loadConfig();
+    // 进入页面先判断是否可一键登录(内部会先拉平台配置)
+    autoOneKey();
     loadCaptchaConfig();
     checkWx();
+  }
+
+  /// 进入页面先判断是否可一键登录
+  /// * 可以: 直接拉起阿里云授权页(未勾选协议会先弹协议确认)
+  /// * 不可以: 只保留「验证码登录 / 账号密码」两个分类
+  Future<void> autoOneKey() async {
+    // 等平台配置回来(决定协议是否展示),再决定是否直接拉起
+    await loadConfig();
+    if (!mounted) return;
+    // 不支持一键登录: 保持默认(验证码登录),什么都不做
+    if (!AliOneKey.available) return;
+    // 等首帧绘制完再拉授权页,避免和路由转场动画抢
+    await Future<void>.delayed(const Duration(milliseconds: 300));
+    if (!mounted) return;
+    // 直接唤起一键登录授权页;取消/失败后留在当前页用验证码或账号密码登录
+    await handleAliLogin();
   }
 
   /// 微信登录入口是否展示: 端上支持 + 已安装微信
@@ -145,7 +165,7 @@ class _LoginState extends State<Login> {
         agreementShow = AuthApi.isOn(config, 'agreement_show');
         supportMobile = login.isEmpty || login.contains('mobile');
         supportAccount = login.isEmpty || login.contains('username');
-        // 默认优先手机号登录,不支持时切账号(H5 同逻辑)
+        // 默认验证码登录,不支持时切账号(H5 同逻辑)
         loginMode = supportMobile ? 'mobile' : 'account';
         // 平台未开启注册时不显示注册入口
         registerOpen = register.isNotEmpty;
@@ -219,7 +239,7 @@ class _LoginState extends State<Login> {
     });
   }
 
-  /// 协议确认弹窗(类似京东): 未勾选协议时弹出,点"同意"自动勾选并继续登录
+  /// 协议确认弹窗(对齐设计图): 未勾选协议时弹出,点"同意"自动勾选并继续登录
   /// * 用原生 showDialog 挂在当前 State 的 context 上,避免 shirne_dialog 的
   ///   navigatorKey 在 GetX 路由下取不到 NavigatorState 导致弹窗推不出来的问题
   Future<void> showAgreementDialog({required VoidCallback onAgreed}) async {
@@ -228,13 +248,22 @@ class _LoginState extends State<Login> {
       barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          contentPadding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // 标题
+              const Text(
+                '温馨提示',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF202020)),
+              ),
+              const SizedBox(height: 20),
               _buildAgreementDialogContent(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              // 不同意 / 同意
               Row(
                 children: <Widget>[
                   Expanded(
@@ -245,11 +274,9 @@ class _LoginState extends State<Login> {
                         foregroundColor: const Color(0xFF202020),
                         minimumSize: const Size.fromHeight(44),
                         elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
-                      child: const Text('我再想想', style: TextStyle(fontSize: 15)),
+                      child: const Text('不同意', style: TextStyle(fontSize: 15)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -261,9 +288,7 @@ class _LoginState extends State<Login> {
                         foregroundColor: Colors.white,
                         minimumSize: const Size.fromHeight(44),
                         elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
                       child: const Text('同意', style: TextStyle(fontSize: 15)),
                     ),
@@ -281,39 +306,29 @@ class _LoginState extends State<Login> {
     }
   }
 
-  /// 弹窗内容: 请阅读并同意《隐私协议》《用户协议》,协议名可点击跳转
+  /// 弹窗内容: 允许使用个人信息并阅读同意《隐私政策》|《用户协议》,协议名可点击跳转
   Widget _buildAgreementDialogContent() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      child: RichText(
-        textAlign: TextAlign.center,
-        text: TextSpan(
-          text: '请阅读并同意',
-          style: const TextStyle(fontSize: 15, color: Color(0xFF202020), height: 1.5),
-          children: <InlineSpan>[
-            const TextSpan(text: '《', style: TextStyle(color: Color(0xFF202020))),
-            WidgetSpan(
-              child: GestureDetector(
-                onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'}),
-                child: const Text(
-                  '隐私协议',
-                  style: TextStyle(fontSize: 15, color: Color(0xFF2C8DFA)),
-                ),
-              ),
-            ),
-            const TextSpan(text: '》《', style: TextStyle(color: Color(0xFF202020))),
-            WidgetSpan(
-              child: GestureDetector(
-                onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'}),
-                child: const Text(
-                  '用户协议',
-                  style: TextStyle(fontSize: 15, color: Color(0xFF2C8DFA)),
-                ),
-              ),
-            ),
-            const TextSpan(text: '》', style: TextStyle(color: Color(0xFF202020))),
-          ],
-        ),
+    return RichText(
+      text: TextSpan(
+        text: '允许我们在必要场景下，合理使用您的个人信息，且阅读并同意',
+        style: const TextStyle(fontSize: 14, color: Color(0xFF666666), height: 1.6),
+        children: <InlineSpan>[
+          // 用 TextSpan + recognizer,不用 WidgetSpan: WidgetSpan 默认按 PlaceholderAlignment.bottom
+          // 插入子 Widget,和周围文字基线对不齐(会偏低一点),改成同一段文字里的可点击 span 就自然对齐了
+          TextSpan(
+            text: '《隐私政策》',
+            style: const TextStyle(color: _primary),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'}),
+          ),
+          const TextSpan(text: ' | ', style: TextStyle(color: Color(0xFF999999))),
+          TextSpan(
+            text: '《用户协议》',
+            style: const TextStyle(color: _primary),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'}),
+          ),
+        ],
       ),
     );
   }
@@ -396,7 +411,7 @@ class _LoginState extends State<Login> {
     }
     // 协议最后校验: 让用户先把表单填对,最后再提示勾选协议
     if (agreementShow && !agreed) {
-      return const MapEntry<String, String>('agreement', '请先阅读并同意《隐私协议》和《用户协议》');
+      return const MapEntry<String, String>('agreement', '请先阅读并同意《用户协议》和《隐私政策》');
     }
     return null;
   }
@@ -502,11 +517,9 @@ class _LoginState extends State<Login> {
   }
 
   /// 阿里云一键登录: 授权页 -> accessToken -> /api/login/phoneAuthLogin
+  /// * 直接拉起授权页,不弹协议确认弹窗(授权页自带《隐私协议》《用户协议》,默认已勾选)
+  /// * 失败 / 用户取消都留在登录页,用验证码或账号密码登录
   Future<void> handleAliLogin() async {
-    if (agreementShow && !agreed) {
-      await showAgreementDialog(onAgreed: handleAliLogin);
-      return;
-    }
     if (aliSubmitting) return;
     setState(() => aliSubmitting = true);
     try {
@@ -527,8 +540,10 @@ class _LoginState extends State<Login> {
       await _finishLogin(token, res['data']);
     } catch (e) {
       debugPrint('[ali] ERROR $e');
-      if (!mounted) return;
-      showError('$e');
+      // 环境类错误(无SIM / 没开移动数据 / 连着WiFi / VPN / 密钥签名不对): 静默回退,不提示用户
+      // 其他错误(取号失败、接口报错、超时等)照常提示
+      final bool silent = e is AliOneKeyFailure && e.isEnvError;
+      if (!silent && mounted) showError('$e');
     } finally {
       if (mounted) setState(() => aliSubmitting = false);
       // 兜底: 登录失败/异常时授权页可能还挂着,这里再关一次
@@ -554,12 +569,13 @@ class _LoginState extends State<Login> {
     final double keyboardBottom = MediaQuery.of(context).viewInsets.bottom;
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: const SystemUiOverlayStyle(
-        statusBarColor: Colors.transparent, // 状态栏透明,露出红色头部
-        statusBarIconBrightness: Brightness.light, // Android 状态栏图标白色
-        statusBarBrightness: Brightness.dark, // iOS 状态栏图标白色
+        statusBarColor: Colors.transparent, // 状态栏透明,露出浅色头部
+        statusBarIconBrightness: Brightness.dark, // Android 状态栏图标深色(适配浅色背景图)
+        statusBarBrightness: Brightness.light, // iOS 状态栏图标深色
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF6F7F9),
+        // 与首页(Layout)同一底色: 米黄 0xFFFCF7EE
+        backgroundColor: const Color(0xFFFCF7EE),
         body: GestureDetector(
           onTap: () => FocusScope.of(context).unfocus(),
           child: SingleChildScrollView(
@@ -567,11 +583,11 @@ class _LoginState extends State<Login> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                // 红色头部占满整宽(不参与限宽,否则宽屏两侧会露白)
+                // 顶部主题图(login_header.png),宽屏仍居中展示
                 _buildHeader(statusTop),
-                // 白色表单卡上移,压在红色头部上;宽屏(web/桌面)居中并限宽
+                // 白色表单卡与主题图的间距(正=下移留缝,负=上移压住图片)
                 Transform.translate(
-                  offset: const Offset(0, -36),
+                  offset: const Offset(0, -10),
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 420.0),
@@ -591,7 +607,7 @@ class _LoginState extends State<Login> {
   Widget _buildCard() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16.0, 0, 16.0, 0),
-      padding: const EdgeInsets.fromLTRB(20.0, 22.0, 20.0, 20.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 22.0, 20.0, 24.0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.0),
@@ -602,9 +618,9 @@ class _LoginState extends State<Login> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          // 登录方式切换(两种都支持时才展示)
-          if (supportMobile && supportAccount) _buildModeTabs(),
-          if (supportMobile && supportAccount) const SizedBox(height: 18.0),
+          // 登录方式切换: 验证码登录 / 账号密码
+          _buildModeTabs(),
+          const SizedBox(height: 22.0),
           if (loginMode == 'mobile') ...<Widget>[
             _buildMobileInput(),
             const SizedBox(height: _gap),
@@ -613,85 +629,83 @@ class _LoginState extends State<Login> {
             _buildAccountInput(),
             const SizedBox(height: _gap),
             _buildPwdInput(),
+            const SizedBox(height: 8.0),
+            _buildForgotPwd(),
           ],
           // 图形验证码(平台开启时展示)
           if (captchaOn) ...<Widget>[
             const SizedBox(height: _gap),
             _buildCaptchaInput(),
           ],
-          const SizedBox(height: 16.0),
+          const SizedBox(height: 20.0),
+          _buildSubmit(),
+          if (showSocialLogin) ...<Widget>[
+            const SizedBox(height: 14.0),
+            _buildSocialLogin(),
+          ],
+          const SizedBox(height: 18.0),
           _buildAgreement(),
           // 表单级错误: 协议未勾选 / 服务端返回但无法归属到具体输入框
           FieldError(formError),
-          const SizedBox(height: 18.0),
-          _buildSubmit(),
-          // 阿里云一键登录(需配置密钥且为 Android/iOS)
-          if (AliOneKey.available) ...<Widget>[
-            const SizedBox(height: 14.0),
-            _buildAliLogin(),
-          ],
-          const SizedBox(height: 14.0),
-          _buildFooter(),
-          // 其他登录方式: 微信(web 端 wxInstalled 恒为 false,自动不展示)
-          if (wxInstalled || wxPreview) ...<Widget>[
-            const SizedBox(height: 24.0),
-            _buildSocialLogin(),
-          ],
         ],
       ),
     );
   }
 
-  /// 红色渐变头部(顶到状态栏)
+  /// 顶部主题图(使用 login_header.png),返回按钮浮在图上
+  /// * 顶部留状态栏安全距离,状态栏那一段用页面底色填充,保证与图片无缝衔接
   Widget _buildHeader(double statusTop) {
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.fromLTRB(20.0, statusTop + 8.0, 20.0, 72.0),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: <Color>[Color(0xFFFF4D5F), Color(0xFFFF8A4F)],
+    return Stack(
+      children: <Widget>[
+        Container(
+          color: const Color(0xFFFCF7EE),
+          padding: EdgeInsets.only(top: statusTop),
+          child: Padding(
+            // 左右各留 10 间距(状态栏那一段仍是满宽底色,不会出现白边)
+            padding: const EdgeInsets.symmetric(horizontal: 10.0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12.0),
+              child: Image.asset(
+                'assets/images/login_header.png',
+                width: double.infinity,
+                fit: BoxFit.fitWidth,
+              ),
+            ),
+          ),
         ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          // 返回(游客可直接返回上一页)
-          GestureDetector(
+        // 返回(游客可直接返回上一页)
+        Positioned(
+          top: statusTop + 8.0,
+          left: 12.0,
+          child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () {
               if (Get.previousRoute.isNotEmpty) Get.back();
             },
             child: const Padding(
-              padding: EdgeInsets.symmetric(vertical: 6.0),
-              child: Icon(Icons.arrow_back_ios_new_rounded, size: 20.0, color: Colors.white),
+              padding: EdgeInsets.all(6.0),
+              child: Icon(Icons.arrow_back_ios_new_rounded, size: 20.0, color: Color(0xFF333333)),
             ),
           ),
-          const SizedBox(height: 18.0),
-          const Text(
-            '欢迎登录',
-            style: TextStyle(fontSize: 22.0, fontWeight: FontWeight.w700, color: Colors.white, height: 1.2),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
-  /// 登录方式: 手机号 / 账号(分段控件)
+  /// 登录方式切换: 只有 验证码登录 / 账号密码 两个分类
+  /// * 一键登录不作为选项,进页面时若支持会自动唤起授权页
   Widget _buildModeTabs() {
     return Container(
-      height: 38.0,
+      height: 42.0,
       padding: const EdgeInsets.all(3.0),
       decoration: BoxDecoration(
         color: const Color(0xFFF2F3F5),
-        borderRadius: BorderRadius.circular(19.0),
+        borderRadius: BorderRadius.circular(21.0),
       ),
       child: Row(
         children: <Widget>[
-          Expanded(child: _buildModeTab('手机号登录', 'mobile')),
-          Expanded(child: _buildModeTab('账号登录', 'account')),
+          Expanded(child: _buildModeTab('验证码登录', 'mobile')),
+          Expanded(child: _buildModeTab('账号密码', 'account')),
         ],
       ),
     );
@@ -709,21 +723,36 @@ class _LoginState extends State<Login> {
         duration: const Duration(milliseconds: 180),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: active ? Colors.white : Colors.transparent,
-          borderRadius: BorderRadius.circular(16.0),
-          boxShadow: active
-              ? <BoxShadow>[
-                  BoxShadow(color: Colors.black.withValues(alpha: 0.06), blurRadius: 6.0, offset: const Offset(0.0, 2.0)),
-                ]
+          gradient: active
+              ? const LinearGradient(
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                  colors: <Color>[Color(0xFFFF4D5F), Color(0xFFFF8A4F)],
+                )
               : null,
+          borderRadius: BorderRadius.circular(18.0),
         ),
         child: Text(
           text,
           style: TextStyle(
             fontSize: 13.5,
-            fontWeight: active ? FontWeight.w700 : FontWeight.w400,
-            color: active ? _primary : Colors.black54,
+            fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+            color: active ? Colors.white : const Color(0xFF666666),
           ),
+        ),
+      ),
+    );
+  }
+
+  /// 忘记密码
+  Widget _buildForgotPwd() {
+    return Align(
+      alignment: Alignment.centerRight,
+      child: GestureDetector(
+        onTap: () => MyDialog.toast('忘记密码功能开发中'),
+        child: const Text(
+          '忘记密码',
+          style: TextStyle(fontSize: 12.5, color: Color(0xFF2C8DFA)),
         ),
       ),
     );
@@ -746,13 +775,21 @@ class _LoginState extends State<Login> {
             style: const TextStyle(fontSize: 14.5),
             decoration: const InputDecoration(
               counterText: '',
-              hintText: '请输入手机号',
+              hintText: '请输入手机号码',
               hintStyle: TextStyle(fontSize: 14.0, color: Colors.black26),
-              prefixIcon: SizedBox(
-                width: 42.0,
-                child: Center(child: Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87))),
+              prefixIcon: const SizedBox(
+                width: 84.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87)),
+                    SizedBox(width: 2.0),
+                    Text('中国', style: TextStyle(fontSize: 12.0, color: Colors.black54)),
+                    Icon(Icons.keyboard_arrow_down, size: 14.0, color: Colors.black54),
+                  ],
+                ),
               ),
-              prefixIconConstraints: BoxConstraints(minWidth: 42.0),
+              prefixIconConstraints: const BoxConstraints(minWidth: 84.0),
               contentPadding: EdgeInsets.symmetric(vertical: 14.0),
               border: InputBorder.none,
               isDense: true,
@@ -781,7 +818,7 @@ class _LoginState extends State<Login> {
             keyboardType: TextInputType.number,
             style: const TextStyle(fontSize: 14.5),
             decoration: InputDecoration(
-              hintText: '请输入动态码',
+              hintText: '请输入验证码',
               hintStyle: const TextStyle(fontSize: 14.0, color: Colors.black26),
               prefixIcon: const Icon(Icons.sms_outlined, size: 18.0, color: Colors.black26),
               prefixIconConstraints: const BoxConstraints(minWidth: 42.0),
@@ -1000,36 +1037,6 @@ class _LoginState extends State<Login> {
     );
   }
 
-  /// 本机号码一键登录(阿里云号码认证)
-  Widget _buildAliLogin() {
-    return SizedBox(
-      width: double.infinity,
-      height: 48.0,
-      child: OutlinedButton(
-        style: OutlinedButton.styleFrom(
-          side: BorderSide(color: _primary.withValues(alpha: aliSubmitting ? 0.3 : 0.8), width: 1.0),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.0)),
-          foregroundColor: _primary,
-        ),
-        onPressed: aliSubmitting ? null : handleAliLogin,
-        child: aliSubmitting
-            ? SizedBox(width: 18.0, height: 18.0, child: CircularProgressIndicator(strokeWidth: 2.0, color: _primary))
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Icon(Icons.phone_iphone_rounded, size: 18.0, color: _primary),
-                  const SizedBox(width: 8.0),
-                  Text(
-                    '本机号码一键登录',
-                    style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600, color: _primary),
-                  ),
-                ],
-              ),
-      ),
-    );
-  }
-
   /// 协议勾选
   Widget _buildAgreement() {
     return Row(
@@ -1042,7 +1049,7 @@ class _LoginState extends State<Login> {
             formError = null;
           }),
           child: Padding(
-            padding: const EdgeInsets.only(right: 6.0, top: 4.0, bottom: 4.0),
+            padding: const EdgeInsets.only(right: 8.0, top: 4.0, bottom: 4.0),
             child: Container(
               width: 16.0,
               height: 16.0,
@@ -1053,9 +1060,9 @@ class _LoginState extends State<Login> {
                   color: agreed ? _primary : Colors.grey.shade400,
                   width: 1.0,
                 ),
-                borderRadius: BorderRadius.circular(5.0),
+                shape: BoxShape.circle,
               ),
-              child: agreed ? const Icon(Icons.check, size: 12.0, color: Colors.white) : null,
+              child: agreed ? const Icon(Icons.check, size: 11.0, color: Colors.white) : null,
             ),
           ),
         ),
@@ -1063,10 +1070,10 @@ class _LoginState extends State<Login> {
           child: Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              const Text('请阅读并同意', style: TextStyle(color: Colors.black45, fontSize: 12.5)),
-              _buildAgreementLink('《隐私协议》', 'PRIVACY'),
-              const Text('和', style: TextStyle(color: Colors.black45, fontSize: 12.5)),
+              const Text('我已阅读并同意', style: TextStyle(color: Color(0xFF999999), fontSize: 12.0)),
               _buildAgreementLink('《用户协议》', 'SERVICE'),
+              const Text(' | ', style: TextStyle(color: Color(0xFF999999), fontSize: 12.0)),
+              _buildAgreementLink('《隐私政策》', 'PRIVACY'),
             ],
           ),
         ),
@@ -1082,58 +1089,105 @@ class _LoginState extends State<Login> {
     );
   }
 
-  /// 其他登录方式: 微信一键登录
+  /// 是否装了微信(未安装 / 端上不支持时不展示微信入口)
+  bool get showWxLogin => wxInstalled || wxPreview;
+
+  /// 设备是否支持 Apple 登录(仅 iOS / macOS;Android / Web / Windows 不支持)
+  bool get showAppleLogin =>
+      defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS;
+
+  /// 是否展示「其他登录方式」区块
+  bool get showSocialLogin => showWxLogin || showAppleLogin;
+
+  /// 其他登录方式: 微信授权登录 / Apple登录
+  /// * 没装微信就不显示微信;设备不支持 Apple 登录就不显示 Apple;两个都没有则整块不展示
   Widget _buildSocialLogin() {
+    if (!showSocialLogin) return const SizedBox.shrink();
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
         Row(
           children: <Widget>[
             const Expanded(child: Divider(color: Color(0xFFEDEEF0), height: 1.0, thickness: 1.0)),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 10.0),
-              child: Text('其他登录方式', style: TextStyle(fontSize: 11.5, color: Colors.black26)),
+              child: Text('其他登录方式', style: TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
             ),
             const Expanded(child: Divider(color: Color(0xFFEDEEF0), height: 1.0, thickness: 1.0)),
           ],
         ),
         const SizedBox(height: 16.0),
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: wxSubmitting ? null : handleWxLogin,
-          child: Column(
-            children: <Widget>[
-              Container(
-                width: 46.0,
-                height: 46.0,
-                decoration: const BoxDecoration(color: Color(0xFFF1F9F2), shape: BoxShape.circle),
-                child: wxSubmitting
-                    ? const Padding(
-                        padding: EdgeInsets.all(13.0),
-                        child: CircularProgressIndicator(strokeWidth: 2.0, color: Color(0xFF19C650)),
-                      )
-                    : const Icon(Icons.wechat, size: 26.0, color: Color(0xFF19C650)),
+        Row(
+          children: <Widget>[
+            if (showWxLogin)
+              Expanded(
+                child: _buildSocialButton(
+                  text: '微信授权登录',
+                  icon: Icons.wechat,
+                  bgColor: const Color(0xFF19C650),
+                  onTap: wxSubmitting ? null : handleWxLogin,
+                  loading: wxSubmitting,
+                ),
               ),
-              const SizedBox(height: 6.0),
-              const Text('微信登录', style: TextStyle(fontSize: 12.0, color: Colors.black54)),
-            ],
-          ),
+            if (showWxLogin && showAppleLogin) const SizedBox(width: 12.0),
+            if (showAppleLogin)
+              Expanded(
+                child: _buildSocialButton(
+                  text: 'Apple登录',
+                  icon: Icons.apple,
+                  bgColor: const Color(0xFF1C1C1E),
+                  onTap: () => MyDialog.toast('Apple登录功能开发中'),
+                  loading: false,
+                ),
+              ),
+          ],
         ),
       ],
     );
   }
 
-  /// 底部: 注册账号(平台未开启注册时不展示)
-  Widget _buildFooter() {
-    if (!registerOpen) return const SizedBox.shrink();
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: <Widget>[
-        const Text('还没有账号，', style: TextStyle(color: Colors.black38, fontSize: 13.0)),
-        GestureDetector(
-          onTap: () => Get.toNamed('/register'),
-          child: const Text('立即注册', style: TextStyle(color: _primary, fontSize: 13.0, fontWeight: FontWeight.w600)),
+  Widget _buildSocialButton({
+    required String text,
+    required IconData icon,
+    required Color bgColor,
+    VoidCallback? onTap,
+    required bool loading,
+  }) {
+    return SizedBox(
+      height: 44.0,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: bgColor,
+          borderRadius: BorderRadius.circular(22.0),
         ),
-      ],
+        child: Material(
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(22.0),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(22.0),
+            onTap: onTap,
+            child: Center(
+              child: loading
+                  ? const SizedBox(
+                      width: 18.0,
+                      height: 18.0,
+                      child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                    )
+                  : Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: <Widget>[
+                        Icon(icon, color: Colors.white, size: 20.0),
+                        const SizedBox(width: 6.0),
+                        Text(
+                          text,
+                          style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: Colors.white),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }
