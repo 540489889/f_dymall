@@ -56,6 +56,8 @@ dependencies:
   connectivity_plus: ^6.1.0
   # 关于我们: 读取 APP 版本号(对齐 H5 plus.runtime.getProperty)
   package_info_plus: ^8.1.0
+  # 关于我们: 生成 APP 下载二维码
+  qr_flutter: ^4.1.0
   # 头像: 拍照/系统相册选择
   image_picker: ^1.1.2
   # 生日: 成熟滚轮日期选择器(自带中文,不依赖 MaterialLocalizations)

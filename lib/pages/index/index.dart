@@ -320,6 +320,7 @@ Future<void> _scrollToStickyTabs() async {
 
 // 下拉刷新
 // * 不清空列表: 旧商品一直留在屏幕上,新数据回来后整体替换,避免"列表空白 + 加载中"闪一下
+// * 刷新范围: 商品列表第一页 + 轮播/金刚区 + 分类 + 直播 + 秒杀(倒计时重新对时),全部重新请求
 Future<void> handleRefresh() async {
   // 丢弃在途的分页请求(其响应会因序号不匹配被丢弃,不会覆盖刷新结果)
   requestSeq += 1;
@@ -328,14 +329,31 @@ Future<void> handleRefresh() async {
   isLoading = false;
   isRefreshing = true;
   try {
-    await loadMoreData(refresh: true);
-    // 顺带刷新秒杀板块(倒计时重新对时)
-    await loadSeckill();
+    // 并发发起: 逐个 await 会让刷新指示器多停好几秒(每个接口一个往返)
+    // * 首屏渲染只依赖这几块, 齐了就关启动图
+    await Future.wait(<Future<void>>[
+      _guard(loadMoreData(refresh: true)),
+      _guard(loadIndexConfig()),
+      _guard(loadCategory()),
+      _guard(loadSeckill()),
+    ]);
+    // 首屏(商品第一页 + 秒杀板块 + 轮播/金刚区 + 分类)已到位: 通知关闭启动图,直接露出渲染好的首页
+    AppSplash.dismiss();
+    // 直播起播可能要等平台视图创建(iOS 最多 3s),放到启动图关闭之后再等,不拖慢首屏
+    await _guard(loadLiveRoom());
   } finally {
     isRefreshing = false;
-    // 首屏(商品第一页 + 秒杀板块)已到位: 通知关闭启动图,直接露出渲染好的首页
     AppSplash.dismiss();
     if(mounted) setState(() {});
+  }
+}
+
+/// 刷新兜底: 单个板块请求失败不中断其它板块,也不让刷新指示器卡住
+Future<void> _guard(Future<void> task) async {
+  try {
+    await task;
+  } catch (e) {
+    debugPrint('[index]首页刷新异常: $e');
   }
 }
 
@@ -678,14 +696,8 @@ void initState() {
     AuthStore.to.loadMemberInfo();
   }
 
-  // 初始化加载
+  // 初始化加载(首屏 = 一次完整刷新: 商品列表 + 轮播/金刚区 + 分类 + 直播 + 秒杀)
   handleRefresh();
-  // 首页直播信息
-  loadLiveRoom();
-  // 首页 tab 分类(一级分类树)
-  loadCategory();
-  // 首页聚合配置(banner / nav / popup)
-  loadIndexConfig();
   // 购物车数量(搜索栏角标)
   loadCartCount();
   // 秒杀倒计时(每秒局部刷新)
@@ -715,6 +727,9 @@ void initState() {
         if (name.isNotEmpty) tabs.add(name);
       }
       if (tabs.length < 2) return;
+      // 分类没变(下拉刷新时每次都会重拉): 不要重建 TabBar
+      // * 重建会回到第一个 tab(推荐), 而商品列表还停在当前分类, 观感就是"高亮推荐 + 内容是别的分类"
+      if (tabs.join('|') == tabList.join('|')) return;
       setState(() {
         categoryList = list;
         tabList = tabs;
@@ -872,8 +887,9 @@ void initState() {
         seckillGoods = goods.take(10).toList();
       });
       _tickSeckill();
-    } catch (_) {
-      // 秒杀板块加载失败不阻塞首页
+    } catch (e) {
+      // 秒杀板块加载失败不阻塞首页(下拉刷新时这里失败,板块会保留上一次的数据)
+      debugPrint('[index]秒杀板块加载失败: $e');
     }
   }
 
@@ -1179,11 +1195,8 @@ void initState() {
       }
       _resumeRetryCount += 1;
       debugPrint('[index] 生命周期 resumed, 首页数据为空, 触发第 $_resumeRetryCount 次重试');
-      // handleRefresh 内部已经包含 loadSeckill, 这里不要再单独调一次(之前秒杀接口会重复发)
+      // handleRefresh 内部已包含 商品列表/轮播/金刚区/分类/直播/秒杀, 这里不要再单独调一次
       handleRefresh();
-      loadLiveRoom();
-      loadCategory();
-      loadIndexConfig();
       loadCartCount();
     });
   }

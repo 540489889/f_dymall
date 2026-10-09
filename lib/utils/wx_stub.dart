@@ -21,9 +21,19 @@ class WxAuth {
     throw '当前环境不支持微信登录';
   }
 
+  /// 直接抛错(调用方 toast 提示)
+  static Future<bool> requestMerchantTransfer({
+    required String mchId,
+    required String appId,
+    required String package,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    throw '当前环境不支持微信授权';
+  }
+
   /// 统一错误提示
-  static String errorMsg(dynamic error) {
+  static String errorMsg(dynamic error, [String fallback = '微信登录失败']) {
     final String message = '$error'.trim();
-    return message.isEmpty ? '微信登录失败' : message;
+    return message.isEmpty ? fallback : message;
   }
 }

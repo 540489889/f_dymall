@@ -114,9 +114,71 @@ class WxAuth {
     return completer.future;
   }
 
+  /// 微信「商家转账到零钱」免确认收款授权
+  /// * 对齐 H5: wxsdk.requestMerchantTransfer({mchId, appId, package})
+  /// * 底层是开放平台的 WXOpenBusinessViewReq, businessType = requestMerchantTransfer
+  /// * query 形如: mchId=xxx&appId=xxx&package=xxx(与 H5 三个入参一一对应)
+  /// * 用户确认后微信回到 App, onOpenBusinessViewResponse 的 errCode == 0 视为授权成功
+  static Future<bool> requestMerchantTransfer({
+    required String mchId,
+    required String appId,
+    required String package,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    if (!supported) throw '当前环境不支持微信授权';
+    if (!configured) throw '未配置微信AppID,请先在 Config.wxAppId 填写';
+    if (!await init()) throw '微信SDK注册失败,请检查AppID配置';
+    if (!await isInstalled()) throw '未安装微信,无法授权';
+    if (!await _fluwx.isSupportOpenBusinessView) throw '当前微信版本不支持,请升级微信后再授权';
+
+    final Completer<bool> completer = Completer<bool>();
+    FluwxCancelable? cancelable;
+    Timer? timer;
+
+    void clean() {
+      timer?.cancel();
+      cancelable?.cancel();
+    }
+
+    void finish(String error, [bool ok = false]) {
+      if (completer.isCompleted) return;
+      clean();
+      if (ok) {
+        completer.complete(true);
+      } else {
+        completer.completeError(error);
+      }
+    }
+
+    cancelable = _fluwx.addSubscriber((WeChatResponse response) {
+      if (response is! WeChatOpenBusinessViewResponse) return;
+      if (response.errCode != 0) {
+        final String errStr = response.errStr?.trim() ?? '';
+        finish(response.errCode == -2
+            ? '已取消授权'
+            : (errStr.isNotEmpty ? errStr : '授权失败(${response.errCode})'));
+        return;
+      }
+      finish('', true);
+    });
+
+    final String query = 'mchId=$mchId&appId=$appId&package=$package';
+    debugPrint('[wx] requestMerchantTransfer mchId=$mchId appId=$appId');
+    final bool sent = await _fluwx.open(
+      target: BusinessView(businessType: 'requestMerchantTransfer', query: query),
+    );
+    if (!sent) {
+      finish('拉起微信失败,请稍后重试');
+      return completer.future;
+    }
+
+    timer = Timer(timeout, () => finish('授权超时,请重试'));
+    return completer.future;
+  }
+
   /// 统一错误提示
-  static String errorMsg(dynamic error) {
+  static String errorMsg(dynamic error, [String fallback = '微信登录失败']) {
     final String message = '$error'.trim();
-    return message.isEmpty ? '微信登录失败' : message;
+    return message.isEmpty ? fallback : message;
   }
 }

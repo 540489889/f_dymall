@@ -24,6 +24,8 @@ import '../../widgets/field_error.dart';
 const double _gap = 12.0;
 /// 主色
 const Color _primary = Color(0xFFFF2C55);
+/// 测试入口开关: 登录页底部"绑定手机号(测试入口)"是否显示
+const bool _testEntry = false;
 
 class Login extends StatefulWidget {
   const Login({super.key});
@@ -647,6 +649,8 @@ class _LoginState extends State<Login> {
           _buildAgreement(),
           // 表单级错误: 协议未勾选 / 服务端返回但无法归属到具体输入框
           FieldError(formError),
+          // 测试入口: 直接进绑定手机号页,免去先跑通微信授权(改成 true 即可显示)
+          if (_testEntry) _buildTestEntry(),
         ],
       ),
     );
@@ -1078,6 +1082,30 @@ class _LoginState extends State<Login> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 测试入口(仅 debug): 跳过微信授权,直接进绑定手机号页
+  /// * 传一份假的微信信息,绕开绑定页"微信信息缺失"的校验(openid/unionid 至少有一个)
+  Widget _buildTestEntry() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14.0),
+      child: Center(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => Get.toNamed('/bind_mobile', arguments: <String, dynamic>{
+            'openid': 'debug_test_openid',
+            'unionid': '',
+            'nickname': '测试用户',
+            'headimg': '',
+            'type': 'wxopen',
+          }),
+          child: const Text(
+            '绑定手机号(测试入口)',
+            style: TextStyle(fontSize: 12.0, color: Color(0xFF2C8DFA), decoration: TextDecoration.underline),
+          ),
+        ),
+      ),
     );
   }
 

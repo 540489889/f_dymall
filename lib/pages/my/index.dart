@@ -109,7 +109,7 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  /// 顶部图标(消息/收藏/视频/扫码/设置)
+  /// 顶部图标(公告/收藏/视频/设置)
   Widget _topIcon(String asset, VoidCallback onTap) {
     return GestureDetector(
       onTap: onTap,
@@ -283,7 +283,6 @@ class _MyPageState extends State<MyPage> {
                 _topIcon('assets/images/me/mine_icon_msg.png', () => Get.toNamed('/notice')),
                 _topIcon('assets/images/me/mine_icon_star.png', () {}),
                 _topIcon('assets/images/me/mine_icon_video.png', () => Get.snackbar('提示', '功能开发中')),
-                _topIcon('assets/images/me/mine_icon_scan.png', () {}),
                 _topIcon('assets/images/me/mine_icon_setting.png', () => authStore.isLogin ? Get.toNamed('/personal_info') : Get.toNamed('/login')),
               ],
             ),

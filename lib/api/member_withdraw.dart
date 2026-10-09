@@ -148,6 +148,23 @@ class MemberWithdrawApi {
     );
   }
 
+  /// 微信免确认收款授权(/api/memberbankaccount/authorization)
+  /// * 对齐 H5 account.vue toTransferAuth: 传账户 id,拿回微信拉授权需要的三个参数
+  /// * 返回 { mchid, appid, package_info },拿到后交给微信SDK openBusinessView
+  /// * code < 0 或没数据时抛异常(页面直接 toast message)
+  static Future<Map<String, dynamic>> accountAuthorization(int id) async {
+    final Map<String, dynamic> res = await Request().postRaw(
+      '/api/memberbankaccount/authorization',
+      data: <String, dynamic>{'id': id},
+    );
+    final int code = int.tryParse('${res['code'] ?? -1}') ?? -1;
+    final dynamic data = res['data'];
+    if (code < 0 || data is! Map) {
+      throw Exception('${res['message'] ?? '获取授权信息失败'}');
+    }
+    return data.cast<String, dynamic>();
+  }
+
   /// 设为默认账户(/api/memberbankaccount/setdefault)
   static Future<dynamic> accountSetDefault(int id) {
     return Request().post('/api/memberbankaccount/setdefault', data: <String, dynamic>{'id': id});

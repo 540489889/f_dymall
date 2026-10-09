@@ -10,6 +10,7 @@ import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member_withdraw.dart';
+import '../../utils/wx.dart';
 
 class WithdrawAccountPage extends StatefulWidget {
   const WithdrawAccountPage({super.key});
@@ -107,6 +108,30 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
       Get.back(result: <String, dynamic>{'is_balance': 1});
     } else {
       MyDialog.toast('已选择提现到余额');
+    }
+  }
+
+  /// 微信免确认收款授权(对齐 H5 account.vue toTransferAuth)
+  /// * 1) /api/memberbankaccount/authorization 拿 mchid / appid / package_info
+  /// * 2) 拉起微信商家转账授权,成功后刷新列表(auth_status 后端置为已授权)
+  Future<void> toTransferAuth(Map<String, dynamic> item) async {
+    final int id = int.tryParse('${item['id'] ?? 0}') ?? 0;
+    if (id <= 0) return;
+    try {
+      final Map<String, dynamic> auth = await MemberWithdrawApi.accountAuthorization(id);
+      final String mchId = '${auth['mchid'] ?? ''}';
+      final String appId = '${auth['appid'] ?? ''}';
+      final String packageInfo = '${auth['package_info'] ?? ''}';
+      if (mchId.isEmpty || appId.isEmpty || packageInfo.isEmpty) {
+        MyDialog.toast('授权信息不完整,请稍后重试');
+        return;
+      }
+      await WxAuth.requestMerchantTransfer(mchId: mchId, appId: appId, package: packageInfo);
+      if (!mounted) return;
+      MyDialog.toast('授权成功');
+      await load();
+    } catch (e) {
+      MyDialog.toast(WxAuth.errorMsg(e, '授权失败'));
     }
   }
 
@@ -276,6 +301,11 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
               ),
             ),
           ),
+          // 微信账户才有: 免确认收款授权状态(auth_status 由后台返回)
+          if (type == 'wechatpay') ...<Widget>[
+            const Divider(color: Color(0xFFF0F0F0), height: 1.0, thickness: 0.5),
+            _buildAuthRow(item),
+          ],
           const Divider(color: Color(0xFFF0F0F0), height: 1.0, thickness: 0.5),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 8.0),
@@ -296,6 +326,51 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
                     child: const Icon(Icons.delete_outline, size: 20.0, color: Color(0xFF999999)),
                   ),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 微信免确认收款授权行(对齐 H5 .auth-row)
+  /// * auth_status == 0 -> 「你当前未微信免确认收款授权」+「去授权」按钮
+  /// * 其它值(后台未返回该字段时也是) -> 绿点 + 「已收款授权」(与 H5 v-else 口径一致)
+  Widget _buildAuthRow(Map<String, dynamic> item) {
+    final bool authed = '${item['auth_status'] ?? ''}' != '0';
+    if (authed) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+        child: Row(
+          children: <Widget>[
+            Container(
+              width: 6.0,
+              height: 6.0,
+              decoration: const BoxDecoration(color: Color(0xFF07C160), shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 6.0),
+            const Text('已收款授权', style: TextStyle(fontSize: 13.0, color: Color(0xFF999999))),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 10.0),
+      child: Row(
+        children: <Widget>[
+          const Expanded(
+            child: Text('你当前未微信免确认收款授权',
+                style: TextStyle(fontSize: 13.0, color: primary)),
+          ),
+          GestureDetector(
+            onTap: () => toTransferAuth(item),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 5.0),
+              decoration: BoxDecoration(
+                border: Border.all(color: primary, width: 1.0),
+                borderRadius: BorderRadius.circular(16.0),
+              ),
+              child: const Text('去授权', style: TextStyle(fontSize: 13.0, color: primary)),
             ),
           ),
         ],

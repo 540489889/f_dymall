@@ -8,6 +8,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -231,7 +232,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
     }
     // 协议最后校验: 让用户先把表单填对,最后再提示勾选协议
     if (agreementShow && !agreed) {
-      return const MapEntry<String, String>('agreement', '请先阅读并同意《隐私协议》和《用户协议》');
+      return const MapEntry<String, String>('agreement', '请先阅读并同意《用户协议》和《隐私政策》');
     }
     return null;
   }
@@ -386,12 +387,14 @@ class _BindMobilePageState extends State<BindMobilePage> {
             const SizedBox(height: _gap),
             _buildCaptchaInput(),
           ],
-          const SizedBox(height: 16.0),
-          if (agreementShow) _buildAgreement(),
+          const SizedBox(height: 20.0),
+          _buildSubmit(),
+          if (agreementShow) ...<Widget>[
+            const SizedBox(height: 18.0),
+            _buildAgreement(),
+          ],
           // 表单级错误: 协议未勾选 / 微信信息缺失 / 服务端返回但无法归属到具体输入框
           FieldError(formError),
-          const SizedBox(height: 18.0),
-          _buildSubmit(),
         ],
       ),
     );
@@ -414,13 +417,21 @@ class _BindMobilePageState extends State<BindMobilePage> {
             style: const TextStyle(fontSize: 14.5),
             decoration: const InputDecoration(
               counterText: '',
-              hintText: '请输入手机号',
+              hintText: '请输入手机号码',
               hintStyle: TextStyle(fontSize: 14.0, color: Colors.black26),
               prefixIcon: SizedBox(
-                width: 42.0,
-                child: Center(child: Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87))),
+                width: 84.0,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: <Widget>[
+                    Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87)),
+                    SizedBox(width: 2.0),
+                    Text('中国', style: TextStyle(fontSize: 12.0, color: Colors.black54)),
+                    Icon(Icons.keyboard_arrow_down, size: 14.0, color: Colors.black54),
+                  ],
+                ),
               ),
-              prefixIconConstraints: BoxConstraints(minWidth: 42.0),
+              prefixIconConstraints: BoxConstraints(minWidth: 84.0),
               contentPadding: EdgeInsets.symmetric(vertical: 14.0),
               border: InputBorder.none,
               isDense: true,
@@ -449,7 +460,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
             keyboardType: TextInputType.number,
             style: const TextStyle(fontSize: 14.5),
             decoration: InputDecoration(
-              hintText: '请输入动态码',
+              hintText: '请输入验证码',
               hintStyle: const TextStyle(fontSize: 14.0, color: Colors.black26),
               prefixIcon: const Icon(Icons.sms_outlined, size: 18.0, color: Colors.black26),
               prefixIconConstraints: const BoxConstraints(minWidth: 42.0),
@@ -568,7 +579,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
             formError = null;
           }),
           child: Padding(
-            padding: const EdgeInsets.only(right: 6.0, top: 4.0, bottom: 4.0),
+            padding: const EdgeInsets.only(right: 8.0, top: 4.0, bottom: 4.0),
             child: Container(
               width: 16.0,
               height: 16.0,
@@ -579,9 +590,9 @@ class _BindMobilePageState extends State<BindMobilePage> {
                   color: agreed ? _primary : Colors.grey.shade400,
                   width: 1.0,
                 ),
-                borderRadius: BorderRadius.circular(5.0),
+                shape: BoxShape.circle,
               ),
-              child: agreed ? const Icon(Icons.check, size: 12.0, color: Colors.white) : null,
+              child: agreed ? const Icon(Icons.check, size: 11.0, color: Colors.white) : null,
             ),
           ),
         ),
@@ -589,10 +600,10 @@ class _BindMobilePageState extends State<BindMobilePage> {
           child: Wrap(
             crossAxisAlignment: WrapCrossAlignment.center,
             children: <Widget>[
-              const Text('请阅读并同意', style: TextStyle(color: Colors.black45, fontSize: 12.5)),
-              _buildAgreementLink('《隐私协议》', 'PRIVACY'),
-              const Text('和', style: TextStyle(color: Colors.black45, fontSize: 12.5)),
+              const Text('我已阅读并同意', style: TextStyle(color: Color(0xFF999999), fontSize: 12.0)),
               _buildAgreementLink('《用户协议》', 'SERVICE'),
+              const Text(' | ', style: TextStyle(color: Color(0xFF999999), fontSize: 12.0)),
+              _buildAgreementLink('《隐私政策》', 'PRIVACY'),
             ],
           ),
         ),
@@ -607,7 +618,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
     );
   }
 
-  /// 协议确认弹窗(类似京东): 未勾选协议时弹出,点"同意"自动勾选并继续
+  /// 协议确认弹窗(与登录页一致): 未勾选协议时弹出,点"同意"自动勾选并继续
   /// * 用原生 showDialog 挂在当前 State 的 context 上,避免 shirne_dialog 的
   ///   navigatorKey 在 GetX 路由下取不到 NavigatorState 导致弹窗推不出来的问题
   Future<void> showAgreementDialog({required VoidCallback onAgreed}) async {
@@ -616,13 +627,22 @@ class _BindMobilePageState extends State<BindMobilePage> {
       barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          contentPadding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           content: Column(
             mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: <Widget>[
+              // 标题
+              const Text(
+                '温馨提示',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF202020)),
+              ),
+              const SizedBox(height: 20),
               _buildAgreementDialogContent(),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
+              // 不同意 / 同意
               Row(
                 children: <Widget>[
                   Expanded(
@@ -633,11 +653,9 @@ class _BindMobilePageState extends State<BindMobilePage> {
                         foregroundColor: const Color(0xFF202020),
                         minimumSize: const Size.fromHeight(44),
                         elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
-                      child: const Text('我再想想', style: TextStyle(fontSize: 15)),
+                      child: const Text('不同意', style: TextStyle(fontSize: 15)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -649,9 +667,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
                         foregroundColor: Colors.white,
                         minimumSize: const Size.fromHeight(44),
                         elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(6),
-                        ),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
                       ),
                       child: const Text('同意', style: TextStyle(fontSize: 15)),
                     ),
@@ -669,39 +685,29 @@ class _BindMobilePageState extends State<BindMobilePage> {
     }
   }
 
-  /// 弹窗内容: 请阅读并同意《隐私协议》《用户协议》,协议名可点击跳转
+  /// 弹窗内容(与登录页一致): 允许使用个人信息并阅读同意《隐私政策》|《用户协议》,协议名可点击跳转
   Widget _buildAgreementDialogContent() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
-      child: RichText(
-        textAlign: TextAlign.center,
-        text: TextSpan(
-          text: '请阅读并同意',
-          style: const TextStyle(fontSize: 15, color: Color(0xFF202020), height: 1.5),
-          children: <InlineSpan>[
-            const TextSpan(text: '《', style: TextStyle(color: Color(0xFF202020))),
-            WidgetSpan(
-              child: GestureDetector(
-                onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'}),
-                child: const Text(
-                  '隐私协议',
-                  style: TextStyle(fontSize: 15, color: Color(0xFF2C8DFA)),
-                ),
-              ),
-            ),
-            const TextSpan(text: '》《', style: TextStyle(color: Color(0xFF202020))),
-            WidgetSpan(
-              child: GestureDetector(
-                onTap: () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'}),
-                child: const Text(
-                  '用户协议',
-                  style: TextStyle(fontSize: 15, color: Color(0xFF2C8DFA)),
-                ),
-              ),
-            ),
-            const TextSpan(text: '》', style: TextStyle(color: Color(0xFF202020))),
-          ],
-        ),
+    return RichText(
+      text: TextSpan(
+        text: '允许我们在必要场景下，合理使用您的个人信息，且阅读并同意',
+        style: const TextStyle(fontSize: 14, color: Color(0xFF666666), height: 1.6),
+        children: <InlineSpan>[
+          // 用 TextSpan + recognizer,不用 WidgetSpan: WidgetSpan 默认按 PlaceholderAlignment.bottom
+          // 插入子 Widget,和周围文字基线对不齐(会偏低一点),改成同一段文字里的可点击 span 就自然对齐了
+          TextSpan(
+            text: '《隐私政策》',
+            style: const TextStyle(color: _primary),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'}),
+          ),
+          const TextSpan(text: ' | ', style: TextStyle(color: Color(0xFF999999))),
+          TextSpan(
+            text: '《用户协议》',
+            style: const TextStyle(color: _primary),
+            recognizer: TapGestureRecognizer()
+              ..onTap = () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'}),
+          ),
+        ],
       ),
     );
   }
