@@ -176,6 +176,101 @@ class WxAuth {
     return completer.future;
   }
 
+  /// 拉起微信小程序(yeepay 通道的支付页)
+  /// * 对齐 H5 APP 端: plus.share.getServices -> sweixin.launchMiniProgram({id, path, type:0})
+  /// * [username] 小程序原始id(gh_xxx),对应后台返回的 miniProgramOrgId
+  /// * [path] 小程序页面路径(带支付参数),对应后台返回的 prePayTn
+  /// * 返回 true 表示已发起跳转;支付结果以后台 /api/pay/status 为准(微信不回调支付结果)
+  /// * 前提: 开放平台移动应用与小程序需在「同一开放平台账号」下关联,否则微信会拒绝跳转
+  static Future<bool> launchMiniProgram({
+    required String username,
+    String path = '',
+    WXMiniProgramType type = WXMiniProgramType.release,
+  }) async {
+    if (!supported) throw '当前环境不支持微信小程序';
+    if (!configured) throw '未配置微信AppID,请先在 Config.wxAppId 填写';
+    if (!await init()) throw '微信SDK注册失败,请检查AppID配置';
+    if (!await isInstalled()) throw '未安装微信,无法跳转小程序支付';
+
+    debugPrint('[wx] launchMiniProgram username=$username path=$path');
+    return _fluwx.open(
+      target: MiniProgram(
+        username: username,
+        path: path.trim().isEmpty ? null : path.trim(),
+        miniProgramType: type,
+      ),
+    );
+  }
+
+  /// 微信 APP 支付(fluwx Payment)
+  /// * [params] 后台 /api/pay/pay 下发的 APP 支付参数:
+  ///   appId / partnerId / prepayId / package / nonceStr / timeStamp / sign / signType
+  /// * 返回 true 表示微信端支付成功(errCode == 0),取消(-2)/失败抛错(调用方 toast)
+  /// * 注意: 微信回调成功只代表端上支付完成,是否到账仍以后台 /api/pay/status 为准
+  static Future<bool> pay({
+    required Map<String, String> params,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    if (!supported) throw '当前环境不支持微信支付';
+    if (!configured) throw '未配置微信AppID,请先在 Config.wxAppId 填写';
+    if (!await init()) throw '微信SDK注册失败,请检查AppID配置';
+    if (!await isInstalled()) throw '未安装微信,请使用其他支付方式';
+
+    final Completer<bool> completer = Completer<bool>();
+    FluwxCancelable? cancelable;
+    Timer? timer;
+
+    void clean() {
+      timer?.cancel();
+      cancelable?.cancel();
+    }
+
+    void finish(String error, [bool ok = false]) {
+      if (completer.isCompleted) return;
+      clean();
+      if (ok) {
+        completer.complete(true);
+      } else {
+        completer.completeError(error);
+      }
+    }
+
+    cancelable = _fluwx.addSubscriber((WeChatResponse response) {
+      if (response is! WeChatPaymentResponse) return;
+      // errCode: 0 成功 / -2 用户取消 / 其他失败
+      if (response.errCode != 0) {
+        final String errStr = response.errStr?.trim() ?? '';
+        finish(response.errCode == -2
+            ? '已取消支付'
+            : (errStr.isNotEmpty ? errStr : '微信支付失败(${response.errCode})'));
+        return;
+      }
+      finish('', true);
+    });
+
+    final String appId = (params['appId'] ?? '').trim();
+    debugPrint('[wx] pay partnerId=${params['partnerId']} prepayId=${params['prepayId']}');
+    final bool sent = await _fluwx.pay(
+      which: Payment(
+        appId: appId.isNotEmpty ? appId : Config.wxAppId.trim(),
+        partnerId: params['partnerId'] ?? '',
+        prepayId: params['prepayId'] ?? '',
+        packageValue: params['package'] ?? 'Sign=WXPay',
+        nonceStr: params['nonceStr'] ?? '',
+        timestamp: int.tryParse('${params['timeStamp'] ?? 0}') ?? 0,
+        sign: params['sign'] ?? '',
+        signType: (params['signType'] ?? '').trim().isEmpty ? null : params['signType'],
+      ),
+    );
+    if (!sent) {
+      finish('拉起微信支付失败,请稍后重试');
+      return completer.future;
+    }
+
+    timer = Timer(timeout, () => finish('微信支付超时,请到订单列表查看支付结果'));
+    return completer.future;
+  }
+
   /// 统一错误提示
   static String errorMsg(dynamic error, [String fallback = '微信登录失败']) {
     final String message = '$error'.trim();

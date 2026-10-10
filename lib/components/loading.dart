@@ -39,7 +39,8 @@ final Color color;
      strokeWidth: strokeWidth,
     ),
    ),
-    Text(title ?? 'loading...', style: TextStyle(color: Colors.grey, fontSize: 14.0,),)
+    // 默认文案统一为中文(与显式传 '加载中...' 的地方保持一致)
+    Text(title ?? '加载中...', style: TextStyle(color: Colors.grey, fontSize: 14.0,),)
   ],
  );
  }

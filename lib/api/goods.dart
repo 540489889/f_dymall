@@ -2,6 +2,9 @@
 library;
 
 import 'dart:convert';
+
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../config/index.dart';
 import '../utils/request.dart';
 
@@ -28,6 +31,10 @@ class GoodsApi {
   /// 商品分页(按分类/关键词筛选, /api/goodssku/page)
   /// * [categoryId] 一级分类id(0 表示全部,不传该参数)
   /// * [keyword] 搜索关键词
+  /// * [order] 排序字段: 空=综合(后端默认), sale_num=销量, discount_price=价格
+  /// * [sort] 排序方向: desc(降) / asc(升), 仅在 [order] 非空时传
+  /// * [minPrice] / [maxPrice] 价格区间筛选
+  /// * [freeShipping] 只看包邮
   /// * 已实测: category_id 与 keyword 生效, category_ids 无效
   /// 返回 {page_count: 总页数, count: 总条数, list: 商品列表}(字段与 pageComponents 一致)
   static Future<Map<String, dynamic>> pageList({
@@ -35,6 +42,12 @@ class GoodsApi {
     int pageSize = 12,
     int categoryId = 0,
     String keyword = '',
+    String order = '',
+    String sort = '',
+    num? minPrice,
+    num? maxPrice,
+    bool freeShipping = false,
+    int brandId = 0,
   }) async {
     final Map<String, dynamic> data = <String, dynamic>{
       'page': page,
@@ -42,6 +55,15 @@ class GoodsApi {
     };
     if (categoryId > 0) data['category_id'] = categoryId;
     if (keyword.isNotEmpty) data['keyword'] = keyword;
+    // 排序: order 为空即综合,后端按默认排序返回
+    if (order.isNotEmpty) {
+      data['order'] = order;
+      data['sort'] = sort.isEmpty ? 'desc' : sort;
+    }
+    if (minPrice != null) data['min_price'] = minPrice;
+    if (maxPrice != null) data['max_price'] = maxPrice;
+    if (freeShipping) data['is_free_shipping'] = 1;
+    if (brandId > 0) data['brand_id'] = brandId;
     final dynamic res = await Request().post('/api/goodssku/page', data: data);
     if (res is Map) {
       return {
@@ -51,6 +73,37 @@ class GoodsApi {
       };
     }
     return {'page_count': 1, 'count': 0, 'list': const []};
+  }
+
+  /// 默认搜索词(/api/goods/defaultSearchWords)
+  /// * 用作搜索框 placeholder,接口异常时返回空串(页面用兜底文案)
+  static Future<String> defaultSearchWords() async {
+    try {
+      final dynamic res = await Request().get('/api/goods/defaultSearchWords');
+      if (res is Map) return '${res['words'] ?? ''}'.trim();
+    } catch (e) {
+      debugPrint('[goods]默认搜索词获取失败: $e');
+    }
+    return '';
+  }
+
+  /// 热门搜索词(/api/goods/hotSearchWords)
+  /// * 后端用逗号分隔返回,接口异常时返回空列表(页面不展示该模块)
+  static Future<List<String>> hotSearchWords() async {
+    try {
+      final dynamic res = await Request().get('/api/goods/hotSearchWords');
+      if (res is Map) {
+        final String words = '${res['words'] ?? ''}';
+        return words
+            .split(',')
+            .map((String e) => e.trim())
+            .where((String e) => e.isNotEmpty)
+            .toList();
+      }
+    } catch (e) {
+      debugPrint('[goods]热门搜索词获取失败: $e');
+    }
+    return const <String>[];
   }
 
   /// 商品分类树(/api/goodscategory/tree)

@@ -2310,7 +2310,11 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           // 商城商品id(goods_id)优先: id 可能是直播商品记录的主键
                                           final int? gid = int.tryParse('${talk['goods_id'] ?? talk['id'] ?? ''}'.trim());
                                           if (gid == null) return;
-                                          Get.toNamed('/goods', arguments: <String, dynamic>{'goodsId': gid});
+                                          // 带房间号: 详情页加购 / 下单要回传 live_roomid
+                                          Get.toNamed('/goods', arguments: <String, dynamic>{
+                                            'goodsId': gid,
+                                            'live_roomid': roomSn,
+                                          });
                                         },
                                       ),
                                         ],
@@ -2380,6 +2384,8 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                             anchorName: anchorNameOf(item),
                                             anchorAvatar: '${item['logo'] ?? ''}'.trim(),
                                             roomTitle: '${item['name'] ?? ''}'.trim(),
+                                            // 房间号: 橱窗里点商品进详情后,加购 / 下单要回传 live_roomid
+                                            roomSn: roomSn,
                                             )
                                           ));
                                             goodsTalkVisible = true;

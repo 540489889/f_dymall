@@ -37,6 +37,8 @@ class MemberApi {
   /// * 单项字段: nav_name 名称 / nav_image 图标 / nav_url 跳转配置(JSON 字符串) / sort 排序 / status 是否启用
   /// * sort 越大越靠前(后台现状: 9 直播连麦 排第一, 3 关于我们 排最后)
   /// * 这里只做取数与清洗(过滤停用项 + 按 sort 降序), 跳转由页面按 nav_url.name 分发
+  /// * nav_url 约定: 关于我们 {"name":"ABOUT"};
+  ///   内容详情(关于我们详情/协议) {"name":"AGREEMENT","type":"ABOUT","title":"关于我们"}
   static Future<List<Map<String, dynamic>>> serviceNav() async {
     final Map<String, dynamic> res = await Request().getRaw('/api/Member/serviceNav');
     if (kDebugMode) {

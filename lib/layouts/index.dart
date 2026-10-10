@@ -114,7 +114,7 @@ class _LayoutState extends State<Layout> {
     final double? w = double.tryParse('${item['imgWidth'] ?? ''}');
     if (w != null && w > 0) size = w;
     if (url.isEmpty) return SizedBox(width: size, height: size);
-    return CachedNetworkImage(
+    final Widget icon = CachedNetworkImage(
       imageUrl: url,
       width: size,
       height: size,
@@ -122,6 +122,24 @@ class _LayoutState extends State<Layout> {
       fadeInDuration: Duration.zero,
       placeholder: (BuildContext c, String u) => SizedBox(width: size, height: size),
       errorWidget: (BuildContext c, String u, Object e) => SizedBox(width: size, height: size),
+    );
+    if (!selected) return icon;
+    // 选中态: 播放一次"轻微放大弹入 + 上浮"的动画
+    // * BottomNavigationBar 的 icon / activeIcon 是两个插槽,切 tab 时直接替换、没有过渡,
+    //   选中的图标每切换一次就是新挂载,这里用 TweenAnimationBuilder 从 0.9 跑到 1.0(带回弹),
+    //   配合 -1.5 的上浮,有"弹一下"的反馈又不夸张
+    // * 常态重建(如配置刷新)不会重播: tween 未变且 element 复用
+    return TweenAnimationBuilder<double>(
+      tween: Tween<double>(begin: 0.9, end: 1.0),
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeOutBack,
+      builder: (BuildContext context, double value, Widget? child) {
+        return Transform.translate(
+          offset: const Offset(0.0, -1.5),
+          child: Transform.scale(scale: value, child: child),
+        );
+      },
+      child: icon,
     );
   }
 

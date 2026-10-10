@@ -102,12 +102,15 @@ class _OrderSureState extends State<OrderSure> {
     int? skuId;
     int? num;
     int? seckillId;
+    // 直播间房间号 sn: 从直播间点商品进来时带过来,下单要回传 live_roomid
+    String liveRoomId = '';
     if (args is Map) {
       cartIds = '${args['cart_ids'] ?? ''}';
       if (cartIds.isEmpty && args['cartIds'] is List) cartIds = (args['cartIds'] as List).join(',');
       skuId = int.tryParse('${args['sku_id'] ?? args['skuId'] ?? ''}');
       num = int.tryParse('${args['num'] ?? ''}');
       seckillId = int.tryParse('${args['seckill_id'] ?? args['seckillId'] ?? ''}');
+      liveRoomId = '${args['live_roomid'] ?? ''}'.trim();
     }
     // 秒杀下单走 /seckill/api/ordercreate/*(H5 pages_promotion/seckill/payment.vue)
     apiPrefix = seckillId == null ? OrderApi.api : OrderApi.seckillApi;
@@ -116,6 +119,8 @@ class _OrderSureState extends State<OrderSure> {
       skuId: skuId,
       num: num,
       seckillId: seckillId,
+      // 直播间下单: 回传房间号 sn(为空表示普通下单,不传该字段)
+      liveRoomId: liveRoomId.isEmpty ? null : liveRoomId,
     );
   }
 
@@ -708,6 +713,9 @@ class _OrderSureState extends State<OrderSure> {
 
   @override
   Widget build(BuildContext context) {
+    // 底部安全区(iOS 全面屏的 home indicator): 底栏要避开它,
+    // 否则「立即支付」贴着屏幕最底边,既不好点也容易被系统手势误触
+    final double bottomSafe = MediaQuery.of(context).padding.bottom;
     return Scaffold(
     backgroundColor: Colors.grey[50],
     appBar: AppBar(
@@ -722,11 +730,12 @@ class _OrderSureState extends State<OrderSure> {
       title: Text('确认订单', style: TextStyle(fontSize: 18.0),),
     ),
     body: _buildBody(),
-      // 商品导航栏
+      // 商品导航栏(底部补安全区: 白底延伸到屏幕最底,按钮整体上移)
       bottomNavigationBar: Container(
-        height: 50.0,
       color: Colors.white,
-      padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+      padding: EdgeInsets.fromLTRB(10.0, 5.0, 10.0, 5.0 + bottomSafe),
+      child: SizedBox(
+        height: 40.0,
       child: Row(
         children: [
       Expanded(
@@ -765,6 +774,7 @@ class _OrderSureState extends State<OrderSure> {
         onTap: submitting ? null : submitOrder,
         ),
       ],
+      ),
       ),
       ),
     );

@@ -11,18 +11,19 @@ class CartApi {
   /// 加入购物车
   /// * [skuId] 规格 sku id
   /// * [num] 加入数量
-  /// * [liveRoomId] 直播间id: 直播间加购场景传,普通商品加购传 null
+  /// * [liveRoomId] 直播间房间号 sn(字符串): 直播间加购场景传,普通商品加购传 null
   static Future<dynamic> add({
     required int skuId,
     int num = 1,
-    int? liveRoomId,
+    Object? liveRoomId,
   }) async {
     return Request().post(
       '/api/cart/add',
       data: <String, dynamic>{
         'sku_id': skuId,
         'num': num,
-        'live_roomid': liveRoomId,
+        // 非直播间加购不带这个字段(与下单接口一致: 有值才传)
+        if (liveRoomId != null) 'live_roomid': liveRoomId,
       },
     );
   }

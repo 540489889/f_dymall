@@ -27,13 +27,13 @@ class OrderApi {
   /// * [cartIds] 购物车结算: 逗号拼接的 cart_id,如 '81,82'
   /// * [skuId]/[num] 立即购买: sku_id + 数量
   /// * [seckillId] 秒杀下单: seckill_id(H5 ns-goods-sku 的秒杀下单数据)
-  /// * [liveRoomId] 直播间下单场景
+  /// * [liveRoomId] 直播间下单场景: 传直播间房间号 sn(字符串),非直播间下单不传
   static Map<String, dynamic> createData({
     String? cartIds,
     int? skuId,
     int? num,
     int? seckillId,
-    int? liveRoomId,
+    Object? liveRoomId,
     String latitude = '',
     String longitude = '',
   }) {

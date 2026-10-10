@@ -9,11 +9,15 @@ import '../../components/loading.dart';
 import '../../components/backtop.dart';
 import '../../components/live_playing_bars.dart';
 import '../../api/live.dart';
-import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
-import 'package:flutter/services.dart';
+import './scan.dart';
 
 class LivePage extends StatefulWidget {
-  const LivePage({super.key});
+  const LivePage({super.key, this.fromHome = false});
+
+  /// 是否从首页直播板块的"全部"进来
+  /// * 只有这种来源才显示右下角"回到首页"入口: 底部"直播"tab 进来时本来就在站内,
+  ///   再给一个回首页按钮既多余又和 tab 栏语义冲突
+  final bool fromHome;
 
   @override
   State<LivePage> createState() => _LivePageState();
@@ -120,77 +124,6 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  /// 扫码: 打开全屏扫码界面,扫到结果后弹窗展示并支持复制
-  Future<void> _handleScan(BuildContext context) async {
-    final BarcodeCapture? capture = await showAiBarcodeScanner(
-      context,
-      labels: const ScannerLabels(
-        galleryButton: '从相册选择',
-        galleryTooltip: '从图片中识别二维码',
-        torchOnTooltip: '关闭闪光灯',
-        torchOffTooltip: '打开闪光灯',
-        torchAutoTooltip: '闪光灯为自动模式',
-        switchCameraTooltip: '切换摄像头',
-        switchLensTooltip: '切换镜头',
-        closeTooltip: '关闭',
-        zoomTooltip: '缩放',
-        resetZoomTooltip: '重置缩放',
-        scanHint: '将二维码放入框内,即可自动扫描',
-        scanHintIdle: '保持稳定,稍微靠近一些',
-        doneButton: '完成',
-        retryButton: '重试',
-        openSettingsButton: '去设置',
-        cameraErrorTitle: '相机启动失败',
-        cameraErrorMessage: '请检查相机权限或稍后重试',
-        permissionDeniedTitle: '未获取相机权限',
-        permissionDeniedMessage: '请在系统设置中开启相机权限后重试',
-        cameraUnsupportedTitle: '无法使用扫码功能',
-        cameraUnsupportedMessage: '当前设备没有可用的摄像头',
-        startingCamera: '正在启动相机…',
-        noBarcodeFoundInImage: '该图片中未找到二维码',
-        galleryUnsupported: '当前平台不支持从相册识别',
-        invalidBarcode: '该二维码无法识别',
-        copiedConfirmation: '已复制',
-      ),
-      validator: (BarcodeCapture capture) => _firstRawValue(capture).isNotEmpty,
-    );
-
-    final String code = _firstRawValue(capture);
-    if (code.isEmpty) return;
-    if (!context.mounted) return;
-    await showDialog(
-      context: context,
-      builder: (BuildContext ctx) => AlertDialog(
-        title: const Text('扫码结果'),
-        content: SelectableText(code, style: const TextStyle(fontSize: 14.0)),
-        actions: <Widget>[
-          TextButton(
-            onPressed: () {
-              Clipboard.setData(ClipboardData(text: code));
-              Navigator.of(ctx).pop();
-              Get.snackbar('提示', '已复制到剪贴板');
-            },
-            child: const Text('复制'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('关闭'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// 取扫码结果里第一个非空原始值
-  String _firstRawValue(BarcodeCapture? capture) {
-    if (capture == null) return '';
-    for (final Barcode barcode in capture.barcodes) {
-      final String raw = (barcode.rawValue ?? '').trim();
-      if (raw.isNotEmpty) return raw;
-    }
-    return '';
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -211,9 +144,9 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
         ),
         actions: [
           IconButton(
-            // 扫码图标(自定义 png)
+            // 扫码图标(自定义 png): 进入扫码/直播码入口页,不再直接拉起相机
             icon: Image.asset('assets/images/icon_sm.png', width: 22.0, height: 22.0, fit: BoxFit.contain, isAntiAlias: true),
-            onPressed: () => _handleScan(context),
+            onPressed: () => Get.to(() => const LiveScanPage()),
           ),
         ],
         bottom: PreferredSize(
@@ -319,7 +252,45 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
           ),
         ),
       ),
-      floatingActionButton: Backtop(controller: scrollController, offset: scrollOffset),
+      // 右下角悬浮组: 回到首页在上(仅从首页"全部"进来时显示),返回顶部在下(滚动超过阈值才出现)
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: <Widget>[
+          if (widget.fromHome) _buildHomeFab(),
+          if (widget.fromHome) const SizedBox(height: 12.0),
+          Backtop(controller: scrollController, offset: scrollOffset),
+        ],
+      ),
+    );
+  }
+
+  /// 回到首页悬浮按钮
+  /// * 质感与 Backtop 保持一致(白粉渐变 + 主色描边 + 双层投影),视觉上是一组
+  /// * offAllNamed('/'): 与商品详情页底部"首页"入口一致,清空栈后落在底部导航的首页
+  Widget _buildHomeFab() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Get.offAllNamed('/'),
+      child: Container(
+        width: 46.0,
+        height: 46.0,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[Color(0xFFFFFFFF), Color(0xFFFFF1F4)],
+          ),
+          borderRadius: BorderRadius.circular(23.0),
+          border: Border.all(color: const Color(0x33FF2C55), width: 1.0),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(color: Color(0x2EFF2C55), blurRadius: 14.0, offset: Offset(0.0, 4.0)),
+            BoxShadow(color: Color(0x0F000000), blurRadius: 4.0, offset: Offset(0.0, 1.0)),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const Icon(Icons.home_outlined, size: 22.0, color: Color(0xFFFF2C55)),
+      ),
     );
   }
 

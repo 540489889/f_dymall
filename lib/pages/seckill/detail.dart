@@ -273,6 +273,10 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    // 底部安全区(iOS 全面屏的 home indicator):
+    // * 底部栏要避开它,否则「立即抢购」贴着屏幕最底边,既不好点也容易被系统手势误触
+    // * 列表底部要留出同样的高度,否则最后一块内容会被加高后的底部栏盖住
+    final double bottomSafe = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
       appBar: AppBar(
@@ -293,8 +297,8 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
               ? _buildError()
               : Stack(
                   children: <Widget>[
-                    Positioned.fill(child: _buildBody()),
-                    Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar()),
+                    Positioned.fill(child: _buildBody(bottomSafe)),
+                    Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar(bottomSafe)),
                   ],
                 ),
     );
@@ -313,10 +317,11 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
     );
   }
 
-  Widget _buildBody() {
+  /// [bottomSafe] 底部安全区: 让最后一块内容不被加高后的底部栏盖住
+  Widget _buildBody(double bottomSafe) {
     return ListView(
       controller: controller,
-      padding: const EdgeInsets.only(bottom: 70.0),
+      padding: EdgeInsets.only(bottom: 70.0 + bottomSafe),
       children: <Widget>[
         _buildSwiper(),
         _buildPriceCard(),
@@ -552,16 +557,19 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
   }
 
   /// 底部按钮
-  Widget _buildBottomBar() {
+  /// * [bottomSafe] 底部安全区(iOS home indicator): 白底延伸到屏幕最底,按钮整体上移避开它
+  Widget _buildBottomBar(double bottomSafe) {
     final bool disabled = status == 0 || currentStock <= 0;
     return Container(
-      height: 60.0,
-      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+      // 60 为按钮区高度,底部再补安全区
+      padding: EdgeInsets.fromLTRB(15.0, 0, 15.0, bottomSafe),
       decoration: const BoxDecoration(
         color: Colors.white,
         boxShadow: <BoxShadow>[BoxShadow(color: Color(0x14000000), blurRadius: 6.0, offset: Offset(0, -1))],
       ),
-      child: Row(
+      child: SizedBox(
+        height: 60.0,
+        child: Row(
         children: <Widget>[
           Expanded(
             child: GestureDetector(
@@ -581,6 +589,7 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
             ),
           ),
         ],
+        ),
       ),
     );
   }
@@ -666,6 +675,16 @@ class _SkuSheetState extends State<_SkuSheet> {
     return null;
   }
 
+  /// 是否有得选: 所有规格值加起来只有一个时(单规格)没有选择余地,不展示规格区
+  /// * 否则弹窗会为一行规格撑出大片空白
+  bool get hasSpec {
+    int count = 0;
+    for (final Map<String, dynamic> group in tree) {
+      count += (group['value'] as List? ?? const <dynamic>[]).length;
+    }
+    return count > 1;
+  }
+
   /// 可买上限: 库存与限购取小
   int get limit {
     int max = widget.stock <= 0 ? 1 : widget.stock;
@@ -683,6 +702,9 @@ class _SkuSheetState extends State<_SkuSheet> {
         constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
+          // 显式 stretch: Column 默认 crossAxisAlignment 是 center,
+          // 子元素会按自身宽度居中(规格区看起来就左边空一截),这里让它们都撑满弹层宽度
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: <Widget>[
             Padding(
               padding: const EdgeInsets.fromLTRB(15.0, 12.0, 15.0, 12.0),
@@ -738,17 +760,18 @@ class _SkuSheetState extends State<_SkuSheet> {
               ),
             ),
             const Divider(color: Color(0xFFEEEEEE), height: 1.0, thickness: 0.5),
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(15.0, 12.0, 15.0, 12.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
+            // 单规格(只有一个可选值)时不展示规格区,弹窗按内容收短
+            // * shrinkWrap: 规格少时按内容高度;多时才占满可滚动区
+            if (hasSpec) ...<Widget>[
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: const EdgeInsets.fromLTRB(15.0, 12.0, 15.0, 12.0),
                   children: tree.map(_buildSpecGroup).toList(),
                 ),
               ),
-            ),
-          const Divider(color: Color(0xFFEEEEEE), height: 1.0, thickness: 0.5),
+              const Divider(color: Color(0xFFEEEEEE), height: 1.0, thickness: 0.5),
+            ],
           Padding(
             padding: const EdgeInsets.fromLTRB(15.0, 10.0, 15.0, 12.0),
             child: Row(
@@ -796,10 +819,18 @@ class _SkuSheetState extends State<_SkuSheet> {
               padding: const EdgeInsets.only(bottom: 8.0),
               child: Text(name, style: const TextStyle(fontSize: 13.0, color: Color(0xFF333333))),
             ),
-          Wrap(
-            spacing: 10.0,
-            runSpacing: 10.0,
-            children: values.whereType<Map>().map(_buildSpecValue).toList(),
+          // 撑满宽度 + 显式左对齐: Wrap 默认会收缩到"最宽一行的宽度",
+          // 被上层居中后看起来就是左边空一截,这里固定铺满弹层宽度,规格值从最左边开始排
+          SizedBox(
+            width: double.infinity,
+            child: Wrap(
+              spacing: 10.0,
+              runSpacing: 10.0,
+              alignment: WrapAlignment.start,
+              runAlignment: WrapAlignment.start,
+              crossAxisAlignment: WrapCrossAlignment.start,
+              children: values.whereType<Map>().map(_buildSpecValue).toList(),
+            ),
           ),
         ],
       ),

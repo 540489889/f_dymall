@@ -126,6 +126,15 @@ int get goodsId {
   return int.tryParse('$args') ?? 1;
 }
 
+/// 直播间房间号 sn: 从直播间点商品进来时由直播间页带过来
+/// * 加购 / 下单都要回传给后台(live_roomid),用于统计直播间成交
+/// * 普通商品详情没有这个参数,为空表示非直播间下单
+String get liveRoomId {
+  final dynamic args = Get.arguments;
+  if (args is! Map) return '';
+  return '${args['live_roomid'] ?? ''}'.trim();
+}
+
 /// 加载商品详情
 Future<void> loadDetail() async {
   setState(() {
@@ -541,7 +550,12 @@ Future<void> _addToCart({int num = 1}) async {
   if (addingCart) return;
   setState(() => addingCart = true);
   try {
-    await CartApi.add(skuId: skuId, num: num);
+    // 直播间加购: 带上房间号 sn; 非直播间进来时为空,不传该字段
+    await CartApi.add(
+      skuId: skuId,
+      num: num,
+      liveRoomId: liveRoomId.isEmpty ? null : liveRoomId,
+    );
     if (!mounted) return;
     // 先乐观 +num 保证即时反馈,再用服务端真实值校正
     setState(() => cartNum += num);
@@ -562,6 +576,8 @@ void _goToOrderSure({int num = 1}) {
     'title': title,
     'price': price,
     'image': images.isEmpty ? '' : images.first,
+    // 直播间下单: 把房间号 sn 透传给结算页,再由它写进 orderCreateData.live_roomid
+    'live_roomid': liveRoomId,
   });
 }
 
@@ -935,13 +951,17 @@ Widget _buildBottomBar(BuildContext context) {
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => Get.offAllNamed('/'),
-            child: _buildBarIcon(Icons.home_outlined, '首页', primary),
+            child: _buildBarIcon('assets/images/c1.png', '首页'),
           ),
-          _buildBarIcon(Icons.chat_outlined, '客服', Colors.black87),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => Get.toNamed('/chat'),
+            child: _buildBarIcon('assets/images/c2.png', '客服'),
+          ),
           GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: () => Get.toNamed('/cart'),
-            child: _buildBarIcon(Icons.shopping_cart_outlined, '购物车', Colors.black87, badge: cartNum),
+            child: _buildBarIcon('assets/images/c3.png', '购物车', badge: cartNum),
           ),
         ],
       ),
@@ -988,14 +1008,25 @@ Widget _buildBottomBar(BuildContext context) {
   );
 }
 
-Widget _buildBarIcon(IconData icon, String label, Color color, {int badge = 0}) {
+/// 底部操作栏图标(首页 / 客服 / 购物车): 用本地切图 assets/images/c1.png ~ c3.png
+/// * [badge] > 0 时右上角显示数量红点(购物车)
+Widget _buildBarIcon(String asset, String label, {int badge = 0}) {
   return Stack(
     clipBehavior: Clip.none,
     children: [
       Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(icon, color: color, size: 22.0,),
+          Image.asset(
+            asset,
+            width: 22.0,
+            height: 22.0,
+            fit: BoxFit.contain,
+            isAntiAlias: true,
+            // 切图缺失时退化成同尺寸占位,避免红屏
+            errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
+                const SizedBox(width: 22.0, height: 22.0),
+          ),
           Text(label, style: TextStyle(fontSize: 12.0),)
         ],
       ),

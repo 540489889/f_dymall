@@ -12,6 +12,7 @@ library;
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
@@ -19,6 +20,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../api/pay.dart';
 import '../config/index.dart';
+import '../utils/pay_watcher.dart';
+import '../utils/wx.dart';
 
 class PopupPay extends StatefulWidget {
   const PopupPay({
@@ -49,7 +52,7 @@ class PopupPay extends StatefulWidget {
   State<PopupPay> createState() => _PopupPayState();
 }
 
-class _PopupPayState extends State<PopupPay> {
+class _PopupPayState extends State<PopupPay> with WidgetsBindingObserver {
   /// 支付方式列表(按后台可用项过滤后)
   List<PayType> payTypes = <PayType>[];
   int payIndex = 0;
@@ -64,19 +67,46 @@ class _PopupPayState extends State<PopupPay> {
   bool paying = false;
   /// 是否已支付成功(区分"支付成功跳结果页"与"取消关闭跳订单详情")
   bool paid = false;
+  /// 是否已发起外部支付(跳小程序/跳浏览器/SDK): 回到前台时据此立即查一次状态
+  bool polling = false;
   String errorMsg = '';
   Timer? timer;
 
   @override
   void initState() {
     super.initState();
+    // 监听前后台: 从微信小程序支付页回到 App 时立刻查一次支付状态
+    WidgetsBinding.instance.addObserver(this);
     outTradeNo = widget.outTradeNo;
     load();
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 回到前台且已发起外部支付: 立即查一次,不用等下一个轮询周期
+    // * 后台期间 Dart Timer 会被系统挂起,轮询实际不跑,必须靠 resumed 主动触发
+    if (state != AppLifecycleState.resumed || !polling) return;
+    if (kDebugMode) debugPrint('[pay] resumed -> 立即查支付状态 tradeNo=$tradeNo');
+    checkPayStatus();
+  }
+
+  /// 查一次支付状态(已支付则跳结果页)
+  Future<void> checkPayStatus() async {
+    try {
+      final int payStatus = await PayApi.status(tradeNo);
+      if (kDebugMode) debugPrint('[pay] checkPayStatus status=$payStatus tradeNo=$tradeNo');
+      if (!mounted || payStatus != 2) return;
+      timer?.cancel();
+      paySuccess();
+    } catch (_) {
+      // 网络异常等下一次轮询
+    }
+  }
+
+  @override
   void dispose() {
     timer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     // 弹窗关闭(用户取消 / 支付失败)通知外部,与 H5 payment.js payClose 一致
     // * 支付成功已跳支付结果页,不再触发(H5 paySuccess 用 redirectTo 覆盖当前页)
     final ValueChanged<int>? onClosed = widget.onClosed;
@@ -189,6 +219,39 @@ class _PopupPayState extends State<PopupPay> {
         paySuccess();
         return;
       }
+      // yeepay: 跳微信小程序里完成支付(对齐 H5 APP 端 launchMiniProgram)
+      // * 后台返回 {miniProgramOrgId, prePayTn},微信不回调支付结果,以后台轮询为准
+      if (res.isMiniProgramPay) {
+        try {
+          final bool sent = await WxAuth.launchMiniProgram(
+            username: res.miniProgramOrgId,
+            path: res.prePayTn,
+          );
+          if (!sent) {
+            MyDialog.toast('拉起微信支付失败,请稍后重试');
+            return;
+          }
+          // 小程序里支付完回到 App: 轮询到 pay_status == 2 即跳结果页
+          startPolling();
+        } catch (e) {
+          MyDialog.toast(WxAuth.errorMsg(e, '拉起微信支付失败'));
+        }
+        return;
+      }
+      // 微信 APP 支付: 后台下发了 SDK 参数时,直接用 fluwx 唤起微信(不跳 H5 支付页)
+      if (type.isWechat && res.wxPay.isNotEmpty && WxAuth.supported) {
+        final Map<String, String> params = Map<String, String>.from(res.wxPay);
+        // 部分通道不下发 appId,用本地配置的开放平台 AppID 兜底
+        if ((params['appId'] ?? '').isEmpty) params['appId'] = Config.wxAppId.trim();
+        try {
+          await WxAuth.pay(params: params);
+          // 端上支付成功,到账结果以后台为准: 轮询 pay_status == 2 再跳结果页
+          startPolling();
+        } catch (e) {
+          MyDialog.toast(WxAuth.errorMsg(e, '微信支付失败'));
+        }
+        return;
+      }
       if (res.url.isNotEmpty) {
         // 支付宝/微信H5: 跳支付页并轮询支付状态
         final Uri uri = Uri.parse(res.url);
@@ -198,8 +261,10 @@ class _PopupPayState extends State<PopupPay> {
         startPolling();
         return;
       }
-      // APP端: 此处需接原生支付SDK(fluwx/tobias),SDK支付成功后再调 paySuccess()
-      MyDialog.toast('请在APP中完成支付');
+      // 既没有支付链接,也没有 SDK 参数: 后台该通道未开通 APP 支付
+      // * 常见于后台只开了 H5/JSAPI 支付,APP 端拿不到可用的支付凭证
+      if (kDebugMode) debugPrint('[pay] 无支付链接且无SDK参数, data=${res.data}');
+      MyDialog.toast('该支付方式未开通APP支付,请更换支付方式');
       startPolling();
     } catch (e) {
       MyDialog.toast('$e');
@@ -215,22 +280,48 @@ class _PopupPayState extends State<PopupPay> {
   }
 
   /// 轮询支付状态(pay_status == 2 为已支付)
+  /// * 同时交给 PayWatcher 兜底: 弹窗被关闭(下滑/返回键)后,App 回到前台仍会查一次
   void startPolling() {
+    PayWatcher.instance.watch(
+      tradeNo,
+      toPayResult: widget.toPayResult,
+      onPaid: () => widget.onChanged?.call('支付成功'),
+      // 弹窗还活着时,由它自己关掉(原生 showModalBottomSheet)并跳结果页
+      onFinish: () {
+        if (!mounted || paid) return false;
+        paySuccess();
+        return true;
+      },
+    );
     timer?.cancel();
+    polling = true;
     int times = 0;
+    int failed = 0;
     timer = Timer.periodic(const Duration(seconds: 1), (Timer t) async {
       times++;
       if (!mounted || times > 300) {
         t.cancel();
+        polling = false;
         return;
       }
       try {
         final int payStatus = await PayApi.status(tradeNo);
         if (payStatus == 2) {
           t.cancel();
+          polling = false;
           paySuccess();
-        } else if (payStatus < 0) {
-          t.cancel();
+          return;
+        }
+        if (payStatus < 0) {
+          // 接口异常: App 切到微信期间请求极易失败/超时,不能一次失败就停
+          failed++;
+          if (kDebugMode) debugPrint('[pay] status 异常($failed 次) tradeNo=$tradeNo');
+          if (failed >= 10) {
+            t.cancel();
+            polling = false;
+          }
+        } else {
+          failed = 0;
         }
       } catch (_) {
         // 网络异常继续轮询
@@ -240,6 +331,8 @@ class _PopupPayState extends State<PopupPay> {
 
   /// 取消/失败后重置支付单据(换取新的支付单号)
   Future<void> resetPay() async {
+    // 旧支付单作废: 停止兜底检查
+    PayWatcher.instance.stop();
     final String no = await PayApi.resetPay(tradeNo);
     if (!mounted || no.isEmpty) return;
     setState(() {
@@ -251,6 +344,8 @@ class _PopupPayState extends State<PopupPay> {
   /// 支付成功: 关闭弹窗并跳支付结果页(与 H5 payment.vue paySuccess 一致)
   void paySuccess() {
     timer?.cancel();
+    // 已确认到账: 撤掉 PayWatcher,避免回到前台重复跳结果页
+    PayWatcher.instance.stop();
     if (!mounted) return;
     paid = true;
     final String no = tradeNo;

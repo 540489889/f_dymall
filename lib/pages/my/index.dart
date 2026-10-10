@@ -40,10 +40,20 @@ class _MyPageState extends State<MyPage> {
 
   /// 我的服务: 拉 /api/Member/serviceNav 的配置
   /// * 失败 / 后台没配时列表为空, 「我的服务」整块不展示
+  /// * 看播记录是内置入口: 后台没配 WATCH_RECORD 时自动补一项,保证入口一定可达
   Future<void> loadServiceNav() async {
     try {
       final List<Map<String, dynamic>> list = await MemberApi.serviceNav();
       if (!mounted || list.isEmpty) return;
+      final bool hasWatchRecord =
+          list.any((Map<String, dynamic> e) => _serviceActionName(e) == 'WATCH_RECORD');
+      if (!hasWatchRecord) {
+        list.add(<String, dynamic>{
+          'nav_name': '看播记录',
+          'nav_image': 'assets/images/me/mine_icon_svc_livemic.png',
+          'nav_url': jsonEncode(<String, String>{'name': 'WATCH_RECORD'}),
+        });
+      }
       setState(() {
         serviceList
           ..clear()
@@ -165,6 +175,22 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
+  /// 服务项的动作码: nav_url 可能是 Map 也可能是 JSON 字符串(与首页金刚区同一套约定)
+  /// * 解析不了返回空串(后台该入口没配好)
+  String _serviceActionName(Map<String, dynamic> item) {
+    final dynamic rawUrl = item['nav_url'];
+    if (rawUrl is Map) return '${rawUrl['name'] ?? ''}';
+    final String text = '${rawUrl ?? ''}'.trim();
+    if (text.isEmpty) return '';
+    try {
+      final dynamic decoded = jsonDecode(text);
+      if (decoded is Map) return '${decoded['name'] ?? ''}';
+    } catch (_) {
+      return '';
+    }
+    return '';
+  }
+
   /// 我的服务跳转: nav_url 为 JSON 字符串(与首页金刚区同一套约定), name 是动作码
   void _handleServiceNav(Map<String, dynamic> item) {
     final dynamic rawUrl = item['nav_url'];
@@ -191,6 +217,9 @@ class _MyPageState extends State<MyPage> {
         case 'LIVE_CONNECT':
           Get.toNamed('/live');
           break;
+        case 'WATCH_RECORD':
+          Get.toNamed('/my/watching_record');
+          break;
         case 'MEMBER_ACCOUNT':
           Get.toNamed('/my/withdraw_account');
           break;
@@ -205,6 +234,14 @@ class _MyPageState extends State<MyPage> {
           break;
         case 'ABOUT':
           Get.toNamed('/about');
+          break;
+        // 内容详情页(关于我们详情 / 各类协议): nav_url 里带 type(后台 aggrement 的类型) 和可选 title
+        // * 后台配: {"name":"AGREEMENT","type":"ABOUT","title":"关于我们"}
+        case 'AGREEMENT':
+          Get.toNamed('/agreement', arguments: <String, dynamic>{
+            'type': '${info['type'] ?? 'SERVICE'}',
+            'title': '${info['title'] ?? ''}',
+          });
           break;
         // 复用首页金刚区已有的动作码
         case 'SIGN_IN':

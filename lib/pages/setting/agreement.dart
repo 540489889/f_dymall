@@ -26,6 +26,19 @@ class _AgreementPageState extends State<AgreementPage> {
   bool loading = true;
   String errorMsg = '';
 
+  /// 标题兜底: 路由传入的 title(如 {type: ABOUT, title: 关于我们}) > 按 type 推断 > 默认"详情"
+  /// * 复用本页展示"关于我们"等非协议内容时,不传 title 会显示成"用户协议"
+  String get _fallbackTitle {
+    final dynamic args = Get.arguments;
+    if (args is Map) {
+      final String t = '${args['title'] ?? ''}'.trim();
+      if (t.isNotEmpty) return t;
+    }
+    if (type == 'PRIVACY') return '隐私协议';
+    if (type == 'SERVICE') return '用户协议';
+    return '详情';
+  }
+
   /// 协议类型: 路由 arguments 为 Map({type:...}) 或字符串时优先
   String get type {
     final dynamic args = Get.arguments;
@@ -78,7 +91,7 @@ class _AgreementPageState extends State<AgreementPage> {
           onPressed: () => Get.back(),
         ),
         title: Text(
-          title.isNotEmpty ? title : (type == 'PRIVACY' ? '隐私协议' : '用户协议'),
+          title.isNotEmpty ? title : _fallbackTitle,
           style: const TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Colors.black87),
         ),
       ),

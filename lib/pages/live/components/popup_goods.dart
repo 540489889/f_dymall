@@ -15,6 +15,7 @@ class PopupGoods extends StatefulWidget {
     this.anchorName,
     this.anchorAvatar,
     this.roomTitle,
+    this.roomSn,
   });
 
   // 带货商品列表(首屏数据; 打开后会被 onRefresh 的结果覆盖)
@@ -27,6 +28,8 @@ class PopupGoods extends StatefulWidget {
   final String? anchorAvatar;
   // 直播间标题(直播间 name): 头部第二行, 没下发时不展示
   final String? roomTitle;
+  // 直播间房间号 sn: 点商品进详情时带给详情页, 加购/下单要回传 live_roomid
+  final String? roomSn;
 
   @override
   State<PopupGoods> createState() => _PopupGoodsState();
@@ -168,7 +171,16 @@ Widget build(BuildContext context) {
                                 onTap: () => Get.toNamed('/cart'),
                                 child: Column(
                                 children: [
-                                  Icon(Icons.shopping_cart_rounded, color: Colors.black54, size: 16.0,),
+                                  // 用本地切图(原 16 的 Icon 偏小,放大到 22 更醒目)
+                                  Image.asset(
+                                    'assets/images/c3.png',
+                                    width: 22.0,
+                                    height: 22.0,
+                                    fit: BoxFit.contain,
+                                    isAntiAlias: true,
+                                    errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
+                                        const SizedBox(width: 22.0, height: 22.0),
+                                  ),
                                 Text('购物车', style: TextStyle(color: Colors.black54, fontSize: 12.0,),),
                               ],
                             ),
@@ -179,7 +191,15 @@ Widget build(BuildContext context) {
                               onTap: () => Get.toNamed('/order'),
                               child: Column(
                               children: [
-                                Icon(Icons.my_library_books_rounded, color: Colors.black54, size: 16.0,),
+                                Image.asset(
+                                  'assets/images/c4.png',
+                                  width: 22.0,
+                                  height: 22.0,
+                                  fit: BoxFit.contain,
+                                  isAntiAlias: true,
+                                  errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
+                                      const SizedBox(width: 22.0, height: 22.0),
+                                ),
                                 Text('订单', style: TextStyle(color: Colors.black54, fontSize: 12.0,),),
                               ],
                             ),
@@ -239,7 +259,11 @@ Widget build(BuildContext context) {
                         if (kDebugMode) {
                           debugPrint('[live]购物车跳详情: goods_id=$gid live_id=${item['live_id'] ?? ''}');
                         }
-                        Get.toNamed('/goods', arguments: <String, dynamic>{'goodsId': gid});
+                        Get.toNamed('/goods', arguments: <String, dynamic>{
+                          'goodsId': gid,
+                          // 直播间房间号: 详情里加购 / 下单要回传 live_roomid
+                          'live_roomid': (widget.roomSn ?? '').trim(),
+                        });
                       },
                       borderRadius: BorderRadius.circular(10.0),
                       child: Container(

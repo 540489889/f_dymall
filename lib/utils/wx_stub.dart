@@ -31,6 +31,22 @@ class WxAuth {
     throw '当前环境不支持微信授权';
   }
 
+  /// 直接抛错(调用方 toast 提示)
+  static Future<bool> launchMiniProgram({
+    required String username,
+    String path = '',
+  }) async {
+    throw '当前环境不支持微信小程序';
+  }
+
+  /// 直接抛错(调用方 toast 提示)
+  static Future<bool> pay({
+    required Map<String, String> params,
+    Duration timeout = const Duration(seconds: 60),
+  }) async {
+    throw '当前环境不支持微信支付';
+  }
+
   /// 统一错误提示
   static String errorMsg(dynamic error, [String fallback = '微信登录失败']) {
     final String message = '$error'.trim();

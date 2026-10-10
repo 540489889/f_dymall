@@ -1,6 +1,6 @@
 /// 关于我们
-/// 对齐截图: 顶部 logo + 名称 + 标语 + 二维码 + 版本号，
-///         下方备案号 + 查询链接，底部两行入口：证照信息 / 给我评分吧
+/// 顶部 logo + 名称 + 标语 + 版本号，下方备案号 + 查询链接
+/// * 二维码已去掉(按需求不再展示下载二维码)
 library;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -8,7 +8,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../config/index.dart';
@@ -72,14 +71,6 @@ class _AboutPageState extends State<AboutPage> {
   String get _slogan => '${_site['site_slogan'] ?? ''}'.isNotEmpty
       ? '${_site['site_slogan']}'
       : '正品拼团更便宜！';
-
-  String get _qrContent {
-    final String download = '${_site['download_url'] ?? ''}';
-    final String site = '${_site['site_url'] ?? ''}';
-    if (download.isNotEmpty) return download;
-    if (site.isNotEmpty) return site;
-    return Config.baseUrl;
-  }
 
   String get _icpNo => '${_copyright['icp'] ?? _copyright['copyright_desc'] ?? ''}';
 
@@ -222,30 +213,6 @@ class _AboutPageState extends State<AboutPage> {
             ],
           ),
           const SizedBox(height: 28.0),
-          // 二维码
-          Container(
-            width: 180.0,
-            height: 180.0,
-            padding: const EdgeInsets.all(12.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(12.0),
-              boxShadow: const <BoxShadow>[
-                BoxShadow(color: Color(0x0D000000), blurRadius: 16.0, offset: Offset(0.0, 4.0)),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(6.0),
-              child: QrImageView(
-                data: _qrContent,
-                version: QrVersions.auto,
-                backgroundColor: Colors.white,
-                embeddedImage: _logo.isNotEmpty ? NetworkImage(_logo) : null,
-                embeddedImageStyle: const QrEmbeddedImageStyle(size: Size(32.0, 32.0)),
-              ),
-            ),
-          ),
-          const SizedBox(height: 20.0),
           // 版本号
           Text(
             version.isEmpty ? '版本：—' : '版本：$version',

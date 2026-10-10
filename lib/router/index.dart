@@ -14,6 +14,8 @@ import '../pages/store/detail.dart';
 import '../pages/live/live.dart';
 // 商品详细
 import '../pages/goods/detail.dart';
+import '../pages/goods/search.dart';
+import '../pages/goods/list.dart';
 // 购物车
 import '../pages/cart/index.dart';
 // 聊天消息
@@ -46,6 +48,9 @@ import '../pages/my/withdraw_account_edit.dart';
 // 收货地址
 import '../pages/my/address_list.dart';
 import '../pages/my/address_edit.dart';
+// 看播记录
+import '../pages/my/watching_record.dart';
+import '../pages/my/watching_record_detail.dart';
 // 设置/个人资料
 import '../pages/setting/personal_info.dart';
 // 关于我们
@@ -53,6 +58,8 @@ import '../pages/setting/about.dart';
 import '../pages/setting/license_info.dart';
 // 协议详情(隐私协议 / 用户协议)
 import '../pages/setting/agreement.dart';
+// 首次启动隐私政策概要
+import '../pages/setting/privacy_agreement.dart';
 // 限时秒杀
 import '../pages/seckill/list.dart';
 import '../pages/seckill/detail.dart';
@@ -79,6 +86,9 @@ final Map<String, Widget> routes = {
  '/': const Layout(),
   '/live': const Live(),
  '/goods': const Goods(),
+  // 商品搜索 / 搜索结果分类列表(游客可见,不进 authRoutes)
+  '/search': const SearchPage(),
+  '/goods/list': const GoodsListPage(),
  '/cart': const CartPage(),
  '/chat': const Chat(),
 '/order': const Order(),
@@ -103,12 +113,17 @@ final Map<String, Widget> routes = {
 '/my/point_detail': const PointDetailPage(),
 '/my/signin': const SigninPage(),
 '/my/coupon': const MyCouponPage(),
+// 看播记录(我的服务入口,个人看播数据,需登录)
+'/my/watching_record': const WatchingRecordPage(),
+'/my/watching_record/detail': const WatchingRecordDetailPage(),
   '/address': const AddressListPage(),
   '/address/edit': const AddressEditPage(),
   '/personal_info': const PersonalInfoPage(),
   // 关于我们(游客可见,不进 authRoutes)
   '/about': const AboutPage(),
   '/license_info': const LicenseInfoPage(),
+  // 首次启动隐私政策概要(游客可见,不进 authRoutes)
+  '/privacy_agreement': const PrivacyAgreementPage(),
   // 协议详情: 游客也可查看,不进 authRoutes
   '/agreement': const AgreementPage(),
   '/seckill': const SeckillListPage(),
@@ -140,6 +155,8 @@ const Set<String> authRoutes = {
   '/my/point_detail',
   '/my/signin',
   '/my/coupon',
+  '/my/watching_record',
+  '/my/watching_record/detail',
   '/address',
   '/address/edit',
   '/personal_info',

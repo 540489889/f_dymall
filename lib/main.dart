@@ -19,6 +19,7 @@ import 'controller/app_config.dart';
 // 引入路由管理
 import 'router/index.dart';
 import 'components/splash_cover.dart';
+import 'utils/privacy_agreement.dart';
 
 void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
@@ -33,8 +34,10 @@ void main() async {
   // 各原生插件初始化单独 try/catch: 任一个在 iOS 上抛异常都绝不能让整个 App 白屏
   try {
     await GetStorage.init();
+    // 读取首次启动隐私协议同意状态(必须在 runApp 前完成,决定初始路由)
+    await PrivacyAgreement.init();
   } catch (e) {
-    debugPrint('[main] GetStorage.init 异常: $e');
+    debugPrint('[main] 存储初始化异常: $e');
   }
 
   // 注册GetxController(也包裹, 避免在 runApp 前抛异常导致纯白屏)
@@ -105,67 +108,76 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-   // 是否windows平台
-  bool isWindows() {
-    if (kIsWeb) return false;
-     final platform = Theme.of(context).platform;
-     return platform == TargetPlatform.windows;
-    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: PrivacyAgreement.agreedNotifier,
+      builder: (BuildContext context, bool agreed, Widget? child) {
+        // 是否windows平台
+        bool isWindows() {
+          if (kIsWeb) return false;
+          final platform = Theme.of(context).platform;
+          return platform == TargetPlatform.windows;
+        }
 
-   return AnnotatedRegion(
-   value: const SystemUiOverlayStyle(
-     // 启动图期间状态栏透明: 由启动图自己决定底色,避免出现一条白/黑边
-     // 状态栏透明,由各页面自己决定顶部背景;默认深色图标(适配白底页面)
-    statusBarColor: Colors.transparent,
-     statusBarIconBrightness: Brightness.dark, // Android 深色图标
-    statusBarBrightness: Brightness.light, // iOS 深色图标
-    systemNavigationBarColor: Colors.transparent,
-   systemNavigationBarIconBrightness: Brightness.dark,
-   ),
-      child: Stack(
-        fit: StackFit.expand,
-        // Stack 在 GetMaterialApp 之外,拿不到 MaterialApp 注入的 Directionality,
-        // 这里显式给 textDirection,否则默认 AlignmentDirectional.topStart 会报错
-        textDirection: TextDirection.ltr,
-        children: <Widget>[
-          GetMaterialApp(
-       title: '乐惠新零售',
-        debugShowCheckedModeBanner: false,
-        // 排查路由跳转用: debug 下打印路由变化
-        routingCallback: (Routing? routing) {
-          if (kDebugMode) {
-            debugPrint('route -> current=${routing?.current} previous=${routing?.previous} isBack=${routing?.isBack} args=${routing?.args}');
-          }
-        },
-       theme: ThemeData(
-         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF2C55)),
-         useMaterial3: true,
-          fontFamily: isWindows() ? 'Microsoft YaHei' : null,
-        // 全局 toast 居中显示(默认在底部)
-        extensions: <ThemeExtension<dynamic>>[
-          ShirneDialogTheme(toastStyle: ToastStyle().center()),
-        ],
-      ),
-        // 中文本地化: 日期选择器等需要 MaterialLocalizations(zh_CN),否则报错
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-        ],
-        supportedLocales: const [
-          Locale('zh', 'CN'),
-          Locale('en', 'US'),
-        ],
-        // 初始化路由(默认进入首页,不强制先登录)
-       initialRoute: '/',
-        // 路由页面
-       getPages: routePages,
-      navigatorKey: MyDialog.navigatorKey,
-     ),
-          // 启动图遮罩: 盖在 App 最上层,首页首屏数据加载完成后淡出(见 utils/app_splash.dart)
-          const SplashCover(),
-        ],
-      ),
+        return AnnotatedRegion(
+          value: const SystemUiOverlayStyle(
+            // 启动图期间状态栏透明: 由启动图自己决定底色,避免出现一条白/黑边
+            // 状态栏透明,由各页面自己决定顶部背景;默认深色图标(适配白底页面)
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.dark, // Android 深色图标
+            statusBarBrightness: Brightness.light, // iOS 深色图标
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarIconBrightness: Brightness.dark,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            // Stack 在 GetMaterialApp 之外,拿不到 MaterialApp 注入的 Directionality,
+            // 这里显式给 textDirection,否则默认 AlignmentDirectional.topStart 会报错
+            textDirection: TextDirection.ltr,
+            children: <Widget>[
+              GetMaterialApp(
+                // 注意: 这里不能靠换 key 重建来应用新的 initialRoute
+                // * navigatorKey 是同一个 GlobalKey, 重建时旧 NavigatorState 会被"接管",
+                //   路由栈仍是 /privacy_agreement, initialRoute 不会生效
+                // * 同意隐私政策后由隐私页自己 Get.offAllNamed('/') 完成跳转
+                title: '乐惠新零售',
+                debugShowCheckedModeBanner: false,
+                // 排查路由跳转用: debug 下打印路由变化
+                routingCallback: (Routing? routing) {
+                  if (kDebugMode) {
+                    debugPrint('route -> current=${routing?.current} previous=${routing?.previous} isBack=${routing?.isBack} args=${routing?.args}');
+                  }
+                },
+                theme: ThemeData(
+                  colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFFFF2C55)),
+                  useMaterial3: true,
+                  fontFamily: isWindows() ? 'Microsoft YaHei' : null,
+                  // 全局 toast 居中显示(默认在底部)
+                  extensions: <ThemeExtension<dynamic>>[
+                    ShirneDialogTheme(toastStyle: ToastStyle().center()),
+                  ],
+                ),
+                // 中文本地化: 日期选择器等需要 MaterialLocalizations(zh_CN),否则报错
+                localizationsDelegates: const [
+                  GlobalMaterialLocalizations.delegate,
+                  GlobalCupertinoLocalizations.delegate,
+                  GlobalWidgetsLocalizations.delegate,
+                ],
+                supportedLocales: const [
+                  Locale('zh', 'CN'),
+                  Locale('en', 'US'),
+                ],
+                // 首次未同意隐私政策概要: 先进同意页; 已同意则正常进首页
+                initialRoute: agreed ? '/' : '/privacy_agreement',
+                // 路由页面
+                getPages: routePages,
+                navigatorKey: MyDialog.navigatorKey,
+              ),
+              // 启动图遮罩: 仅已同意时展示, 盖在 App 最上层, 首页首屏数据加载完成后淡出
+              if (agreed) const SplashCover(),
+            ],
+          ),
+        );
+      },
     );
   }
 }

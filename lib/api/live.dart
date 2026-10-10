@@ -158,6 +158,33 @@ class LiveApi {
     }
   }
 
+  /// 按直播码查直播间(/live/api/shop/getRoomType)
+  /// * [no] 直播码/房间号 sn(扫码解析或手动输入的结果),与 getRoomInfo 同一个参数名
+  /// * 返回 data 原始字段(sn / name / type / feeds_img / push_link 等,以后端下发为准)
+  ///   查询不到或请求失败返回 null,由页面提示而不是带着错误的码进直播间
+  static Future<Map<String, dynamic>?> roomType(String no) async {
+    final String code = no.trim();
+    if (code.isEmpty) return null;
+    try {
+      final Map<String, dynamic> res = await Request().getRaw(
+        '/live/api/shop/getRoomType',
+        queryParameters: <String, dynamic>{'no': code},
+      );
+      if ('${res['code']}' != '0') {
+        debugPrint('[live]直播码查询返回异常: ${res['code']} ${res['message']}');
+        return null;
+      }
+      final dynamic data = res['data'];
+      // 排查字段用: 打印原始返回(各端下发字段不统一, 展示异常时先看这条日志)
+      if (kDebugMode) debugPrint('[live]直播码查询($code): $data');
+      if (data is Map) return data.cast<String, dynamic>();
+      return null;
+    } catch (e) {
+      debugPrint('[live]直播码查询失败: $e');
+      return null;
+    }
+  }
+
   /// 直播拉流地址(/live/api/shop/getPullUrl)
   /// * [no] 房间号 sn(与 getRoomInfo 同一个参数),房间需在直播中
   /// * 返回字段: url(拉流地址, m3u8/HLS, 带 auth_key 时效) / sn(房间号) / name(标题)
@@ -735,5 +762,170 @@ class LiveApi {
     if (url.isEmpty) return '';
     if (url.startsWith('http')) return url;
     return '${Config.imgDomain}/$url';
+  }
+
+  /// 看播记录(/live/api/shop/getLiveLog, 与 H5 pages_tool/watching_record 同一接口)
+  /// * [page] 页码(从 1 开始); [pageSize] 每页条数; [keyword] 搜索直播标题,为空不传
+  /// * 返回 {list: 记录列表(已用 [liveLogItem] 归一化), count: 总数, pageCount: 总页数, hasMore: 是否还有下一页}
+  /// * 失败/无数据返回空结果(list 为空),页面据此显示空态
+  static Future<Map<String, dynamic>> liveLog({int page = 1, int pageSize = 10, String keyword = ''}) async {
+    try {
+      final Map<String, dynamic> query = <String, dynamic>{'page': page, 'page_size': pageSize};
+      final String kw = keyword.trim();
+      if (kw.isNotEmpty) query['keyword'] = kw;
+      final Map<String, dynamic> res = await Request().getRaw(
+        '/live/api/shop/getLiveLog',
+        queryParameters: query,
+      );
+      if ('${res['code']}' != '0') {
+        debugPrint('[live]看播记录返回异常: ${res['code']} ${res['message']}');
+        return _emptyLiveLog();
+      }
+      final dynamic data = res['data'];
+      // 该接口可能直接返回数组,也可能包成 {list: [...]}
+      final dynamic raw = data is Map ? (data['list'] ?? data['data']) : data;
+      if (raw is! List) return _emptyLiveLog();
+      final List<Map<String, dynamic>> list = <Map<String, dynamic>>[];
+      for (final dynamic one in raw) {
+        final Map<String, dynamic>? item = liveLogItem(one);
+        if (item != null) list.add(item);
+      }
+      final int pageCount = data is Map ? intOf(data['page_count'] ?? data['pageCount']) : 0;
+      return <String, dynamic>{
+        'list': list,
+        'count': data is Map ? intOf(data['count'] ?? data['total']) : list.length,
+        'pageCount': pageCount,
+        'hasMore': pageCount > 0 ? page < pageCount : list.length >= pageSize,
+      };
+    } catch (e) {
+      debugPrint('[live]看播记录加载失败: $e');
+      return _emptyLiveLog();
+    }
+  }
+
+  /// 看播记录空结果(请求失败/无数据时返回,避免页面判空)
+  static Map<String, dynamic> _emptyLiveLog() => <String, dynamic>{
+        'list': <Map<String, dynamic>>[],
+        'count': 0,
+        'pageCount': 0,
+        'hasMore': false,
+      };
+
+  /// 看播记录单条归一化
+  /// * 输出字段: room_id(直播间号,进直播间当 sn 用) / name(直播标题) / feeds_img(封面)
+  ///   anchor_img(主播头像) / anchor_name(主播昵称) / start_time / end_time(秒级时间戳或时间串)
+  ///   finished(是否完播) / award_name / award_num(完播奖励)
+  /// * 房间号/标题/封面都取不到视为脏数据,直接丢弃
+  static Map<String, dynamic>? liveLogItem(dynamic raw) {
+    if (raw is! Map) return null;
+    final String name = '${raw['name'] ?? raw['title'] ?? raw['room_name'] ?? ''}'.trim();
+    final String cover = imageOf(raw['feeds_img'] ?? raw['cover'] ?? raw['image']);
+    final String roomId = '${raw['room_id'] ?? raw['roomId'] ?? raw['sn'] ?? raw['roomid'] ?? ''}'.trim();
+    if (roomId.isEmpty && name.isEmpty && cover.isEmpty) return null;
+    return <String, dynamic>{
+      'room_id': roomId,
+      'name': name,
+      'feeds_img': cover,
+      'anchor_img': imageOf(raw['anchor_img'] ?? raw['anchorImg'] ?? raw['headimg']),
+      'anchor_name': '${raw['anchor_name'] ?? raw['anchorName'] ?? raw['nickname'] ?? ''}'.trim(),
+      'start_time': '${raw['start_time'] ?? ''}'.trim(),
+      'end_time': '${raw['end_time'] ?? ''}'.trim(),
+      'finished': isFinished(raw),
+      'award_name': '${raw['award_name'] ?? ''}'.trim(),
+      'award_num': '${raw['award_num'] ?? ''}'.trim(),
+    };
+  }
+
+  /// 是否完播: status / is_finish 字段,兼容 1 / '1' / true / yes(与 H5 isFinished 一致)
+  static bool isFinished(Map<dynamic, dynamic> raw) {
+    dynamic val = raw['status'];
+    if (val == null || '$val'.trim().isEmpty || '$val' == 'null') val = raw['is_finish'] ?? raw['isFinish'];
+    if (val == null) return false;
+    if (val is bool) return val;
+    if (val is num) return val == 1;
+    final String s = '$val'.trim().toLowerCase();
+    return s == '1' || s == 'true' || s == 'y' || s == 'yes';
+  }
+
+  /// 看播记录时间格式化: 兼容秒级/毫秒级时间戳与时间字符串,截取到分钟(与 H5 formatTime 一致)
+  /// * 解析不了时原样返回,方便排查后端下发格式
+  static String formatRecordTime(dynamic val) {
+    final String raw = '${val ?? ''}'.trim();
+    if (raw.isEmpty) return '';
+    DateTime date;
+    if (RegExp(r'^\d+$').hasMatch(raw)) {
+      int ts = int.tryParse(raw) ?? 0;
+      if (ts <= 0) return '';
+      // 秒级时间戳补成毫秒
+      if (ts < 100000000000) ts *= 1000;
+      date = DateTime.fromMillisecondsSinceEpoch(ts);
+    } else {
+      final DateTime? parsed = DateTime.tryParse(raw);
+      // 不是合法时间串(如后端直接下发"已结束"之类)就原样展示
+      if (parsed == null) return raw;
+      date = parsed;
+    }
+    String pad(int n) => n < 10 ? '0$n' : '$n';
+    return '${date.year}-${pad(date.month)}-${pad(date.day)} ${pad(date.hour)}:${pad(date.minute)}';
+  }
+
+  /// 看播详情里的记录列表(/live/api/shop/getLiveLogList)
+  /// * [roomId] 直播间号(列表页的 room_id); [type] hongbao 红包 / sign 签到 / luckybag 福袋
+  /// * 返回记录数组(元素已用 [liveLogListItem] 归一化); 无数据/失败返回空数组
+  static Future<List<Map<String, dynamic>>> liveLogList({required String roomId, required String type}) async {
+    final String rid = roomId.trim();
+    final String t = type.trim();
+    if (rid.isEmpty || t.isEmpty) return const <Map<String, dynamic>>[];
+    try {
+      final Map<String, dynamic> res = await Request().getRaw(
+        '/live/api/shop/getLiveLogList',
+        queryParameters: <String, dynamic>{'room_id': rid, 'type': t},
+      );
+      if ('${res['code']}' != '0') {
+        debugPrint('[live]看播记录明细返回异常($t): ${res['code']} ${res['message']}');
+        return const <Map<String, dynamic>>[];
+      }
+      final dynamic data = res['data'];
+      // 该接口可能直接返回数组,也可能包成 {list: [...]}
+      final dynamic raw = data is Map ? (data['list'] ?? data['data']) : data;
+      if (raw is! List) return const <Map<String, dynamic>>[];
+      final List<Map<String, dynamic>> list = <Map<String, dynamic>>[];
+      for (final dynamic one in raw) {
+        final Map<String, dynamic>? item = liveLogListItem(one);
+        if (item != null) list.add(item);
+      }
+      return list;
+    } catch (e) {
+      debugPrint('[live]看播记录明细加载失败($t): $e');
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  /// 看播记录明细单条归一化
+  /// * 输出字段: title(标题,如"开播红包"/"签到第 1 天") / typeName(奖励类型,如"现金红包")
+  ///   time(时间,原样或格式化到分钟) / num(奖励数量,空表示未下发)
+  /// * 标题/时间/数量都取不到视为脏数据,直接丢弃
+  static Map<String, dynamic>? liveLogListItem(dynamic raw) {
+    if (raw is! Map) return null;
+    final String title = '${raw['title'] ?? raw['name'] ?? raw['day'] ?? ''}'.trim();
+    final String timeText = formatRecordTime(raw['create_time'] ?? raw['time'] ?? raw['add_time']);
+    final String typeName = '${raw['award_type_name'] ?? raw['type_name'] ?? raw['award_name'] ?? ''}'.trim();
+    final String awardNum = '${raw['award_num'] ?? raw['amount'] ?? raw['num'] ?? ''}'.trim();
+    if (title.isEmpty && timeText.isEmpty && awardNum.isEmpty) return null;
+    return <String, dynamic>{
+      'title': title,
+      'time': timeText,
+      'typeName': typeName,
+      'num': awardNum,
+    };
+  }
+
+  /// 看播时间段文案: 起 ~ 止(两端任一为空时只显示有值的那一端)
+  static String recordTimeText(Map<String, dynamic> item) {
+    final String start = formatRecordTime(item['start_time']);
+    final String end = formatRecordTime(item['end_time']);
+    if (start.isEmpty) return end;
+    if (end.isEmpty) return start;
+    return '$start ~ $end';
   }
 }

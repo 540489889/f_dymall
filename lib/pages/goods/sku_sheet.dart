@@ -68,7 +68,17 @@ class _SkuSheetState extends State<SkuSheet> {
   List<String> get images => (currentDetail['images'] as List? ?? const []).map((dynamic e) => '$e').toList();
   List<dynamic> get specGroups => (currentDetail['specGroups'] as List? ?? const []);
   List<dynamic> get specFormat => (currentDetail['specFormat'] as List? ?? const []);
-  bool get hasSpec => specGroups.isNotEmpty;
+
+  /// 是否有得选: 单规格商品(总共只有 1 个可选值)没有选择余地,不展示规格区
+  /// * 否则弹窗会为一行规格撑出大片空白
+  bool get hasSpec {
+    int count = 0;
+    for (final dynamic group in specGroups) {
+      if (group is! Map) continue;
+      count += (group['value'] as List? ?? const []).length;
+    }
+    return count > 1;
+  }
 
   @override
   void initState() {
@@ -162,7 +172,9 @@ class _SkuSheetState extends State<SkuSheet> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: MediaQuery.of(context).size.height * 0.7,
+      // 高度按内容自适应: 单规格商品只占「头部 + 数量 + 按钮」;
+      // 规格多时最多到 maxHeight,超出在区内滚动(不再固定 70% 屏高)
+      constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.75),
       decoration: const BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
@@ -172,10 +184,12 @@ class _SkuSheetState extends State<SkuSheet> {
         child: Stack(
           children: <Widget>[
             Column(
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
                 _buildHeader(),
                 FStyle.divider,
-                Expanded(child: _buildBody()),
+                // 无规格时不占位,弹窗自然收短
+                if (hasSpec) Flexible(child: _buildBody()),
                 _buildQuantityRow(),
                 _buildBottomBar(),
               ],
@@ -246,15 +260,12 @@ class _SkuSheetState extends State<SkuSheet> {
     );
   }
 
-  /// 规格列表
+  /// 规格列表(shrinkWrap: 规格少时按内容高度,多时才占满并在区内滚动)
   Widget _buildBody() {
-    if (!hasSpec) {
-      // 单规格商品: 没有规格可选, 只保留底部数量行
-      return const SizedBox.shrink();
-    }
     return ScrollConfiguration(
       behavior: CustomScrollBehavior(),
       child: ListView.separated(
+        shrinkWrap: true,
         padding: const EdgeInsets.fromLTRB(15.0, 15.0, 15.0, 10.0),
         itemCount: specGroups.length,
         separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 22.0),

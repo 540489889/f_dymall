@@ -48,6 +48,9 @@ class PayResult {
     this.url = '',
     this.message = '',
     this.data = const <String, dynamic>{},
+    this.wxPay = const <String, String>{},
+    this.miniProgramOrgId = '',
+    this.prePayTn = '',
   });
 
   /// 已支付成功(余额付完/0元单)
@@ -64,6 +67,21 @@ class PayResult {
 
   /// 原始支付参数(APP端唤起SDK用: timeStamp/nonceStr/package/signType/paySign)
   final Map<String, dynamic> data;
+
+  /// 微信 APP 支付参数(从 data 里解析出的 SDK 参数,为空表示后台给的不是APP支付)
+  /// * 键: appId / partnerId / prepayId / package / nonceStr / timeStamp / sign / signType
+  final Map<String, String> wxPay;
+
+  /// 微信小程序原始id(yeepay 通道: gh_xxx,用于拉起小程序支付)
+  /// * 对应 H5: res.data.miniProgramOrgId
+  final String miniProgramOrgId;
+
+  /// 微信小程序支付页路径(yeepay 通道: 带支付参数的 page path)
+  /// * 对应 H5: res.data.prePayTn
+  final String prePayTn;
+
+  /// 是否走「小程序支付」通道(yeepay)
+  bool get isMiniProgramPay => miniProgramOrgId.isNotEmpty && prePayTn.isNotEmpty;
 }
 
 class PayApi {
@@ -160,15 +178,83 @@ class PayApi {
       throw Exception('${res['message'] ?? '支付失败'}');
     }
     // 支付链接: 微信走 url,支付宝走 data(与 H5 location.href 一致)
+    // * 不同通道字段名不统一(mweb_url / pay_url / h5_url),逐个兜取
     String url = '${map['url'] ?? ''}';
+    if (url.isEmpty) url = '${map['mweb_url'] ?? ''}';
+    if (url.isEmpty) url = '${map['pay_url'] ?? ''}';
+    if (url.isEmpty) url = '${map['h5_url'] ?? ''}';
     if (url.isEmpty && (payType == 'alipay' || payType == 'yeepay')) url = '${map['data'] ?? ''}';
+    final Map<String, String> wxPay = wxAppPayParamsOf(map);
+    // yeepay 通道: 拉起微信小程序支付(与 H5 APP 端 res.data.miniProgramOrgId / prePayTn 一致)
+    // * 少数通道会把参数塞在 data 里,这里做一层兜底
+    String miniProgramOrgId = '${map['miniProgramOrgId'] ?? ''}';
+    String prePayTn = '${map['prePayTn'] ?? ''}';
+    final dynamic inner = map['data'];
+    if (inner is Map) {
+      final Map<String, dynamic> m = inner.cast<String, dynamic>();
+      if (miniProgramOrgId.isEmpty) miniProgramOrgId = '${m['miniProgramOrgId'] ?? ''}';
+      if (prePayTn.isEmpty) prePayTn = '${m['prePayTn'] ?? ''}';
+    }
+    if (kDebugMode) {
+      debugPrint('[pay/pay] payType=$payType url=${url.isEmpty ? '(空)' : '有'} '
+          'miniProgram=${miniProgramOrgId.isEmpty ? '(无)' : '$miniProgramOrgId / $prePayTn'} '
+          'wxPay=${wxPay.isEmpty ? '(无SDK参数)' : wxPay.keys.toList()} dataKeys=${map.keys.toList()}');
+    }
     return PayResult(
       paySuccess: '${map['pay_success'] ?? 0}' == '1' || '${map['pay_success'] ?? ''}' == 'true',
       payType: payType,
       url: url,
       message: '${res['message'] ?? ''}',
       data: map,
+      wxPay: wxPay,
+      miniProgramOrgId: miniProgramOrgId,
+      prePayTn: prePayTn,
     );
+  }
+
+  /// 从支付结果里解析微信 APP 支付参数(唤起 fluwx 用)
+  /// * 微信直连 / 易宝等不同通道字段命名不统一(全小写 / 驼峰),这里按候选 key 逐个兜取
+  /// * 参数嵌在 data 里时(部分通道)做一层递归
+  /// * 必需项: partnerId + prepayId + timeStamp + sign,缺一个就认为不是 APP 支付
+  static Map<String, String> wxAppPayParamsOf(Map<String, dynamic> map) {
+    String pick(Map<String, dynamic> source, List<String> keys) {
+      for (final String key in keys) {
+        final dynamic v = source[key];
+        if (v == null) continue;
+        final String s = '$v'.trim();
+        if (s.isNotEmpty && s != 'null') return s;
+      }
+      return '';
+    }
+
+    Map<String, String> parse(Map<String, dynamic> source) {
+      final String partnerId = pick(source, const <String>['partnerId', 'partnerid', 'mchId', 'mch_id']);
+      final String prepayId = pick(source, const <String>['prepayId', 'prepayid']);
+      final String timeStamp = pick(source, const <String>['timeStamp', 'timestamp']);
+      final String sign = pick(source, const <String>['sign', 'paySign', 'pay_sign']);
+      if (partnerId.isEmpty || prepayId.isEmpty || timeStamp.isEmpty || sign.isEmpty) {
+        return const <String, String>{};
+      }
+      return <String, String>{
+        'appId': pick(source, const <String>['appId', 'appid']),
+        'partnerId': partnerId,
+        'prepayId': prepayId,
+        // 微信固定值 Sign=WXPay,部分通道不下发,缺失时兜底
+        'package': pick(source, const <String>['package', 'packageValue']).isEmpty
+            ? 'Sign=WXPay'
+            : pick(source, const <String>['package', 'packageValue']),
+        'nonceStr': pick(source, const <String>['nonceStr', 'noncestr']),
+        'timeStamp': timeStamp,
+        'sign': sign,
+        'signType': pick(source, const <String>['signType', 'sign_type']),
+      };
+    }
+
+    final Map<String, String> own = parse(map);
+    if (own.isNotEmpty) return own;
+    final dynamic inner = map['data'];
+    if (inner is Map) return parse(inner.cast<String, dynamic>());
+    return const <String, String>{};
   }
 
   /// 查询支付状态(/api/pay/status): 返回 pay_status(1未支付 2已支付)

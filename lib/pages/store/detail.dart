@@ -231,7 +231,8 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
   /// 顶部门店图(底部渐变与背景融合,与 H5 .detail-head::after 一致)
   Widget _buildHead() {
     return SizedBox(
-      height: MediaQuery.sizeOf(context).width * 0.45,
+      // 门头图占比: 屏宽的 0.6(约 3:5),比之前的 0.45 更饱满,又不至于把下面的信息挤出首屏
+      height: MediaQuery.sizeOf(context).width * 0.6,
       width: double.infinity,
       child: Stack(
         children: <Widget>[

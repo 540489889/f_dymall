@@ -153,10 +153,15 @@ class _AnimationLiveJoinState extends State<AnimationLiveJoin> with TickerProvid
           borderRadius: BorderRadius.horizontal(left: Radius.circular(20.0)),
         ),
         // 进场文案沿用原样式, 只更换数据来源: socket join 队列 / 本地演示数据
-        child: joinList!.isNotEmpty ?
-          Text('欢迎 ${joinList![0]['name']} 加入了直播间', style: const TextStyle(color: Colors.white, fontSize: 14.0,),)
-          :
-          Container(),
+        // * 容器是固定 250x23, 昵称过长会让文本溢出(debug 下露出黄黑条纹), 所以单行 + 省略号
+        child: joinList!.isNotEmpty
+          ? Text(
+              '欢迎 ${'${joinList![0]['name'] ?? ''}'.trim().isEmpty ? '新朋友' : joinList![0]['name']} 加入了直播间',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(color: Colors.white, fontSize: 14.0),
+            )
+          : const SizedBox.shrink(),
       ),
     );
   }

@@ -301,15 +301,25 @@ void _onTabTap(int index) {
   });
 }
 
-// 滚动到 tab 吸顶位置: 让分类栏正好落在折叠后的 AppBar 正下方,且首个商品完整露出
-// * 关键: precedingScrollExtent 已包含折叠后的 AppBar 高度(toolbarHeight 94),
-//   若直接滚到 tabStickyOffset,会多滚 94px,导致首个商品顶到顶部、被吸顶的 AppBar/分类栏盖住一半。
-//   所以目标要减去 AppBar 折叠高度,使商品停在分类栏下方,而不是被吸顶栏覆盖。
+// 滚动到 tab 吸顶位置: 让分类栏正好落在吸顶 AppBar 正下方,且首个商品完整露出
+// * 关键 1: precedingScrollExtent 包含 AppBar 的整个占位,直接滚到 tabStickyOffset 会多滚,
+//   首个商品顶到顶部被吸顶栏盖住一半,所以目标要减掉 AppBar 的占位高度。
+// * 关键 2: SliverAppBar 是 primary 的,占位 = 状态栏高度 + toolbarHeight(94),
+//   只减 94 会少减一个状态栏高度(约 44/47),分类栏被压到搜索栏下面、商品又被分类栏盖住一截。
 Future<void> _scrollToStickyTabs() async {
   if(!mounted || !scrollController.hasClients) return;
   final ScrollPosition position = scrollController.position;
-  // 94.0 = SliverAppBar.toolbarHeight(折叠后高度),用于把首个商品推到分类栏下方
-  final double target = (tabStickyOffset - 94.0).clamp(0.0, position.maxScrollExtent);
+  // 吸顶栏实际占位: 状态栏 + SliverAppBar.toolbarHeight(94)
+  double statusBar = 0.0;
+  final BuildContext? ctx = position.context.notificationContext;
+  if(ctx != null) {
+    try {
+      statusBar = MediaQuery.of(ctx).padding.top;
+    } catch (_) {
+      statusBar = 0.0;
+    }
+  }
+  final double target = (tabStickyOffset - (statusBar + 94.0)).clamp(0.0, position.maxScrollExtent);
   if((position.pixels - target).abs() < 1.0) return;
   await scrollController.animateTo(
     target,
@@ -698,6 +708,10 @@ void initState() {
 
   // 初始化加载(首屏 = 一次完整刷新: 商品列表 + 轮播/金刚区 + 分类 + 直播 + 秒杀)
   handleRefresh();
+  // 首帧后即可让启动图遮罩淡出,由首页内容区自己的 loading 承接等待
+  // * 启动图最短展示 300ms 仍生效,不会一闪而过
+  // * 首页骨架(搜索栏 + 底部 tab)先露出来,内容区用全屏 loading,贴合京东式加载体验
+  WidgetsBinding.instance.addPostFrameCallback((_) => AppSplash.dismiss());
   // 购物车数量(搜索栏角标)
   loadCartCount();
   // 秒杀倒计时(每秒局部刷新)
@@ -1027,12 +1041,12 @@ void initState() {
   //   现在在流里就显示,滚到顶部时吸顶固定,出现更早
   Widget _buildStickyTabs(bool sticky) {
     return SliverPersistentHeader(
-      // tab 内容变化时换 key 强制重建 header
+      // tab 内容 / 列表布局变化时换 key 强制重建 header
       // * CustomStickyHeader.shouldRebuild 只比高度(吸顶/普通两个 header 都是 45), 恒为 false,
-      //   不换 key 就会一直复用首次构建的旧 TabBar(旧 tabs)
+      //   不换 key 就会一直复用首次构建的旧 TabBar(旧 tabs / 旧的布局切换图标),点了没反应
       // * 分类接口返回后 DefaultTabController 的 length 变成新值, 而 TabBar 还是旧 tabs,
       //   于是断言 "Controller's length property (13) does not match the number of tabs (11)"
-      key: ValueKey<String>(tabList.join('|')),
+      key: ValueKey<String>('${tabList.join('|')}#${isHorizontalList ? 'h' : 'g'}'),
       pinned: true,
       delegate: CustomStickyHeader(
         child: PreferredSize(
@@ -1067,15 +1081,21 @@ void initState() {
                   onTap: () {
                     setState(() {
                       isHorizontalList = !isHorizontalList;
+                      // 布局变了: 作废吸顶 / 未吸顶两份 header 缓存
+                      // * 不清除的话 SliverLayoutBuilder 会复用缓存的旧子树,
+                      //   两处分类栏右边的切换图标都不会跟着变(列表样式已切换,图标还是旧的)
+                      _stickyTabsHeader = null;
+                      _normalTabsHeader = null;
                     });
                   },
                   child: Container(
                     width: 44.0,
                     alignment: Alignment.center,
                     child: Icon(
-                      isHorizontalList ? Icons.grid_view_rounded : Icons.view_list_rounded,
+                      // 与商品列表页保持一致: 单列态显示瀑布流图标,反之显示列表图标
+                      isHorizontalList ? Icons.grid_view_rounded : Icons.list_rounded,
                       size: 22.0,
-                      color: Colors.black87,
+                      color: const Color(0xFF666666),
                     ),
                   ),
                 ),
@@ -1203,9 +1223,15 @@ void initState() {
 
   @override
   Widget build(BuildContext context) {
+    // 页面级 loading: 首屏/切换分类时,列表尚无数据,用全屏 loading 覆盖内容区
+    final bool showPageLoading = firstLoad && dataList.isEmpty;
+
     return Scaffold(
     backgroundColor: Color(0xFFFCF7EE),
-    body: ScrollConfiguration(
+    // 左下角 AI 客服入口与列表同层: 用 Stack 叠在内容之上,不占列表高度、不随滚动
+    body: Stack(
+      children: <Widget>[
+    ScrollConfiguration(
       behavior: CustomScrollBehavior().copyWith(scrollbars: false),
       child: RefreshIndicator(
         backgroundColor: Color(0xFFFCF7EE),
@@ -1219,7 +1245,26 @@ void initState() {
           controller: scrollController,
           slivers: [
             SliverAppBar(
-              backgroundColor: Color(0xFFFCF7EE),
+              // 顶部板块渐变: backgroundColor 只吃纯色,渐变要放到 flexibleSpace(铺在 title 背后)
+              backgroundColor: Colors.transparent,
+              // 顶部比页面底色(#FCF7EE)暖一档,往下渐变回底色,
+              // 滚动时与下方内容同色衔接,不会出现色块断层
+              // * 用 SizedBox.expand 撑满: AppBar 里 flexibleSpace 拿到的是 loose 约束,
+              //   直接放 DecoratedBox 会塌成 0 高度
+              flexibleSpace: const SizedBox.expand(
+                child: DecoratedBox(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      // 顶部奶油黄 -> 中间过渡 -> 页面底色: 落差拉大后才看得出渐变,
+                      // 最后仍收到底色,滚动时和下方内容同色衔接
+                      colors: <Color>[Color(0xFFFFE4B8), Color(0xFFFDF3E2), Color(0xFFFCF7EE)],
+                      stops: <double>[0.0, 0.6, 1.0],
+                    ),
+                  ),
+                ),
+              ),
               foregroundColor: Colors.black87,
               pinned: true,
               toolbarHeight: 94.0,
@@ -1320,17 +1365,17 @@ void initState() {
                                 Icon(Icons.search, color: Color(0xFF999999), size: 20.0),
                                 SizedBox(width: 8.0),
                                 Expanded(
-                                  child: TextField(
-                                    decoration: InputDecoration(
-                                      isDense: true,
-                                      hintText: '请输入关键字搜索',
-                                      hintStyle: TextStyle(color: Color(0xFFBBBBBB), fontSize: 14.0),
-                                      contentPadding: EdgeInsets.zero,
-                                      border: InputBorder.none,
+                                  // 搜索框只是入口: 点击跳搜索页,首页内不直接输入
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => Get.toNamed('/search'),
+                                    child: const Align(
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        '请输入关键字搜索',
+                                        style: TextStyle(color: Color(0xFFBBBBBB), fontSize: 14.0),
+                                      ),
                                     ),
-                                    style: TextStyle(fontSize: 15.0),
-                                    cursorColor: Color(0xFFFF2C55),
-                                    onChanged: (val) => debugPrint(val),
                                   ),
                                 ),
                                 InkWell(
@@ -1363,11 +1408,14 @@ void initState() {
                 ],
               ),
             ),
-            // 轮播图卡片
-            SliverToBoxAdapter(
-              child: Container(
-                margin: EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 6.0),
-                height: 150.0,
+            if (showPageLoading)
+              _buildPageLoading()
+            else ...<Widget>[
+              // 轮播图卡片
+              SliverToBoxAdapter(
+                child: Container(
+                  margin: EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 6.0),
+                  height: 150.0,
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(12.0),
@@ -1459,7 +1507,8 @@ void initState() {
                         Text('直播', style: TextStyle(color: Colors.black87, fontSize: 20.0, fontWeight: FontWeight.w900)),
                         Spacer(),
                         GestureDetector(
-                          onTap: () => Get.to(() => const LivePage()),
+                          // 标记来源: 直播列表页据此显示右下角"回到首页"入口
+                          onTap: () => Get.to(() => const LivePage(fromHome: true)),
                           behavior: HitTestBehavior.opaque,
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
@@ -1642,8 +1691,9 @@ void initState() {
                                         style: TextStyle(color: Color(0xFF222222), fontSize: 15.0, fontWeight: FontWeight.w700),
                                       ),
                                       SizedBox(height: 2.0),
+                                      // 福利文案: 取直播间 name(直播标题),取不到才用默认文案
                                       Text(
-                                        '限时福利特惠',
+                                        liveText(const ['name'], '限时福利特惠'),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0),
@@ -1741,8 +1791,9 @@ void initState() {
             ),
 
             // 商品列表(瀑布流 / 横向单列可切换)
+            // * 顶部留 10: 与吸顶分类栏之间留出间距,首个商品不会紧贴/被压在分类栏下
             SliverPadding(
-            padding: const EdgeInsets.only(left: 10, right: 10, bottom: 10),
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
               sliver: isHorizontalList
                 ? SliverList.separated(
                     itemCount: firstLoad && dataList.isEmpty ? 4 : dataList.length,
@@ -1768,7 +1819,7 @@ void initState() {
                   child: Loading(title: '加载中...'),
                 )
               : Padding(
-                  padding: const EdgeInsets.only(bottom: 20, top: 40),
+                  padding: const EdgeInsets.only(bottom: 20, top: 24),
                   child: Center(
                     child: firstLoad && dataList.isEmpty
                         ? const SizedBox.shrink()
@@ -1782,18 +1833,102 @@ void initState() {
             ),
             // 兜底: 分类返回数据很少(甚至为空)时,内容高度可能不足一屏,
             // 列表无法滚动到 tab 吸顶位置,导致 tab 栏(只在吸顶时显示)消失、切不回去。
-            // 这里补一段高度,保证页面始终能滚动到吸顶位置,tab 栏始终可达。
-            if (dataList.length < pageSize)
-              SliverToBoxAdapter(
-                child: SizedBox(height: MediaQuery.of(context).size.height),
+            // * 之前固定补"一整屏"太浪费: 商品区本身已经有高度,再叠一屏会多出大片空白
+            // * 改成只补"到一屏"的缺口(SliverFillRemaining 内容超出一屏时高度自动为 0),
+            //   再补 60 余量突破吸顶临界值(滚到刚好临界时 tab 栏不会切换成吸顶态)
+            if (!showPageLoading && dataList.length < pageSize)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: SizedBox.shrink(),
               ),
+            if (!showPageLoading && dataList.length < pageSize)
+              const SliverToBoxAdapter(
+                child: SizedBox(height: 60.0),
+              ),
+            ],
           ],
         ),
         ),
       ),
     ),
+        // 左下角 AI 客服入口: 与右下角 Backtop 分列两侧
+        // * 暂不开放,改 kShowAiEntry = true 即可重新显示
+        if (kShowAiEntry)
+          Positioned(
+            left: 12.0,
+            bottom: 16.0,
+            child: _buildAiServiceEntry(),
+          ),
+      ],
+    ),
     // 返回顶部
     floatingActionButton: Backtop(controller: scrollController, offset: scrollOffset),
+  );
+}
+
+  /// 左下角 AI 客服入口开关(暂时隐藏: 改回 true 即可显示)
+  static const bool kShowAiEntry = false;
+
+/// 首页左下角 AI 客服入口
+/// * ai-ico.gif 自带帧动画,直接当悬浮按钮用(Image.asset 会自动播放 gif)
+/// * 固定在左下角: 不随列表滚动,也不占列表高度,不影响瀑布流布局
+Widget _buildAiServiceEntry() {
+  return GestureDetector(
+    behavior: HitTestBehavior.opaque,
+    onTap: () => Get.toNamed('/chat'),
+    child: Image.asset(
+      'assets/images/ai-ico.gif',
+      width: 56.0,
+      height: 56.0,
+      fit: BoxFit.contain,
+      isAntiAlias: true,
+      // 资源缺失时退化成同尺寸空白,避免红屏/报错
+      errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
+          const SizedBox(width: 56.0, height: 56.0),
+    ),
+  );
+}
+
+/// 首页内容区全屏 loading(类似京东)
+/// * 仅覆盖 SliverAppBar 以下区域, 搜索栏 + 底部 tab 仍可见
+/// * 背景与页面底色一致, 中间深灰半透明卡片 + 转圈 + "加载中..."
+Widget _buildPageLoading() {
+  return SliverFillRemaining(
+    hasScrollBody: false,
+    fillOverscroll: true,
+    child: Container(
+      color: const Color(0xFFF5F5F5),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 20.0),
+          decoration: BoxDecoration(
+            color: const Color(0xFF666666).withAlpha(140),
+            borderRadius: BorderRadius.circular(12.0),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              SizedBox(
+                width: 28.0,
+                height: 28.0,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2.5,
+                  color: Colors.white.withAlpha(230),
+                ),
+              ),
+              const SizedBox(height: 12.0),
+              Text(
+                '加载中...',
+                style: TextStyle(
+                  fontSize: 13.0,
+                  color: Colors.white.withAlpha(230),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
   );
 }
 }
