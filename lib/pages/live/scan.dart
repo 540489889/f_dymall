@@ -184,7 +184,11 @@ class _LiveScanPageState extends State<LiveScanPage> {
           centerTitle: true,
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Colors.black87),
-            onPressed: () => Get.back<void>(),
+            // 返回前先收键盘: 直接返回时输入框还占着焦点, iOS 上键盘会留在直播间页面上
+            onPressed: () {
+              FocusManager.instance.primaryFocus?.unfocus();
+              Get.back<void>();
+            },
           ),
           title: const Text(
             '扫一扫',
@@ -220,6 +224,8 @@ class _LiveScanPageState extends State<LiveScanPage> {
             ),
             SafeArea(
               child: SingleChildScrollView(
+                // iOS 上滑动页面时收起软键盘(默认 manual: 只有 Android 的返回键能收, iOS 没返回键)
+                keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 // 顶部让出一个导航栏高度: extendBodyBehindAppBar 后 body 从状态栏下就开始布局
                 padding: const EdgeInsets.fromLTRB(20.0, kToolbarHeight + 8.0, 20.0, 24.0),
                 child: Column(

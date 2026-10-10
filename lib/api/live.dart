@@ -352,13 +352,19 @@ class LiveApi {
 
   /// 直播间带货商品(/live/api/shop/onlineGoods)
   /// * [no] 房间号 sn(与 getRoomInfo 同一个参数), 底部购物弹窗展示用
+  /// * [categoryId] 商品分类 id(购物弹窗切分类 tab 时带上, 由后端按分类返回; 空串表示「全部」不传)
   /// * 返回 data.list 商品数组(元素已按 [goodsItem] 归一化); 无数据/失败返回空列表
-  static Future<List<Map<String, dynamic>>> onlineGoods(String no) async {
+  static Future<List<Map<String, dynamic>>> onlineGoods(String no, {String categoryId = ''}) async {
     if (no.isEmpty) return const <Map<String, dynamic>>[];
     try {
-      final Map<String, dynamic> res = await Request().getRaw(
+      // POST: 参数走请求体(与直播其它接口 subscribeRoom / complaint 等一致)
+      final Map<String, dynamic> body = <String, dynamic>{'no': no};
+      // 分类筛选: 只在选中具体分类时带(「全部」= 空串, 不带参数, 按接口默认返回全部)
+      final String cid = categoryId.trim();
+      if (cid.isNotEmpty && cid != '0') body['category_id'] = cid;
+      final Map<String, dynamic> res = await Request().postRaw(
         '/live/api/shop/onlineGoods',
-        queryParameters: <String, dynamic>{'no': no},
+        data: body,
       );
       if ('${res['code']}' != '0') {
         debugPrint('[live]带货商品返回异常: ${res['code']} ${res['message']}');
@@ -373,6 +379,10 @@ class LiveApi {
       for (final dynamic raw in list) {
         final Map<String, dynamic>? item = goodsItem(raw);
         if (item != null) items.add(item);
+      }
+      // 排查分类筛选用: 打印请求参数与返回条数(切 tab 列表没变化时先看这条)
+      if (kDebugMode) {
+        debugPrint('[live]带货商品 no=$no category_id=${cid.isEmpty ? '(全部)' : cid} -> ${items.length} 条');
       }
       return items;
     } catch (e) {
@@ -461,6 +471,8 @@ class LiveApi {
       // 商城商品id(跳详情/下单用这个): 没有 goods_id 时才与 live_id 相同
       'id': id,
       'goods_id': goodsId,
+      // 商品分类id(购物车弹窗按分类 tab 筛选时用; 接口没下发为空串, 此时弹窗不过滤)
+      'category_id': text(const <String>['category_id', 'cate_id', 'cid', 'categoryId'], maxLen: 32),
       // 直播商品记录主键(如 897): 只作兜底/排查用, 不能拿去查商品详情
       'live_id': liveId,
       'title': title,

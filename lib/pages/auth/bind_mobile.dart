@@ -419,19 +419,14 @@ class _BindMobilePageState extends State<BindMobilePage> {
               counterText: '',
               hintText: '请输入手机号码',
               hintStyle: TextStyle(fontSize: 14.0, color: Colors.black26),
-              prefixIcon: SizedBox(
-                width: 84.0,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: <Widget>[
-                    Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87)),
-                    SizedBox(width: 2.0),
-                    Text('中国', style: TextStyle(fontSize: 12.0, color: Colors.black54)),
-                    Icon(Icons.keyboard_arrow_down, size: 14.0, color: Colors.black54),
-                  ],
+              // 只保留区号: 不带「中国」和下箭头(没有国家选择功能)
+              prefixIcon: const SizedBox(
+                width: 40.0,
+                child: Center(
+                  child: Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87)),
                 ),
               ),
-              prefixIconConstraints: BoxConstraints(minWidth: 84.0),
+              prefixIconConstraints: const BoxConstraints(minWidth: 40.0),
               contentPadding: EdgeInsets.symmetric(vertical: 14.0),
               border: InputBorder.none,
               isDense: true,

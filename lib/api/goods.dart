@@ -115,6 +115,45 @@ class GoodsApi {
     return const <Map<String, dynamic>>[];
   }
 
+  /// 商品分类(/api/Shop/getGoodsCategory): 直播间购物弹窗的分类 tab 用
+  /// * 返回 [{id, name}] 归一化后的分类列表; 接口异常/无数据返回空列表(页面只保留「全部」)
+  /// * 返回可能是数组,也可能包成 {list: [...]},两种都兼容
+  static Future<List<Map<String, dynamic>>> shopGoodsCategory() async {
+    try {
+      final dynamic res = await Request().get('/live/api/Shop/getGoodsCategory');
+      final dynamic raw = res is Map ? (res['list'] ?? res['data']) : res;
+      if (raw is! List) return const <Map<String, dynamic>>[];
+      final List<Map<String, dynamic>> list = <Map<String, dynamic>>[];
+      for (final dynamic one in raw) {
+        final Map<String, dynamic>? item = shopCategoryItem(one);
+        if (item != null) list.add(item);
+      }
+      return list;
+    } catch (e) {
+      debugPrint('[goods]商品分类获取失败: $e');
+      return const <Map<String, dynamic>>[];
+    }
+  }
+
+  /// 分类单条归一化(/api/Shop/getGoodsCategory)
+  /// * 各端字段不统一: id 取 category_id / cate_id / id / cid; 名称取 category_name / cate_name / name / title
+  /// * id 与名称都取不到视为脏数据,直接丢弃
+  static Map<String, dynamic>? shopCategoryItem(dynamic raw) {
+    if (raw is! Map) return null;
+    String text(List<String> keys, {int maxLen = 32}) {
+      for (final String key in keys) {
+        final String val = '${raw[key] ?? ''}'.trim();
+        if (val.isEmpty || val == 'null') continue;
+        return val.length > maxLen ? val.substring(0, maxLen) : val;
+      }
+      return '';
+    }
+    final String id = text(const <String>['category_id', 'cate_id', 'cid', 'id']);
+    final String name = text(const <String>['category_name', 'cate_name', 'categoryName', 'name', 'title'], maxLen: 20);
+    if (id.isEmpty && name.isEmpty) return null;
+    return <String, dynamic>{'id': id, 'name': name.isEmpty ? '未命名' : name};
+  }
+
   /// 商品详情
   /// * [goodsId] 商品id,必须走 query 传参(body 不生效,后端会提示"缺少参数id")
   /// * [skuId] 规格 sku id,传了会切换到对应 SKU

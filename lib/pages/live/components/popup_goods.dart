@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../api/goods.dart';
 import '../../../behavior/custom_scroll_behavior.dart';
 
 class PopupGoods extends StatefulWidget {
@@ -20,8 +21,9 @@ class PopupGoods extends StatefulWidget {
 
   // 带货商品列表(首屏数据; 打开后会被 onRefresh 的结果覆盖)
   final List? goodsList;
-  // 打开时重新拉取商品: 直播间商品会上下架/改价, 进房时拉的那份到打开购物车时可能已过期
-  final Future<List<Map<String, dynamic>>> Function()? onRefresh;
+  // 打开时 / 切分类时重新拉取商品: 直播间商品会上下架/改价, 进房时拉的那份到打开购物车时可能已过期
+  // * 参数是当前选中的分类 id(「全部」为空串), 由后端按分类返回
+  final Future<List<Map<String, dynamic>>> Function(String categoryId)? onRefresh;
   // 主播名(直播间 anchor_name): 为空时标题回退「商品橱窗」
   final String? anchorName;
   // 主播头像(直播间 anchor_img, 完整地址)
@@ -35,11 +37,41 @@ class PopupGoods extends StatefulWidget {
   State<PopupGoods> createState() => _PopupGoodsState();
 }
 
-class _PopupGoodsState extends State<PopupGoods> with SingleTickerProviderStateMixin {
-// 商品分类标签
-List goodsTag = ['全部', '书籍杂志', '学习用品', '零食特产', '生鲜', '粮油调味', '生活电器', '内衣裤袜', '3C数码配件'];
+// 分类接口回来后要重建 TabController(长度随分类数量变), 会创建多个 ticker
+// * 不能用 SingleTickerProviderStateMixin: 它只允许创建一次 ticker, 第二次直接抛异常,
+//   新 controller 建不出来 -> TabBar 还绑着长度为 1 的旧 controller -> 点分类没反应
+class _PopupGoodsState extends State<PopupGoods> with TickerProviderStateMixin {
+// 商品分类标签: 第一个固定「全部」, 其余来自 /api/Shop/getGoodsCategory
+// * 接口未回来/失败时只有「全部」, 不再内置写死的演示分类
+List<String> goodsTag = <String>['全部'];
+// 与 goodsTag 一一对应的分类 id(「全部」为空串), 切 tab 时用它筛选列表
+List<String> categoryIds = <String>[''];
+// 当前 tab 下标
+int tabIndex = 0;
 
-late TabController tabController = TabController(initialIndex: 0, length: goodsTag.length, vsync: this);
+late TabController tabController = _newTabController();
+
+/// 建 tab controller: 长度写在 controller 里,分类数量变化时必须重建
+TabController _newTabController() {
+  final TabController controller = TabController(initialIndex: 0, length: goodsTag.length, vsync: this);
+  controller.addListener(_onTabChanged);
+  return controller;
+}
+
+// 商品请求序号: 连着切 tab 时, 只认最后一次请求的结果(先发后到的旧结果不能覆盖新分类的列表)
+int _refreshSeq = 0;
+
+/// tab 切换: 只在实际选中项变化时刷新(拖动过程中 offset 每帧都回调)
+/// * 切分类要重新请求: 商品列表由后端按 category_id 返回, 不是在本地筛首屏那份
+void _onTabChanged() {
+  if (!mounted || tabController.index == tabIndex) return;
+  tabIndex = tabController.index;
+  setState(() {});
+  if (kDebugMode) {
+    debugPrint('[live]购物车切分类 -> index=$tabIndex cid=${_currentCategoryId.isEmpty ? '(全部)' : _currentCategoryId}');
+  }
+  _refreshGoods(applyEmpty: true);
+}
 
 // 当前展示的商品(先用外部传入的首屏数据占位, 刷新成功后整体替换)
 List<Map<String, dynamic>> goods = <Map<String, dynamic>>[];
@@ -61,7 +93,53 @@ void initState() {
   goods = _normalize(widget.goodsList);
   // 每次打开都重新拉一次商品列表
   _refreshGoods();
+  // 商品分类 tab(/api/Shop/getGoodsCategory)
+  _loadCategory();
 }
+
+/// 商品分类(/api/Shop/getGoodsCategory): 回来后重建 tab
+/// * tab 数量变了必须换 controller(TabController 的 length 是构造时固定的)
+/// * 接口为空/失败时保持只有「全部」, 商品列表照常展示
+Future<void> _loadCategory() async {
+  final List<Map<String, dynamic>> list = await GoodsApi.shopGoodsCategory();
+  if (!mounted || list.isEmpty) return;
+  final List<String> names = <String>['全部'];
+  final List<String> ids = <String>[''];
+  for (final Map<String, dynamic> item in list) {
+    final String name = '${item['name'] ?? ''}'.trim();
+    if (name.isEmpty) continue;
+    names.add(name);
+    ids.add('${item['id'] ?? ''}'.trim());
+  }
+  if (names.length <= 1) return;
+  final TabController old = tabController;
+  setState(() {
+    goodsTag = names;
+    categoryIds = ids;
+    tabIndex = 0;
+    tabController = _newTabController();
+  });
+  old.dispose();
+}
+
+/// 当前选中分类的 id(「全部」为空串)
+String get _currentCategoryId => tabIndex < categoryIds.length ? categoryIds[tabIndex] : '';
+
+/// 列表数据: 选中具体分类时按分类 id 过滤(兜底)
+/// * 主要靠接口带 category_id 返回; 后端忽略该参数时(商品自带分类字段)这里再筛一次
+/// * 筛不出任何一条时不本地过滤: 说明接口已按分类返回/商品分类字段与 tab 对不上,
+///   再过滤只会把列表清空, 看着就像点了没反应
+List<Map<String, dynamic>> get visibleGoods {
+  final String cid = _currentCategoryId;
+  if (cid.isEmpty) return goods;
+  final List<Map<String, dynamic>> matched =
+      goods.where((Map<String, dynamic> e) => categoryIdOf(e) == cid).toList();
+  return matched.isEmpty ? goods : matched;
+}
+
+/// 商品条目上的分类 id(兼容 category_id / cate_id)
+static String categoryIdOf(Map<String, dynamic> item) =>
+    '${item['category_id'] ?? item['cate_id'] ?? ''}'.trim();
 
 /// 外部传入的 List 归一化成 List<Map>(接口返回与本地演示数据混用时类型可能不一致)
 static List<Map<String, dynamic>> _normalize(List? list) {
@@ -69,20 +147,29 @@ static List<Map<String, dynamic>> _normalize(List? list) {
   return list.whereType<Map>().map((Map<dynamic, dynamic> e) => e.cast<String, dynamic>()).toList();
 }
 
-/// 重新拉取商品列表
-/// * 返回空 / 请求失败时保留原列表, 避免把已有内容刷没
-Future<void> _refreshGoods() async {
-  final Future<List<Map<String, dynamic>>> Function()? onRefresh = widget.onRefresh;
+/// 重新拉取商品列表(带当前分类 id)
+/// * [applyEmpty] 是否接受空结果: 首次打开时不接受(请求失败/房间没商品时保留首屏数据, 不至于刷没),
+///   切分类时接受(该分类就是没有商品, 要显示空态而不是留着上一个分类的列表)
+/// * 请求期间又切了 tab: 用序号丢弃旧结果
+Future<void> _refreshGoods({bool applyEmpty = false}) async {
+  final Future<List<Map<String, dynamic>>> Function(String)? onRefresh = widget.onRefresh;
   if (onRefresh == null) return;
+  final int seq = ++_refreshSeq;
+  final String cid = _currentCategoryId;
   setState(() => refreshing = true);
   try {
-    final List<Map<String, dynamic>> list = await onRefresh();
-    if (!mounted || list.isEmpty) return;
+    final List<Map<String, dynamic>> list = await onRefresh(cid);
+    // 排查分类没反应: 打印每次请求的结果(含被丢弃的旧请求)
+    if (kDebugMode) {
+      debugPrint('[live]购物车 cid=${cid.isEmpty ? '(全部)' : cid} seq=$seq/$_refreshSeq -> ${list.length} 条');
+    }
+    if (!mounted || seq != _refreshSeq || cid != _currentCategoryId) return;
+    if (list.isEmpty && !applyEmpty) return;
     setState(() => goods = list);
   } catch (_) {
     // 失败静默: 保留首屏数据
   } finally {
-    if (mounted) setState(() => refreshing = false);
+    if (mounted && seq == _refreshSeq) setState(() => refreshing = false);
   }
 }
 
@@ -242,13 +329,22 @@ Widget build(BuildContext context) {
                       ),
                     ),
                   Expanded(
-                    child: ListView.builder(
+                    // 列表为空(接口返回空/该分类下没商品): 给个空提示,而不是一片空白
+                    // * 请求中不显示: 否则每次切 tab 都会先闪一下空态
+                    child: visibleGoods.isEmpty && !refreshing
+                        ? Center(
+                            child: Text(
+                              _currentCategoryId.isEmpty ? '暂无带货商品' : '该分类下暂无商品',
+                              style: const TextStyle(color: Colors.black38, fontSize: 13.0),
+                            ),
+                          )
+                        : ListView.builder(
                       shrinkWrap: true,
                       // 底部补安全距离: 弹窗已铺到屏幕底, 不补的话最后一个商品会被 home 指示条压住
                       padding: EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 8.0 + bottomInset),
-                      itemCount: goods.length,
+                      itemCount: visibleGoods.length,
                       itemBuilder: (context, index) {
-                    final Map<String, dynamic> item = goods[index];
+                    final Map<String, dynamic> item = visibleGoods[index];
                     // 商品id: 跳详情传的是商城商品id(goods_id, 如 38), 不是直播列表这条记录的 id(如 897)
                     // * 拿 id 去查 /api/goodssku/detail 会查到别的商品, 后端返回 code != 0
                     // * 详情页按 int 解析, 非数字会被兜成 1, 这里先挡掉
@@ -281,7 +377,7 @@ Widget build(BuildContext context) {
                         children: [
                       ClipRRect(
                           borderRadius: BorderRadius.circular(10.0),
-                          child: Image.network('${goods[index]['image']}', height: 100.0, width: 100.0, fit: BoxFit.cover,),
+                          child: Image.network('${item['image']}', height: 100.0, width: 100.0, fit: BoxFit.cover,),
                         ),
                         Positioned(
                           left: 0.0,
@@ -323,10 +419,10 @@ Widget build(BuildContext context) {
                           child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('${goods[index]['title']}', maxLines: 1, style: const TextStyle(fontSize: 15.0,), overflow: TextOverflow.ellipsis,),
+                            Text('${item['title']}', maxLines: 1, style: const TextStyle(fontSize: 15.0,), overflow: TextOverflow.ellipsis,),
                             // 副标题(tips): 服务端未下发时不留空行(空文本照样占一行高度, 视觉上就是标题下方一大块空白)
-                            if ('${goods[index]['tips']}'.trim().isNotEmpty)
-                            Text('${goods[index]['tips']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 12.0,),),
+                            if ('${item['tips']}'.trim().isNotEmpty)
+                            Text('${item['tips']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 12.0,),),
                             const SizedBox(height: 4.0,),
                             Wrap(
                               spacing: 5.0,
@@ -358,16 +454,16 @@ Widget build(BuildContext context) {
                               children: [
                                 const Text('¥', style: TextStyle(color: Colors.red, fontSize: 12.0),),
                                 Flexible(
-                                  child: Text('${goods[index]['price']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 16.0),),
+                                  child: Text('${item['price']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.red, fontSize: 16.0),),
                                 ),
                                 // 划线价: 接口 market_price 常下发 0, 没有原价时整段不展示(否则显示 "¥0")
-                                if ('${goods[index]['mprice']}'.trim().isNotEmpty)
+                                if ('${item['mprice']}'.trim().isNotEmpty)
                                 const SizedBox(width: 5.0,),
-                                if ('${goods[index]['mprice']}'.trim().isNotEmpty)
+                                if ('${item['mprice']}'.trim().isNotEmpty)
                                 const Text(' 券后价 ', style: TextStyle(color: Colors.grey, fontSize: 10.0),),
-                                if ('${goods[index]['mprice']}'.trim().isNotEmpty)
+                                if ('${item['mprice']}'.trim().isNotEmpty)
                                 Flexible(
-                                  child: Text('¥${goods[index]['mprice']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough),),
+                                  child: Text('¥${item['mprice']}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough),),
                                 ),
                               ],
                             ),

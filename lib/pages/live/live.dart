@@ -2377,8 +2377,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                               {'image': 'https://img12.360buyimg.com/jdcms/s240x240_jfs/t1/276851/40/403/125841/67ce85b7Fc7fb4cff/271d67aaea189a66.jpg', 'title': '茅台生肖系列酒 53度 老酒 收藏投资 春节送礼 2025年', 'tips': '销量超10万', 'price': '699.9', 'mprice': '999.9'},
                                               {'image': 'https://img14.360buyimg.com/jdcms/s240x240_jfs/t1/351318/40/12365/75748/68ee092bF4b501684/81f47e3e9ed16754.jpg', 'title': '罗蒙（ROMON）夹克男士秋冬季户外防风连帽保暖冲锋衣', 'tips': '好评1000+', 'price': '319.9', 'mprice': '359.9'},
                                             ],
-                                            // 每次打开购物车都重新拉一次(商品会上下架/改价, 进房时那份可能已过期)
-                                            onRefresh: () => LiveApi.onlineGoods(roomSn),
+                                            // 每次打开购物车 / 切分类都重新拉一次(商品会上下架/改价, 进房时那份可能已过期)
+                                            // * 参数是当前选中的商品分类 id(「全部」为空串), 后端按 category_id 返回
+                                            onRefresh: (String categoryId) => LiveApi.onlineGoods(roomSn, categoryId: categoryId),
                                             // 头部主播信息(真实: 当前房间 anchor_name / anchor_img / name)
                                             // * 用 item 而不是 roomInfo: 上下滑切房后 roomInfo 未必跟着更新
                                             anchorName: anchorNameOf(item),

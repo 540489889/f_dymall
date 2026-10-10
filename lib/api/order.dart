@@ -9,6 +9,8 @@ library;
 
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart' show debugPrint;
+
 import '../utils/request.dart';
 
 class OrderApi {
@@ -119,6 +121,41 @@ class OrderApi {
       throw Exception('${res['message'] ?? '未获取到订单信息'}');
     }
     return data.cast<String, dynamic>();
+  }
+
+  /// 我的订单各状态数量(/api/order/num): 「我的」页面订单入口的角标
+  /// * 返回 {waitpay 待付款, waitsend 待发货, waitconfirm 待收货, wait_use 待使用,
+  ///         waitrate 待评价, refunding 退款中}(都已转成 int, 取不到为 0)
+  /// * 无参数 POST(与订单列表同一套接口风格); 失败/未登录返回空 map, 页面据此不显示角标
+  // 方法名不能用 num: 会遮蔽 dart 的 num 类型, 本文件里再写 num 就报错
+  static Future<Map<String, dynamic>> orderNum() async {
+    try {
+      final Map<String, dynamic> res = await Request().postRaw('/api/order/num');
+      if ('${res['code']}' != '0') {
+        debugPrint('[order]订单数量返回异常: ${res['code']} ${res['message']}');
+        return const <String, dynamic>{};
+      }
+      final dynamic data = res['data'];
+      if (data is! Map) return const <String, dynamic>{};
+      return <String, dynamic>{
+        'waitpay': _intOf(data['waitpay']),
+        'waitsend': _intOf(data['waitsend']),
+        'waitconfirm': _intOf(data['waitconfirm']),
+        'wait_use': _intOf(data['wait_use']),
+        'waitrate': _intOf(data['waitrate']),
+        'refunding': _intOf(data['refunding']),
+      };
+    } catch (e) {
+      debugPrint('[order]订单数量加载失败: $e');
+      return const <String, dynamic>{};
+    }
+  }
+
+  /// 取整数(兼容 2 / "2" / null)
+  static int _intOf(dynamic val) {
+    if (val is int) return val;
+    if (val is num) return val.toInt();
+    return int.tryParse('${val ?? ''}'.trim()) ?? 0;
   }
 
   /// 订单列表(/api/order/lists)

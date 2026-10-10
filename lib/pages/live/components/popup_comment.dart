@@ -44,6 +44,13 @@ class _PopupCommentState extends State<PopupComment> {
     super.dispose();
   }
 
+  // 关闭弹窗: 先释放输入框焦点再返回
+  // * iOS 上没有返回键, 直接 pop 时 TextField 仍持有焦点, 键盘会挂在引擎上不收(页面关了键盘还在)
+  void _close() {
+    FocusManager.instance.primaryFocus?.unfocus();
+    Get.back<void>();
+  }
+
   // 快捷短语: 点击后填入输入框(覆盖当前内容), 光标移到末尾并保持聚焦
   void _fillComment(String text) {
     textEditingController.value = TextEditingValue(
@@ -67,9 +74,7 @@ class _PopupCommentState extends State<PopupComment> {
         child: Container(
         color: Colors.transparent,
       ),
-      onTap: () {
-        Get.back();
-      },
+      onTap: _close,
         ),
       ),
       Container(
@@ -143,8 +148,8 @@ class _PopupCommentState extends State<PopupComment> {
                 focusNode: commentFocusNode,
                 cursorColor: const Color(0xFFFF2C55),
                 onEditingComplete: () {
-                  widget.onChanged!(textEditingController.text);
-                  Get.back();
+                  widget.onChanged?.call(textEditingController.text);
+                  _close();
                 },
                   onChanged: (value) {},
                 ),
@@ -160,8 +165,8 @@ class _PopupCommentState extends State<PopupComment> {
                     )
                   ),
                   onPressed: () {
-                    widget.onChanged!(textEditingController.text);
-                    Get.back();
+                    widget.onChanged?.call(textEditingController.text);
+                    _close();
                   },
                   child: const Text('发送',),
                 ),

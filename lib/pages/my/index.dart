@@ -8,7 +8,10 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import '../../api/adv.dart';
 import '../../api/member.dart';
+import '../../api/order.dart';
+import '../../components/adv_banner.dart';
 import '../../controller/auth_store.dart';
 import '../../controller/app_config.dart';
 
@@ -24,10 +27,18 @@ class _MyPageState extends State<MyPage> {
   // 我的服务: /api/Member/serviceNav 的配置项(为空则不展示「我的服务」卡片)
   final List<Map<String, dynamic>> serviceList = <Map<String, dynamic>>[];
 
+  // 广告图(/api/adv/detail keyword=MEMBER_M 的 adv_list): 展示在「我的订单」上方
+  // * 多张时自动轮播; 后台没配图则整块不显示
+  List<Map<String, dynamic>> advList = const <Map<String, dynamic>>[];
+
+  // 我的订单各状态数量(/api/order/num): 订单入口的角标; 接口失败为空, 不显示角标
+  Map<String, dynamic> orderNum = const <String, dynamic>{};
+
   @override
   void initState() {
     super.initState();
     loadServiceNav();
+    loadAdv();
     // 已登录但会员信息为空(如启动时拉取失败),进入页面补拉一次
     if (authStore.isLogin && authStore.memberInfo.isEmpty) {
       authStore.loadMemberInfo();
@@ -35,6 +46,8 @@ class _MyPageState extends State<MyPage> {
     // 券数量: 进入页面刷一次(接口轻量, 内部已做异常兜底)
     if (authStore.isLogin) {
       authStore.loadCouponNum();
+      // 订单角标数量: 需要登录态, 未登录不请求
+      loadOrderNum();
     }
   }
 
@@ -62,6 +75,47 @@ class _MyPageState extends State<MyPage> {
     } catch (e) {
       if (kDebugMode) debugPrint('[serviceNav] 请求失败, 不展示我的服务: $e');
     }
+  }
+
+  /// 广告图(/api/adv/detail keyword=MEMBER_M, 取 adv_list)
+  /// * 失败 / 后台没配时列表为空, 「我的订单」上方的广告位不占高度
+  Future<void> loadAdv() async {
+    final List<Map<String, dynamic>> list = await AdvApi.list('MEMBER_M');
+    if (!mounted || list.isEmpty) return;
+    setState(() {
+      advList = list;
+    });
+  }
+
+  /// 订单各状态数量(/api/order/num): 失败/未登录时为空, 角标不显示
+  Future<void> loadOrderNum() async {
+    final Map<String, dynamic> data = await OrderApi.orderNum();
+    if (!mounted || data.isEmpty) return;
+    setState(() {
+      orderNum = data;
+    });
+  }
+
+  /// 取某个状态的订单数量(取不到按 0: 不显示角标)
+  int _orderNum(String key) => int.tryParse('${orderNum[key] ?? 0}') ?? 0;
+
+  /// 跳订单相关页面, 返回时刷一次角标
+  /// * 订单页里的付款/取消/收货/删除都会改变各状态数量, 不刷的话角标会停留在旧值
+  Future<void> toOrder(String route, {Object? arguments}) async {
+    await Get.toNamed<dynamic>(route, arguments: arguments);
+    if (!mounted || !authStore.isLogin) return;
+    await loadOrderNum();
+  }
+
+  /// 广告位: 「我的订单」卡片上方(多张自动轮播)
+  Widget _buildAdvBanner() {
+    if (advList.isEmpty) return const SizedBox.shrink();
+    return AdvBanner(
+      list: advList,
+      height: 95.0,
+      radius: 16.0,
+      margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+    );
   }
 
   String get _maskedMobile {
@@ -147,7 +201,8 @@ class _MyPageState extends State<MyPage> {
 
   /// 菜单入口(图标 + 文字)
   /// * [image] http(s) 开头走网络图标, 否则按本地资源加载
-  Widget _menuItem({required String label, required String image, required VoidCallback onTap}) {
+  /// * [badge] > 0 时在图标右上角显示红色数量角标
+  Widget _menuItem({required String label, required String image, required VoidCallback onTap, int badge = 0}) {
     final Widget icon = image.startsWith('http')
         ? CachedNetworkImage(
             imageUrl: image,
@@ -166,10 +221,46 @@ class _MyPageState extends State<MyPage> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            icon,
+            // 图标: 角标要溢出到图标外面, 用 Stack + clipBehavior.none(默认会裁掉)
+            SizedBox(
+              width: 32.0,
+              height: 32.0,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: <Widget>[
+                  Center(child: icon),
+                  if (badge > 0)
+                    Positioned(
+                      right: -7.0,
+                      top: -4.0,
+                      child: _badge(badge),
+                    ),
+                ],
+              ),
+            ),
             const SizedBox(height: 8.0),
             Text(label, style: const TextStyle(fontSize: 12.0, color: Color(0xFF333333))),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// 数量角标(>99 显示 99+)
+  Widget _badge(int count) {
+    final String text = count > 99 ? '99+' : '$count';
+    return Container(
+      constraints: const BoxConstraints(minWidth: 16.0),
+      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 1.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFF2C55),
+        borderRadius: BorderRadius.circular(8.0),
+        border: Border.all(color: Colors.white, width: 1.0),
+      ),
+      child: Center(
+        child: Text(
+          text,
+          style: const TextStyle(fontSize: 10.0, height: 1.25, color: Colors.white, fontWeight: FontWeight.w600),
         ),
       ),
     );
@@ -485,7 +576,7 @@ class _MyPageState extends State<MyPage> {
               const Text('我的订单', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
               const Spacer(),
               InkWell(
-                onTap: () => _checkLogin(() => Get.toNamed('/order')),
+                onTap: () => _checkLogin(() => toOrder('/order')),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: const [
@@ -503,35 +594,40 @@ class _MyPageState extends State<MyPage> {
                 child: _menuItem(
                   image: 'assets/images/me/mine_icon_order_unpaid.png',
                   label: '待付款',
-                  onTap: () => _checkLogin(() => Get.toNamed('/order', arguments: {'status': 'waitpay'})),
+                  badge: _orderNum('waitpay'),
+                  onTap: () => _checkLogin(() => toOrder('/order', arguments: {'status': 'waitpay'})),
                 ),
               ),
               Expanded(
                 child: _menuItem(
                   image: 'assets/images/me/mine_icon_order_unshipped.png',
                   label: '待发货',
-                  onTap: () => _checkLogin(() => Get.toNamed('/order', arguments: {'status': 'waitsend'})),
+                  badge: _orderNum('waitsend'),
+                  onTap: () => _checkLogin(() => toOrder('/order', arguments: {'status': 'waitsend'})),
                 ),
               ),
               Expanded(
                 child: _menuItem(
                   image: 'assets/images/me/mine_icon_order_unreceived.png',
                   label: '待收货',
-                  onTap: () => _checkLogin(() => Get.toNamed('/order', arguments: {'status': 'waitconfirm'})),
+                  badge: _orderNum('waitconfirm'),
+                  onTap: () => _checkLogin(() => toOrder('/order', arguments: {'status': 'waitconfirm'})),
                 ),
               ),
               Expanded(
                 child: _menuItem(
                   image: 'assets/images/me/mine_icon_order_touse.png',
                   label: '待使用',
-                  onTap: () => _checkLogin(() => Get.toNamed('/order', arguments: {'status': 'wait_use'})),
+                  badge: _orderNum('wait_use'),
+                  onTap: () => _checkLogin(() => toOrder('/order', arguments: {'status': 'wait_use'})),
                 ),
               ),
               Expanded(
                 child: _menuItem(
                   image: 'assets/images/me/mine_icon_order_aftersale.png',
                   label: '售后',
-                  onTap: () => _checkLogin(() => Get.toNamed('/order/refund_list')),
+                  badge: _orderNum('refunding'),
+                  onTap: () => _checkLogin(() => toOrder('/order/refund_list')),
                 ),
               ),
             ],
@@ -621,6 +717,8 @@ class _MyPageState extends State<MyPage> {
             padding: EdgeInsets.zero,
             children: [
               _buildTopArea(statusTop),
+              // 广告位(MEMBER_M): 在「我的订单」上方
+              _buildAdvBanner(),
               _buildOrderCard(),
               _buildServiceCard(),
               _buildFooter(),
