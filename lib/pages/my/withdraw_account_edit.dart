@@ -4,6 +4,8 @@
 /// * 账户详情 /api/memberbankaccount/info(编辑时回填)
 /// * 保存 /api/memberbankaccount/add | /api/memberbankaccount/edit
 /// * 入参 Get.arguments: { id: 0 } id 为 0 时新增
+/// * 微信零钱: 保存成功后若未做免确认收款授权, 主动拉起微信商户授权
+///   /api/memberbankaccount/authorization -> mchid / appid / package_info
 library;
 
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member_withdraw.dart';
 import '../../styles/index.dart';
+import '../../utils/wx.dart';
 
 class WithdrawAccountEditPage extends StatefulWidget {
   const WithdrawAccountEditPage({super.key});
@@ -31,7 +34,11 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
   int id = 0;
   bool loading = true;
   bool submitting = false;
+  /// 保存已成功, 正在等微信商户授权返回
+  bool authing = false;
   String errorMsg = '';
+  /// 微信免确认收款授权状态('0' 未授权 / '1' 已授权; 空=后台未下发, 由授权接口兜底判断)
+  String authStatus = '';
   /// 来源: member 会员 / fenxiao 分销
   String type = 'member';
   /// 提现方式 [{ label, value }]
@@ -73,6 +80,7 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
         bankNameController.text = '${info['branch_bank_name'] ?? ''}';
         accountController.text = '${info['bank_account'] ?? ''}';
         withdrawType = '${info['withdraw_type'] ?? ''}';
+        authStatus = '${info['auth_status'] ?? ''}';
       }
       final List<Map<String, dynamic>> transferTypes = await MemberWithdrawApi.transferType(type: type);
       if (!mounted) return;
@@ -139,7 +147,7 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
     if (!verify()) return;
     setState(() => submitting = true);
     try {
-      await MemberWithdrawApi.accountSave(
+      final dynamic saved = await MemberWithdrawApi.accountSave(
         id: id,
         realname: realnameController.text.trim(),
         mobile: mobileController.text.trim(),
@@ -148,13 +156,65 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
         branchBankName: isBank ? bankNameController.text.trim() : '',
       );
       if (!mounted) return;
-      setState(() => submitting = false);
-      MyDialog.toast('保存成功');
-      Get.back();
+      MyDialog.toast(id > 0 ? '修改成功' : '添加成功');
+      // 微信零钱: 未授权时顺手把免确认收款授权做了, 免得回列表再点一次「去授权」
+      await authMerchant(id > 0 ? id : parseAccountId(saved), saved is Map ? saved.cast<String, dynamic>() : null);
+      if (!mounted) return;
+      setState(() {
+        submitting = false;
+        authing = false;
+      });
+      Get.back(result: true);
     } catch (e) {
       if (!mounted) return;
-      setState(() => submitting = false);
+      setState(() {
+        submitting = false;
+        authing = false;
+      });
       MyDialog.toast(MemberWithdrawApi.errorMsg(e, '保存失败'));
+    }
+  }
+
+  /// 新增接口返回的账户 id(data 可能是 id 本身, 也可能是 { id / account_id })
+  static int parseAccountId(dynamic res) {
+    if (res is Map) {
+      final dynamic value = res['id'] ?? res['account_id'] ?? res['data'];
+      return int.tryParse('$value') ?? 0;
+    }
+    return int.tryParse('${res ?? 0}') ?? 0;
+  }
+
+  /// 微信零钱免确认收款授权(对齐 H5 保存成功后的 requestMerchantTransfer)
+  /// * 只在「微信零钱 + 未授权」时才拉起;已授权 / 拿不到授权参数直接跳过,不影响保存结果
+  /// * [saved] 保存接口返回,部分环境会直接下发 mchid/appid/package_info,省一次请求
+  Future<void> authMerchant(int accountId, [Map<String, dynamic>? saved]) async {
+    if (!isWechat || accountId <= 0) return;
+    if (authStatus == '1') return;
+    setState(() => authing = true);
+    try {
+      String mchId = '${saved?['mchid'] ?? ''}';
+      String appId = '${saved?['appid'] ?? ''}';
+      String packageInfo = '${saved?['package_info'] ?? ''}';
+      if (mchId.isEmpty || appId.isEmpty || packageInfo.isEmpty) {
+        // 拿不到/接口报错(code<0, 通常意味着无需授权)就静默跳过
+        final Map<String, dynamic> auth;
+        try {
+          auth = await MemberWithdrawApi.accountAuthorization(accountId);
+        } catch (_) {
+          return;
+        }
+        mchId = '${auth['mchid'] ?? ''}';
+        appId = '${auth['appid'] ?? ''}';
+        packageInfo = '${auth['package_info'] ?? ''}';
+      }
+      if (mchId.isEmpty || appId.isEmpty || packageInfo.isEmpty) return;
+      await WxAuth.requestMerchantTransfer(mchId: mchId, appId: appId, package: packageInfo);
+      if (!mounted) return;
+      authStatus = '1';
+      MyDialog.toast('授权成功');
+    } catch (e) {
+      // 授权失败(含取消/未安装微信)只提示,账户已经保存好了
+      if (mounted) MyDialog.toast(WxAuth.errorMsg(e, '未授权成功'));
     }
   }
 
@@ -346,7 +406,8 @@ class _WithdrawAccountEditPageState extends State<WithdrawAccountEditPage> {
           shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(22.0))),
         ),
         onPressed: submitting ? null : submit,
-        child: Text(submitting ? '保存中...' : '保存', style: const TextStyle(fontSize: 15.0)),
+        child: Text(submitting ? (authing ? '授权中...' : '保存中...') : '保存',
+            style: const TextStyle(fontSize: 15.0)),
       ),
     );
   }
