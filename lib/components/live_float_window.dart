@@ -102,9 +102,18 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
     player,
     configuration: isAndroidPlatform ? androidLiveVideoConfig : const VideoControllerConfiguration(),
   );
-  // 首帧: 解码出画面尺寸才算真有画面,之前继续显示封面
+  // 首帧: 解码出画面尺寸才算真有画面,之前/断流时继续显示封面
   final ValueNotifier<bool> firstFrame = ValueNotifier<bool>(false);
-  StreamSubscription<int?>? _widthSub;
+  // 小窗这路流也会踩 Android 那个坑: 收到分辨率 -> Surface 重建 -> 内部 seek -> RTMP 被打断,
+  // 不出画面。所以和直播间一样交给 LiveReconnector 起播(带首帧看门狗 + 自动重连)
+  late final LiveReconnector reconnector = LiveReconnector(
+    player,
+    // 重连期间画面是空的: 把封面重新显示出来,不然是一块白板
+    onReconnecting: () {
+      if (mounted) firstFrame.value = false;
+    },
+  );
+  StreamSubscription<VideoParams>? _videoParamsSub;
 
   // 位置(默认右下,可拖动 + 松手吸边)
   double? _left;
@@ -114,22 +123,36 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
   @override
   void initState() {
     super.initState();
-    if (kDebugMode) debugPrint('[live]悬浮小窗: 卡片已挂载 roomSn=${widget.roomSn}');
-    _widthSub = player.stream.width.listen((int? width) {
-      if ((width ?? 0) > 0 && !firstFrame.value) firstFrame.value = true;
+    if (kDebugMode) {
+      debugPrint('[live]悬浮小窗: 卡片已挂载 roomSn=${widget.roomSn} pullUrl=${widget.pullUrl.isNotEmpty}');
+    }
+    // 视频轨: 出尺寸才算真有画面;变回空(被 seek 打断)就退回收藏封面
+    _videoParamsSub = player.stream.videoParams.listen((VideoParams params) {
+      final bool hasVideo = (params.dw ?? 0) > 0;
+      if (hasVideo == firstFrame.value) return;
+      if (!mounted) return;
+      if (kDebugMode) {
+        debugPrint('[live]悬浮小窗: ${hasVideo ? '画面就绪 ${params.dw}x${params.dh}' : '画面丢失,退回封面'}');
+      }
+      firstFrame.value = hasVideo;
     });
     unawaited(_open());
   }
 
   Future<void> _open() async {
-    if (widget.pullUrl.isEmpty) return;
+    if (widget.pullUrl.isEmpty) {
+      if (kDebugMode) debugPrint('[live]悬浮小窗: 没有拉流地址,只显示封面');
+      return;
+    }
+    // 静音: 直播间的播放器还在出声,两路都有声会叠在一起
     await player.setVolume(0.0);
-    await player.open(Media(widget.pullUrl));
+    await reconnector.open(widget.pullUrl);
   }
 
   @override
   void dispose() {
-    _widthSub?.cancel();
+    _videoParamsSub?.cancel();
+    reconnector.dispose();
     firstFrame.dispose();
     player.dispose();
     super.dispose();
