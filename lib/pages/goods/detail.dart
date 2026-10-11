@@ -499,6 +499,9 @@ Widget _buildSwiper() {
       indicatorLayout: PageIndicatorLayout.SCALE,
     children: list.map((String url) => CachedNetworkImage(
       imageUrl: url,
+      // 切图时不要淡入淡出(默认 500ms 的淡入会跟着轮播切换闪一下)
+      fadeInDuration: Duration.zero,
+      fadeOutDuration: Duration.zero,
       placeholder: (context, url) => Container(color: Colors.grey[50]),
       errorWidget: (context, url, error) => Container(
         color: Colors.grey[200],
@@ -516,7 +519,8 @@ Widget _buildSwiper() {
 Widget _buildPriceBlock() {
   return Container(
     transform: Matrix4.translationValues(0.0, -_kPriceOverlap, 0.0),
-    padding: EdgeInsets.fromLTRB(15.0, 10.0, 15.0, 25.0),
+    // 上压 _kPriceOverlap 后顶部要多补这么多的内边距,金额才不会被顶到图片上
+    padding: EdgeInsets.fromLTRB(15.0, 10.0 + _kPriceOverlap, 15.0, 25.0),
     decoration: BoxDecoration(
       gradient: LinearGradient(
         begin: Alignment.topLeft,
