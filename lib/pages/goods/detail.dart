@@ -271,35 +271,22 @@ Widget _buildContent() {
   );
 }
 
-/// SliverAppBar: 默认透明, 滚动到商品区后背景变白、标题出现
-/// * 对齐参考图: 未滚动时背景透明;滚动超过商品图后吸顶,背景白色 + 深色标题
+/// SliverAppBar: 默认透明, 滚动到商品区后背景变白(不显示标题)
+/// * 对齐参考图: 未滚动时背景透明;滚动超过商品图后吸顶,背景白色
 Widget _buildSliverAppBar() {
   return ValueListenableBuilder<double>(
     valueListenable: scrollOffset,
     builder: (BuildContext context, double offset, Widget? child) {
       final double t = (offset / 120.0).clamp(0.0, 1.0);
       final Color bg = Color.lerp(Colors.transparent, Colors.white, t)!;
-      final Color iconColor = Color.lerp(Colors.white, const Color(0xFF333333), t)!;
       return SliverAppBar(
         pinned: true,
         backgroundColor: bg,
-        foregroundColor: iconColor,
         elevation: 0,
         scrolledUnderElevation: 0,
         expandedHeight: 280.0,
-        titleSpacing: 0.0,
-        centerTitle: true,
-        // 按钮自己画(见 _buildTopBar),这里不要默认的返回按钮
+        // 按钮自己画(见 _buildTopBar),这里不要默认的返回按钮和标题
         automaticallyImplyLeading: false,
-        title: Opacity(
-          opacity: t,
-          child: Text(
-            title.isEmpty ? '商品详情' : title,
-            style: TextStyle(color: iconColor, fontSize: 16.0, fontWeight: FontWeight.w600),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
         flexibleSpace: FlexibleSpaceBar(background: _buildSwiper()),
       );
     },
