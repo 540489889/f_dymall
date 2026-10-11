@@ -27,15 +27,10 @@ class Goods extends StatefulWidget {
 State<Goods> createState() => _GoodsState();
 }
 
-class _GoodsState extends State<Goods> with TickerProviderStateMixin {
+class _GoodsState extends State<Goods> {
 late final ScrollController scrollController = ScrollController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
-// 顶部 TabBar 控制器(商品 / 评价 / 详情, 只保留页面内真实存在的区块)
-late final TabController tabController = TabController(length: 3, vsync: this);
-// Tab 锚点: 点击 Tab 滚动到对应区块
-final GlobalKey evaluateKey = GlobalKey();
-final GlobalKey detailKey = GlobalKey();
 // 接口返回的商品详情
 Map<String, dynamic> detail = const {};
 // 加载状态
@@ -120,7 +115,6 @@ Future<void> loadEvaluate() async {
 
 @override
 void dispose() {
-  tabController.dispose();
   scrollController.dispose();
   super.dispose();
 }
@@ -230,157 +224,98 @@ Widget _buildError() {
 }
 
 Widget _buildContent() {
-  return Stack(
-    children: [
-      CustomScrollView(
-        scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
-        controller: scrollController,
-        slivers: [
-          // 轮播图(顶部被悬浮顶栏覆盖,露出下方主体)
-          SliverToBoxAdapter(child: SizedBox(height: 280.0, child: _buildSwiper())),
-          SliverToBoxAdapter(
-            child: ScrollConfiguration(
-              behavior: CustomScrollBehavior().copyWith(scrollbars: false),
-              child: Column(
-                children: [
-                  _buildPriceBlock(),
-                  Container(
-                    padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 0),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFFFAFAFA),
-                      borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
-                    ),
-                    transform: Matrix4.translationValues(0.0, -15.0, 0.0),
-                    child: Column(
-                      children: [
-                        _buildTitle(),
-                        _buildPromotion(),
-                        _buildEvaluate(),
-                        _buildAttr(),
-                        _buildDetail(),
-                      ],
-                    ),
-                  ),
-                  // 底部按钮安全间距
-                  const SizedBox(height: 20.0),
-                ],
+  return CustomScrollView(
+    scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
+    controller: scrollController,
+    slivers: [
+      _buildSliverAppBar(),
+      SliverToBoxAdapter(
+        child: ScrollConfiguration(
+          behavior: CustomScrollBehavior().copyWith(scrollbars: false),
+          child: Column(
+            children: [
+              _buildPriceBlock(),
+              Container(
+                padding: const EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 0),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFFAFAFA),
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
+                ),
+                transform: Matrix4.translationValues(0.0, -15.0, 0.0),
+                child: Column(
+                  children: [
+                    _buildTitle(),
+                    _buildPromotion(),
+                    _buildEvaluate(),
+                    _buildAttr(),
+                    _buildDetail(),
+                  ],
+                ),
               ),
-            ),
+              // 底部按钮安全间距
+              const SizedBox(height: 20.0),
+            ],
           ),
-        ],
+        ),
       ),
-      // 顶部悬浮栏: 搜索框 + 商品/评价/详情/推荐 Tab
-      Positioned(top: 0.0, left: 0.0, right: 0.0, child: _buildTopBar()),
     ],
   );
 }
 
-/// Tab 点击: 滚动到对应区块(商品 -> 顶部 / 评价 -> 评价区 / 详情 -> 图文详情)
-Future<void> scrollToSection(int index) async {
-  if (index == 0) {
-    if (!scrollController.hasClients) return;
-    await scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
-    return;
-  }
-  // 评价模块未开启时没有对应内容,不给滚
-  if (index == 1 && !evaluateShow) {
-    Get.snackbar('提示', '暂无评价', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 2));
-    return;
-  }
-  final BuildContext? ctx = index == 1 ? evaluateKey.currentContext : detailKey.currentContext;
-  if (ctx == null) return;
-  await Scrollable.ensureVisible(
-    ctx,
-    duration: const Duration(milliseconds: 300),
-    curve: Curves.easeOut,
-    alignment: 0.02,
-  );
-}
-
-/// 顶部悬浮栏(吸顶): 滚动时背景由透明渐变为白色,图标由白转黑
-/// * 对齐参考图: 白底圆角搜索框 + 购物车 + 商品/评价/详情 Tab 切换
-/// * 只保留页面里真实存在的入口,未接的收藏/分享/推荐不展示
-Widget _buildTopBar() {
+/// SliverAppBar: 默认透明圆形按钮, 滚动到商品区后背景变白、标题出现
+/// * 对齐参考图: 未滚动时背景透明,仅显示返回/搜索/购物车圆形按钮;
+///   滚动超过商品图后吸顶,背景白色,标题和深色图标
+Widget _buildSliverAppBar() {
   return ValueListenableBuilder<double>(
     valueListenable: scrollOffset,
     builder: (BuildContext context, double offset, Widget? child) {
       final double t = (offset / 120.0).clamp(0.0, 1.0);
-      final Color bg = Color.lerp(const Color(0x00FFFFFF), Colors.white, t)!;
+      final Color bg = Color.lerp(Colors.transparent, Colors.white, t)!;
       final Color iconColor = Color.lerp(Colors.white, const Color(0xFF333333), t)!;
-      final Color textColor = Color.lerp(Colors.white70, const Color(0xFF999999), t)!;
-      final Color borderColor = Color.lerp(const Color(0x00EEEEEE), const Color(0xFFEEEEEE), t)!;
-      return Container(
-        color: bg,
-        child: SafeArea(
-          bottom: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(8.0, 4.0, 8.0, 2.0),
-            decoration: BoxDecoration(border: Border(bottom: BorderSide(color: borderColor, width: 0.5))),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    IconButton(
-                      icon: Icon(Icons.arrow_back_ios_rounded, color: iconColor, size: 18.0),
-                      onPressed: () => Get.back(),
-                    ),
-                    Expanded(
-                      child: GestureDetector(
-                        onTap: () => Get.toNamed('/search'),
-                        child: Container(
-                          height: 34.0,
-                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.85 + 0.15 * t),
-                            borderRadius: BorderRadius.circular(17.0),
-                            border: Border.all(color: const Color(0xFFEEEEEE).withValues(alpha: 0.3 + 0.7 * t), width: 0.5),
-                          ),
-                          child: Row(
-                            children: <Widget>[
-                              Icon(Icons.search, color: textColor, size: 16.0),
-                              const SizedBox(width: 6.0),
-                              Expanded(
-                                child: Text(
-                                  title.isEmpty ? '搜索商品' : title,
-                                  style: TextStyle(color: textColor, fontSize: 13.0),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.shopping_cart_outlined, color: iconColor, size: 20.0),
-                      onPressed: () => Get.toNamed('/cart'),
-                    ),
-                  ],
-                ),
-                TabBar(
-                  controller: tabController,
-                  onTap: scrollToSection,
-                  tabs: const <Widget>[Tab(text: '商品'), Tab(text: '评价'), Tab(text: '详情')],
-                  indicatorColor: const Color(0xFFFF2C55),
-                  labelColor: const Color(0xFF333333),
-                  unselectedLabelColor: const Color(0xFF999999),
-                  indicatorSize: TabBarIndicatorSize.label,
-                  labelStyle: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600),
-                  unselectedLabelStyle: const TextStyle(fontSize: 14.0),
-                  dividerColor: Colors.transparent,
-                  tabAlignment: TabAlignment.start,
-                  isScrollable: true,
-                  padding: EdgeInsets.zero,
-                  labelPadding: const EdgeInsets.symmetric(horizontal: 14.0),
-                ),
-              ],
-            ),
+      return SliverAppBar(
+        pinned: true,
+        backgroundColor: bg,
+        foregroundColor: iconColor,
+        elevation: 0,
+        scrolledUnderElevation: 0,
+        expandedHeight: 280.0,
+        titleSpacing: 0.0,
+        centerTitle: true,
+        leading: _buildIconButton(Icons.close, () => Get.back(), t, iconColor, isLeading: true),
+        title: Opacity(
+          opacity: t,
+          child: Text(
+            title.isEmpty ? '商品详情' : title,
+            style: TextStyle(color: iconColor, fontSize: 16.0, fontWeight: FontWeight.w600),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
           ),
         ),
+        actions: <Widget>[
+          _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
+          _buildIconButton(Icons.shopping_cart_outlined, () => Get.toNamed('/cart'), t, iconColor),
+        ],
+        flexibleSpace: FlexibleSpaceBar(background: _buildSwiper()),
       );
     },
+  );
+}
+
+/// 顶部圆形图标按钮(透明时带半透明黑底,吸顶后无底色)
+Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {bool isLeading = false}) {
+  return GestureDetector(
+    onTap: onTap,
+    child: Container(
+      width: 34.0,
+      height: 34.0,
+      margin: EdgeInsets.only(left: isLeading ? 10.0 : 0.0, right: isLeading ? 0.0 : 6.0),
+      decoration: BoxDecoration(
+        color: Color.lerp(Colors.black.withValues(alpha: 0.25), const Color(0x00FFFFFF), t),
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: Icon(icon, size: 18.0, color: iconColor),
+    ),
   );
 }
 
@@ -787,7 +722,6 @@ Widget _buildPromotion() {
 Widget _buildEvaluate() {
   if (!evaluateShow) return const SizedBox.shrink();
   return Container(
-    key: evaluateKey,
     width: double.infinity,
     margin: const EdgeInsets.only(top: 10.0),
     padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 4.0),
@@ -984,7 +918,6 @@ Widget _buildAttrCell(String text, {required Color color}) {
 /// 图文详情(接口 goods_content 为 HTML)
 Widget _buildDetail() {
   return Container(
-    key: detailKey,
     width: double.infinity,
     margin: EdgeInsets.only(top: 10.0),
     padding: EdgeInsets.all(10.0),
