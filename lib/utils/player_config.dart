@@ -62,6 +62,19 @@ const VideoControllerConfiguration androidLiveVideoConfig = VideoControllerConfi
   androidAttachSurfaceAfterVideoParameters: false,
 );
 
+/// 悬浮小窗的视频输出配置: 走软解(hwdec=no),不跟直播间抢硬解码码器
+///
+/// 为什么小窗不能用 mediacodec-copy:
+/// 1. 从直播间进商品详情时,直播间那一路还在播,硬解码码器已经被占着;
+/// 2. 海思这类芯片(OMX.hisi.video.decoder.avc)在 1080p 上要求 9~12 个输出 buffer,
+///    并发开第二路硬解大概率直接开不出来 -> 没有视频轨 -> 小窗只剩封面;
+/// 3. 小窗只有 96x136,软解完全够用,省下的硬解留给直播间那一大屏。
+const VideoControllerConfiguration floatWindowVideoConfig = VideoControllerConfiguration(
+  vo: 'gpu',
+  hwdec: 'no',
+  androidAttachSurfaceAfterVideoParameters: false,
+);
+
 /// RTMP 直播自动重连
 ///
 /// 针对 media_kit_video 在 Android 上的一个已知行为:

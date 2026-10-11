@@ -98,9 +98,11 @@ class _LiveFloatCard extends StatefulWidget {
 class _LiveFloatCardState extends State<_LiveFloatCard> {
   // 小窗播放器: 单独一路流,静音(直播间的播放器还在播,两路都有声会叠在一起)
   late final Player player = createLivePlayer();
+  // Android 上走软解(floatWindowVideoConfig): 直播间那一路已经占着硬解码码器,
+  // 小窗再去抢会开不出第二路(海思这类芯片尤其明显),最终只剩封面
   late final VideoController videoController = VideoController(
     player,
-    configuration: isAndroidPlatform ? androidLiveVideoConfig : const VideoControllerConfiguration(),
+    configuration: isAndroidPlatform ? floatWindowVideoConfig : const VideoControllerConfiguration(),
   );
   // 首帧: 解码出画面尺寸才算真有画面,之前/断流时继续显示封面
   final ValueNotifier<bool> firstFrame = ValueNotifier<bool>(false);
