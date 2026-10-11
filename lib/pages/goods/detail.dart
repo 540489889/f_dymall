@@ -1,6 +1,7 @@
 /// 商品详情页
 library;
 
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../components/common_empty.dart';
@@ -73,8 +74,13 @@ void initState() {
   loadEvaluate();
   // 从直播间进来的: 等首帧布局完再挂悬浮小窗(小窗继续播直播画面,点它回直播间)
   WidgetsBinding.instance.addPostFrameCallback((_) {
-    if (!mounted || liveRoomId.isEmpty) return;
+    if (!mounted) return;
+    if (kDebugMode) {
+      debugPrint('[live]商品详情: liveRoomId=$liveRoomId cover=${liveCover.isNotEmpty} pullUrl=${livePullUrl.isNotEmpty}');
+    }
+    if (liveRoomId.isEmpty) return;
     LiveFloatWindow.instance.show(
+      context: context,
       roomSn: liveRoomId,
       cover: liveCover,
       anchorName: liveAnchor,

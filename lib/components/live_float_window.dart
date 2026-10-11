@@ -9,6 +9,7 @@ library;
 import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
@@ -33,18 +34,28 @@ class LiveFloatWindow {
   bool get visible => _entry != null;
 
   /// 显示小窗
+  /// * [context] 调用方(页面)的 context: 由它往上找根 Overlay
+  ///   * 不能用 Get.overlayContext: 那是 Overlay 自己的 context,而 Overlay.of 只往上找祖先,
+  ///     拿它查会返回 null(insert 时空指针,小窗就静默不显示)
   /// * [roomSn] 直播间房间号 sn(点小窗回直播间用)
   /// * [pullUrl] 拉流地址,为空时只显示封面
   /// * [cover] 直播间封面(首帧出来前显示)
   void show({
+    required BuildContext context,
     required String roomSn,
     String cover = '',
     String anchorName = '',
     String pullUrl = '',
   }) {
     if (roomSn.isEmpty || _entry != null) return;
-    final BuildContext? context = Get.overlayContext;
-    if (context == null) return;
+    final OverlayState? overlay = Overlay.of(context, rootOverlay: true);
+    if (overlay == null) {
+      if (kDebugMode) debugPrint('[live]悬浮小窗: 找不到 Overlay,不显示');
+      return;
+    }
+    if (kDebugMode) {
+      debugPrint('[live]悬浮小窗: 显示 roomSn=$roomSn cover=${cover.isNotEmpty} pullUrl=${pullUrl.isNotEmpty}');
+    }
     _entry = OverlayEntry(
       builder: (BuildContext context) => _LiveFloatCard(
         roomSn: roomSn,
@@ -54,7 +65,7 @@ class LiveFloatWindow {
         onClose: hide,
       ),
     );
-    Overlay.of(context).insert(_entry!);
+    overlay.insert(_entry!);
   }
 
   /// 移除小窗(会顺带释放小窗的播放器)
