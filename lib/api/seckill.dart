@@ -193,6 +193,8 @@ class SeckillApi {
       'stock': _toNum(detail['stock'] ?? detail['goods_stock']),
       'maxBuy': _toNum(detail['max_buy']),
       'unit': '${detail['unit'] ?? ''}',
+      // 是否收藏(接口不一定下发,没有就按未收藏处理)
+      'isCollect': detail['is_collect'] == 1 || detail['isCollect'] == true,
       // 活动起止时间(秒级时间戳)
       'startTime': _toNum(detail['start_time']),
       'endTime': _toNum(detail['end_time']),

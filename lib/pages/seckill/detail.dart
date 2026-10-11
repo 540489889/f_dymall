@@ -9,9 +9,11 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:card_swiper/card_swiper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_html/flutter_html.dart';
 import 'package:get/get.dart';
 
+import '../../api/goods.dart';
 import '../../api/seckill.dart';
 import '../../controller/auth_store.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
@@ -19,6 +21,9 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 /// 活动主色(H5 style_color: seckill_promotion_color / seckill_promotion_aux_color)
 const Color _primary = Color(0xFFF83530);
 const Color _aux = Color(0xFFFD9A01);
+
+/// 顶部圆形按钮直径(返回/搜索/购物车/收藏统一)
+const double _kTopBtnSize = 34.0;
 
 /// 接口字段多为字符串, 统一转 num
 num _toNum(dynamic value, [num def = 0]) => value is num ? value : (num.tryParse('${value ?? ''}') ?? def);
@@ -38,6 +43,8 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
   bool loading = true;
   String errorMsg = '';
   Map<String, dynamic> detail = const {};
+  /// 收藏/取消收藏请求中
+  bool addingCollect = false;
 
   /// 规格(sku)列表(仅参与本次秒杀的 sku)
   List<Map<String, dynamic>> skuList = <Map<String, dynamic>>[];
@@ -76,6 +83,12 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
   int get endTime => (detail['endTime'] as num? ?? 0).toInt();
   String get title => '${detail['title'] ?? ''}';
   List<String> get images => (detail['images'] as List? ?? const []).map((dynamic e) => '$e').toList();
+  /// 收藏接口要用到的商品信息(和商品详情同一套 /api/goodscollect)
+  int get goodsId => (detail['goodsId'] as num? ?? 0).toInt();
+  int get skuId => (detail['skuId'] as num? ?? 0).toInt();
+  String get skuName => '${detail['skuName'] ?? ''}'.isEmpty ? title : '${detail['skuName']}';
+  String get skuImage => images.isEmpty ? '' : images.first;
+  bool get isCollect => detail['isCollect'] == true;
 
   /// 状态: 0 已结束 / 1 抢购中 / 2 即将开始
   int get status {
@@ -279,28 +292,214 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
     final double bottomSafe = MediaQuery.of(context).padding.bottom;
     return Scaffold(
       backgroundColor: const Color(0xFFF5F5F5),
-      appBar: AppBar(
-        backgroundColor: _primary,
-        surfaceTintColor: _primary,
-        foregroundColor: Colors.white,
-        elevation: 0,
-        title: const Text('限时秒杀', style: TextStyle(fontSize: 17.0, color: Colors.white, fontWeight: FontWeight.w600)),
-        centerTitle: true,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Colors.white),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+      // 顶栏自己画(和商品详情一致): 滚动前透明浮在轮播上,滚动后白底 + 搜索框
+      body: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: loading
+                ? const Center(child: CircularProgressIndicator(strokeWidth: 2.0, valueColor: AlwaysStoppedAnimation<Color>(_primary)))
+                : errorMsg.isNotEmpty
+                    ? _buildError()
+                    : _buildBody(bottomSafe),
+          ),
+          if (!loading && errorMsg.isEmpty)
+            Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar(bottomSafe)),
+          _buildTopBar(),
+        ],
       ),
-      body: loading
-          ? const Center(child: CircularProgressIndicator(strokeWidth: 2.0, valueColor: AlwaysStoppedAnimation<Color>(_primary)))
-          : errorMsg.isNotEmpty
-              ? _buildError()
-              : Stack(
+    );
+  }
+
+  /// 顶部按钮栏: 返回/搜索/购物车/收藏(和商品详情同一套)
+  /// * 不用 AppBar 是因为 NavigationToolbar 会把 leading 撑成大圆;这里自己排,尺寸一致
+  /// * loading/错误页没有轮播,顶栏直接用秒杀渐变底,保证返回按钮始终可见
+  Widget _buildTopBar() {
+    final double statusBar = MediaQuery.paddingOf(context).top;
+    return ValueListenableBuilder<double>(
+      valueListenable: scrollOffset,
+      builder: (BuildContext context, double offset, Widget? child) {
+        final bool solid = loading || errorMsg.isNotEmpty;
+        final double t = solid ? 0.0 : (offset / 120.0).clamp(0.0, 1.0);
+        final Color bg = Color.lerp(Colors.transparent, Colors.white, t)!;
+        final Color iconColor = Color.lerp(Colors.white, const Color(0xFF333333), t)!;
+        return AnnotatedRegion<SystemUiOverlayStyle>(
+          value: (solid || t < 0.5 ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+              .copyWith(statusBarColor: Colors.transparent),
+          child: Stack(
+            children: <Widget>[
+              // 撑满一层,让 AnnotatedRegion 有尺寸(状态栏图标配色才会生效)
+              const SizedBox.expand(),
+              // 顶栏背景: 加载中/错误页用秒杀渐变,内容页透明 -> 白底
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: statusBar + kToolbarHeight,
+                  decoration: BoxDecoration(
+                    color: solid ? null : bg,
+                    gradient: solid
+                        ? const LinearGradient(
+                            colors: <Color>[_primary, _aux],
+                            begin: Alignment.centerLeft,
+                            end: Alignment.centerRight,
+                          )
+                        : null,
+                  ),
+                ),
+              ),
+              Positioned(
+                // 与 toolbar 垂直居中对齐
+                top: statusBar + (kToolbarHeight - _kTopBtnSize) / 2.0,
+                left: 10.0,
+                right: 10.0,
+                child: Row(
                   children: <Widget>[
-                    Positioned.fill(child: _buildBody(bottomSafe)),
-                    Positioned(left: 0, right: 0, bottom: 0, child: _buildBottomBar(bottomSafe)),
+                    _buildIconButton(Icons.arrow_back_ios_rounded, () => Navigator.of(context).pop(), t, iconColor, marginRight: 0.0),
+                    const SizedBox(width: 6.0),
+                    // 吸顶后展开成搜索框(滚动前透明占位,右侧按钮照常靠右)
+                    Expanded(
+                      child: Opacity(
+                        opacity: t,
+                        child: IgnorePointer(
+                          ignoring: t < 0.9,
+                          child: _buildSearchBox(),
+                        ),
+                      ),
+                    ),
+                    // 滚动前是圆形搜索按钮,吸顶后收起让位给搜索框
+                    ClipRect(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        widthFactor: 1 - t,
+                        child: _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
+                      ),
+                    ),
+                    // 购物车: 跟底部操作栏用同一张切图 assets/images/c3.png
+                    _buildTopImageButton('assets/images/c3.png', () => Get.toNamed('/cart'), t, iconColor),
+                    // 收藏: 已收藏实心(活动主色),未收藏线框
+                    _buildIconButton(
+                      isCollect ? Icons.favorite : Icons.favorite_border,
+                      addingCollect ? () {} : _toggleCollect,
+                      t,
+                      isCollect ? _primary : iconColor,
+                      marginRight: 0.0,
+                    ),
                   ],
                 ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// 吸顶后的搜索框(点击进搜索页)
+  Widget _buildSearchBox() {
+    return GestureDetector(
+      onTap: () => Get.toNamed('/search'),
+      child: Container(
+        height: 32.0,
+        padding: const EdgeInsets.symmetric(horizontal: 10.0),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(16.0),
+        ),
+        child: Row(
+          children: const <Widget>[
+            Icon(Icons.search, size: 16.0, color: Color(0xFF999999)),
+            SizedBox(width: 6.0),
+            Expanded(
+              child: Text(
+                '搜索商品',
+                style: TextStyle(color: Color(0xFF999999), fontSize: 13.0),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 收藏/取消收藏(和商品详情同一套 /api/goodscollect/*)
+  Future<void> _toggleCollect() async {
+    if (addingCollect) return;
+    // 未登录先去登录
+    if (!AuthStore.to.isLogin) {
+      await Get.toNamed('/login');
+      if (AuthStore.to.isLogin) loadDetail();
+      return;
+    }
+    setState(() => addingCollect = true);
+    try {
+      if (isCollect) {
+        final int ok = await GoodsApi.collectDelete(goodsId: goodsId);
+        if (ok > 0) {
+          detail['isCollect'] = false;
+          MyDialog.toast('已取消收藏');
+        }
+      } else {
+        final int id = await GoodsApi.collectAdd(
+          goodsId: goodsId,
+          skuId: skuId,
+          skuName: skuName,
+          skuPrice: seckillPrice,
+          skuImage: skuImage,
+        );
+        if (id > 0) {
+          detail['isCollect'] = true;
+          MyDialog.toast('收藏成功');
+        }
+      }
+    } catch (e) {
+      MyDialog.toast('$e'.replaceAll(RegExp(r'^DioException.*message: '), ''));
+    } finally {
+      if (mounted) setState(() => addingCollect = false);
+    }
+  }
+
+  /// 顶部圆形图标按钮(透明时带半透明黑底,吸顶后无底色)
+  Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
+    return _buildTopButton(Icon(icon, size: 18.0, color: iconColor), onTap, t, marginRight: marginRight);
+  }
+
+  /// 顶部圆形切图按钮(和底部操作栏用同一张图,按 iconColor 染色)
+  Widget _buildTopImageButton(String asset, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
+    return _buildTopButton(
+      Image.asset(
+        asset,
+        width: 18.0,
+        height: 18.0,
+        fit: BoxFit.contain,
+        color: iconColor,
+        isAntiAlias: true,
+        // 切图缺失时退化成同尺寸占位,避免红屏
+        errorBuilder: (BuildContext context, Object error, StackTrace? stack) => const SizedBox(width: 18.0, height: 18.0),
+      ),
+      onTap,
+      t,
+      marginRight: marginRight,
+    );
+  }
+
+  /// 顶部按钮外壳: 34x34 圆底(滚动到商品区后底色透明),内容居中
+  Widget _buildTopButton(Widget child, VoidCallback onTap, double t, {double marginRight = 6.0}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: _kTopBtnSize,
+        height: _kTopBtnSize,
+        margin: EdgeInsets.only(right: marginRight),
+        decoration: BoxDecoration(
+          color: Color.lerp(Colors.black.withValues(alpha: 0.25), const Color(0x00FFFFFF), t),
+          shape: BoxShape.circle,
+        ),
+        alignment: Alignment.center,
+        child: child,
+      ),
     );
   }
 
@@ -353,6 +552,9 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
         itemBuilder: (BuildContext context, int index) => CachedNetworkImage(
           imageUrl: images[index],
           fit: BoxFit.cover,
+          // 切图时不要淡入淡出(默认 500ms 的淡入会跟着轮播切换闪一下)
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
           placeholder: (_, __) => Container(color: const Color(0xFFF5F5F5)),
           errorWidget: (_, __, ___) => Container(
             color: const Color(0xFFF5F5F5),
