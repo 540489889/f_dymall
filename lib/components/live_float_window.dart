@@ -216,14 +216,26 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
           clipBehavior: Clip.antiAlias,
           child: Stack(
             children: <Widget>[
-              // 画面: 首帧出来前显示直播间封面
+              // 画面: Video 必须常驻挂载 —— media_kit 在 Android 上要拿到 Video 提供的
+              // Surface 才会解码输出, 首帧没出来就不挂载的话 Surface 一直不存在,
+              // mpv 永远不解码 -> videoParams 不来 -> 首帧永远等不到(死锁, 只剩封面)
+              // * 所以这里和直播间主播放器一样: 首帧之前用封面盖住, 而不是不渲染 Video
               Positioned.fill(
-                child: ValueListenableBuilder<bool>(
-                  valueListenable: firstFrame,
-                  builder: (BuildContext context, bool ok, Widget? cover) => ok
-                      ? Video(controller: videoController, fit: BoxFit.cover, controls: NoVideoControls)
-                      : cover!,
-                  child: _buildCover(),
+                child: Stack(
+                  children: <Widget>[
+                    Video(
+                      controller: videoController,
+                      fit: BoxFit.cover,
+                      controls: NoVideoControls,
+                    ),
+                    // 首帧出来前盖住(避免露出黑底), 出来后撤掉
+                    ValueListenableBuilder<bool>(
+                      valueListenable: firstFrame,
+                      builder: (BuildContext context, bool ok, Widget? cover) =>
+                          ok ? const SizedBox.shrink() : cover!,
+                      child: _buildCover(),
+                    ),
+                  ],
                 ),
               ),
               // 底部信息条: 直播中 + 主播名
