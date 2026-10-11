@@ -232,6 +232,8 @@ Widget _buildError() {
 
 // 顶部圆形按钮直径(返回/搜索/购物车统一)
 static const double _kTopBtnSize = 34.0;
+// 价格块压在轮播图上的高度: 轮播区额外留出这么多,保证图片内容不被裁掉
+static const double _kPriceOverlap = 12.0;
 
 Widget _buildContent() {
   return Stack(
@@ -253,7 +255,8 @@ Widget _buildContent() {
                   color: Color(0xFFFAFAFA),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
                 ),
-                transform: Matrix4.translationValues(0.0, -15.0, 0.0),
+                // 压住价格块底部 15: 价格块整体上移了 _kPriceOverlap,这里同步多压一点
+                transform: Matrix4.translationValues(0.0, -(15.0 + _kPriceOverlap), 0.0),
                 child: Column(
                   children: [
                     _buildTitle(),
@@ -264,8 +267,8 @@ Widget _buildContent() {
                   ],
                 ),
               ),
-              // 底部按钮安全间距
-              const SizedBox(height: 20.0),
+              // 底部按钮安全间距(卡片多压了 _kPriceOverlap,这里相应减掉,底部留白不变)
+              SizedBox(height: 20.0 - _kPriceOverlap),
             ],
           ),
         ),
@@ -291,7 +294,8 @@ Widget _buildSliverAppBar() {
         backgroundColor: bg,
         elevation: 0,
         scrolledUnderElevation: 0,
-        expandedHeight: 280.0,
+        // 280 是轮播可视高度, 多出的 12 是让给价格块上压的部分(_kPriceOverlap)
+        expandedHeight: 280.0 + _kPriceOverlap,
         // 按钮自己画(见 _buildTopBar),这里不要默认的返回按钮和标题
         automaticallyImplyLeading: false,
         flexibleSpace: FlexibleSpaceBar(background: _buildSwiper()),
@@ -485,6 +489,8 @@ Widget _buildSwiper() {
   return Swiper.children(
     pagination: SwiperPagination(
       alignment: .bottomRight,
+      // 指示点上移,避开被价格块压住的那一截
+      margin: EdgeInsets.only(right: 12.0, bottom: 10.0 + _kPriceOverlap),
       builder: DotSwiperPaginationBuilder(
         color: Colors.white70,
         activeColor: Colors.white,
@@ -505,8 +511,11 @@ Widget _buildSwiper() {
 }
 
 /// 价格区(价格 / 券后价 / 划线价)
+/// * 做成卡片压在轮播图底部: 上移 _kPriceOverlap + 顶部圆角 + 向上的阴影,
+///   轮播区已多留同样高度,所以只是"压住"不会裁掉图片内容
 Widget _buildPriceBlock() {
   return Container(
+    transform: Matrix4.translationValues(0.0, -_kPriceOverlap, 0.0),
     padding: EdgeInsets.fromLTRB(15.0, 10.0, 15.0, 25.0),
     decoration: BoxDecoration(
       gradient: LinearGradient(
@@ -515,7 +524,15 @@ Widget _buildPriceBlock() {
         colors: [
           Color(0xFFFF2C55), Color(0xFFFF9C55)
         ]
-      )
+      ),
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(12.0)),
+      boxShadow: [
+        BoxShadow(
+          color: const Color(0xFFFF2C55).withValues(alpha: 0.25),
+          blurRadius: 8.0,
+          offset: const Offset(0.0, -2.0),
+        ),
+      ],
     ),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
