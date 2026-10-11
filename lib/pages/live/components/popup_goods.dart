@@ -363,6 +363,8 @@ Widget build(BuildContext context) {
                         }
                         Get.toNamed('/goods', arguments: <String, dynamic>{
                           'goodsId': gid,
+                          // 标记来源: 详情页据此挂悬浮小窗(房间号为空的演示房间也要挂)
+                          'fromLive': true,
                           // 直播间房间号: 详情里加购 / 下单要回传 live_roomid
                           'live_roomid': (widget.roomSn ?? '').trim(),
                           // 悬浮小窗: 直播间封面 + 主播名 + 拉流地址(小窗继续播画面,点它回直播间)

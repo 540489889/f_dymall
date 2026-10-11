@@ -32,6 +32,10 @@ State<Goods> createState() => _GoodsState();
 }
 
 class _GoodsState extends State<Goods> {
+// 路由参数: initState 里快照一份(后续路由变化不会改到 Get.arguments,且小窗要用到)
+late final Map<String, dynamic> args = Get.arguments is Map
+    ? Map<String, dynamic>.from(Get.arguments as Map)
+    : const <String, dynamic>{};
 late final ScrollController scrollController = ScrollController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
@@ -76,9 +80,10 @@ void initState() {
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted) return;
     if (kDebugMode) {
-      debugPrint('[live]商品详情: liveRoomId=$liveRoomId cover=${liveCover.isNotEmpty} pullUrl=${livePullUrl.isNotEmpty}');
+      debugPrint('[live]商品详情: fromLive=$fromLive liveRoomId=$liveRoomId cover=${liveCover.isNotEmpty} pullUrl=${livePullUrl.isNotEmpty}');
     }
-    if (liveRoomId.isEmpty) return;
+    // 直播间进来就挂小窗: 房间号为空(演示房间)也要挂,点小窗靠退栈回直播间
+    if (!fromLive && liveRoomId.isEmpty) return;
     LiveFloatWindow.instance.show(
       context: context,
       roomSn: liveRoomId,
@@ -144,38 +149,29 @@ void dispose() {
 
 /// 商品id: 支持路由传 Map({'goodsId' 或 'id'})、数字或字符串
 int get goodsId {
-  final dynamic args = Get.arguments;
-  if (args is Map) return int.tryParse('${args['goodsId'] ?? args['id'] ?? 1}') ?? 1;
-  return int.tryParse('$args') ?? 1;
+  if (args.isNotEmpty) return int.tryParse('${args['goodsId'] ?? args['id'] ?? 1}') ?? 1;
+  final dynamic raw = Get.arguments;
+  return int.tryParse('$raw') ?? 1;
 }
 
 /// 直播间房间号 sn: 从直播间点商品进来时由直播间页带过来
 /// * 加购 / 下单都要回传给后台(live_roomid),用于统计直播间成交
-/// * 普通商品详情没有这个参数,为空表示非直播间下单
-String get liveRoomId {
-  final dynamic args = Get.arguments;
-  if (args is! Map) return '';
-  return '${args['live_roomid'] ?? ''}'.trim();
+/// * 普通商品详情没有这个参数,为空表示非直播间下单(演示房间的 sn 也可能为空)
+String get liveRoomId => '${args['live_roomid'] ?? ''}'.trim();
+
+/// 是否从直播间进来: 房间号为空(演示房间)时也要靠它判断要不要挂悬浮小窗
+/// * 直播间在栈里,点小窗退栈就能回去,所以没有 sn 也能回
+bool get fromLive {
+  final dynamic v = args['fromLive'];
+  return v == true || '$v' == 'true';
 }
 
 /// 直播间封面 / 主播名 / 拉流地址: 直播间进来时带上,给悬浮小窗用
-String get liveCover {
-  final dynamic args = Get.arguments;
-  if (args is! Map) return '';
-  return '${args['liveCover'] ?? ''}'.trim();
-}
+String get liveCover => '${args['liveCover'] ?? ''}'.trim();
 
-String get liveAnchor {
-  final dynamic args = Get.arguments;
-  if (args is! Map) return '';
-  return '${args['liveAnchor'] ?? ''}'.trim();
-}
+String get liveAnchor => '${args['liveAnchor'] ?? ''}'.trim();
 
-String get livePullUrl {
-  final dynamic args = Get.arguments;
-  if (args is! Map) return '';
-  return '${args['livePullUrl'] ?? ''}'.trim();
-}
+String get livePullUrl => '${args['livePullUrl'] ?? ''}'.trim();
 
 /// 加载商品详情
 Future<void> loadDetail() async {

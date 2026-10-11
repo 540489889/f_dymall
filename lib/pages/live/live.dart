@@ -2315,6 +2315,8 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           // 带房间号: 详情页加购 / 下单要回传 live_roomid
                                           Get.toNamed('/goods', arguments: <String, dynamic>{
                                             'goodsId': gid,
+                                            // 标记来源: 详情页据此挂悬浮小窗(房间号为空的演示房间也要挂)
+                                            'fromLive': true,
                                             'live_roomid': roomSn,
                                             // 悬浮小窗: 小窗继续播这路流,点它回直播间
                                             'liveCover': '${room['poster'] ?? ''}'.trim(),

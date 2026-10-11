@@ -47,7 +47,8 @@ class LiveFloatWindow {
     String anchorName = '',
     String pullUrl = '',
   }) {
-    if (roomSn.isEmpty || _entry != null) return;
+    // 房间号允许为空(演示房间没有 sn): 直播间还在栈里,点小窗退栈就能回去
+    if (_entry != null) return;
     final OverlayState? overlay = Overlay.of(context, rootOverlay: true);
     if (overlay == null) {
       if (kDebugMode) debugPrint('[live]悬浮小窗: 找不到 Overlay,不显示');
@@ -113,6 +114,7 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
   @override
   void initState() {
     super.initState();
+    if (kDebugMode) debugPrint('[live]悬浮小窗: 卡片已挂载 roomSn=${widget.roomSn}');
     _widthSub = player.stream.width.listen((int? width) {
       if ((width ?? 0) > 0 && !firstFrame.value) firstFrame.value = true;
     });
