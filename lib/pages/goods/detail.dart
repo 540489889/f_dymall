@@ -223,8 +223,13 @@ Widget _buildError() {
   );
 }
 
+// 顶部圆形按钮直径(返回/搜索/购物车统一)
+static const double _kTopBtnSize = 34.0;
+
 Widget _buildContent() {
-  return CustomScrollView(
+  return Stack(
+    children: <Widget>[
+      CustomScrollView(
     scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
     controller: scrollController,
     slivers: [
@@ -259,12 +264,15 @@ Widget _buildContent() {
         ),
       ),
     ],
+      ),
+      // 顶部按钮栏(返回/搜索/购物车)自己画,不走 AppBar 的 leading/actions
+      _buildTopBar(),
+    ],
   );
 }
 
-/// SliverAppBar: 默认透明圆形按钮, 滚动到商品区后背景变白、标题出现
-/// * 对齐参考图: 未滚动时背景透明,仅显示返回/搜索/购物车圆形按钮;
-///   滚动超过商品图后吸顶,背景白色,标题和深色图标
+/// SliverAppBar: 默认透明, 滚动到商品区后背景变白、标题出现
+/// * 对齐参考图: 未滚动时背景透明;滚动超过商品图后吸顶,背景白色 + 深色标题
 Widget _buildSliverAppBar() {
   return ValueListenableBuilder<double>(
     valueListenable: scrollOffset,
@@ -279,18 +287,10 @@ Widget _buildSliverAppBar() {
         elevation: 0,
         scrolledUnderElevation: 0,
         expandedHeight: 280.0,
-        // leading 槽位给 44(默认 56 会把圆形按钮的盒子横向拉宽,圆底看着比右边大)
-        leadingWidth: 44.0,
         titleSpacing: 0.0,
         centerTitle: true,
-        // Align + Padding: 让按钮保持自身 34x34,不被 AppBar 的 leading 槽位拉伸
-        leading: Align(
-          alignment: Alignment.centerLeft,
-          child: Padding(
-            padding: const EdgeInsets.only(left: 10.0),
-            child: _buildIconButton(Icons.close, () => Get.back(), t, iconColor),
-          ),
-        ),
+        // 按钮自己画(见 _buildTopBar),这里不要默认的返回按钮
+        automaticallyImplyLeading: false,
         title: Opacity(
           opacity: t,
           child: Text(
@@ -300,25 +300,48 @@ Widget _buildSliverAppBar() {
             overflow: TextOverflow.ellipsis,
           ),
         ),
-        actions: <Widget>[
-          _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
-          // 最后一个按钮右边距与左侧返回按钮对齐
-          _buildIconButton(Icons.shopping_cart_outlined, () => Get.toNamed('/cart'), t, iconColor, marginRight: 10.0),
-        ],
         flexibleSpace: FlexibleSpaceBar(background: _buildSwiper()),
       );
     },
   );
 }
 
+/// 顶部按钮栏: 返回/搜索/购物车
+/// * 不用 AppBar 的 leading/actions 是因为 NavigationToolbar 给 leading 的约束为
+///   tight(width: leadingWidth) + tight(height: toolbarHeight) —— 会把 34x34 的圆底
+///   按钮撑成大圆, 跟右边 34 的圆对不上;这里用 Stack 自己排,左右尺寸完全一致
+Widget _buildTopBar() {
+  final double statusBar = MediaQuery.paddingOf(context).top;
+  return ValueListenableBuilder<double>(
+    valueListenable: scrollOffset,
+    builder: (BuildContext context, double offset, Widget? child) {
+      final double t = (offset / 120.0).clamp(0.0, 1.0);
+      final Color iconColor = Color.lerp(Colors.white, const Color(0xFF333333), t)!;
+      return Positioned(
+        // 与 AppBar 的 toolbar 垂直居中对齐
+        top: statusBar + (kToolbarHeight - _kTopBtnSize) / 2.0,
+        left: 10.0,
+        right: 10.0,
+        child: Row(
+          children: <Widget>[
+            _buildIconButton(Icons.close, () => Get.back(), t, iconColor, marginRight: 0.0),
+            const Spacer(),
+            _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
+            _buildIconButton(Icons.shopping_cart_outlined, () => Get.toNamed('/cart'), t, iconColor, marginRight: 0.0),
+          ],
+        ),
+      );
+    },
+  );
+}
+
 /// 顶部圆形图标按钮(透明时带半透明黑底,吸顶后无底色)
-/// * 尺寸固定 34x34,与右侧 actions 完全一致;左边距只在 leading 位置用 Padding 控制
 Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
   return GestureDetector(
     onTap: onTap,
     child: Container(
-      width: 34.0,
-      height: 34.0,
+      width: _kTopBtnSize,
+      height: _kTopBtnSize,
       margin: EdgeInsets.only(right: marginRight),
       decoration: BoxDecoration(
         color: Color.lerp(Colors.black.withValues(alpha: 0.25), const Color(0x00FFFFFF), t),
