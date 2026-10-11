@@ -2,7 +2,9 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../components/common_empty.dart';
+import '../../controller/auth_store.dart';
 import 'package:get/get.dart';
 import 'package:card_swiper/card_swiper.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -43,6 +45,8 @@ Set<int> fetchedCoupons = <int>{};
 bool attrExpanded = false;
 // 加入购物车请求中
 bool addingCart = false;
+// 收藏/取消收藏请求中
+bool addingCollect = false;
 // 购物车商品总件数(用于底部购物车角标,取 /api/cart/lists)
 int cartNum = 0;
 // 适用门店(/api/store/page 第一条)
@@ -174,6 +178,9 @@ bool get showStock => detail['showStock'] == true;
 bool get isFreeShipping => detail['isFreeShipping'] == true;
 bool get isCollect => detail['isCollect'] == true;
 bool get onSale => detail['onSale'] == true;
+int get skuId => int.tryParse('${detail['skuId'] ?? 0}') ?? 0;
+String get skuName => '${detail['skuName'] ?? title}';
+String get skuImage => '${detail['skuImage'] ?? ''}';
 List<dynamic> get couponList => (detail['couponList'] as List? ?? const []);
 List<dynamic> get specGroups => (detail['specGroups'] as List? ?? const []);
 /// 规格属性(商品参数)
@@ -314,7 +321,16 @@ Widget _buildTopBar() {
             _buildIconButton(Icons.close, () => Get.back(), t, iconColor, marginRight: 0.0),
             const Spacer(),
             _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
-            _buildIconButton(Icons.shopping_cart_outlined, () => Get.toNamed('/cart'), t, iconColor, marginRight: 0.0),
+            // 购物车: 跟底部操作栏用同一张切图 assets/images/c3.png
+            _buildTopImageButton('assets/images/c3.png', () => Get.toNamed('/cart'), t, iconColor),
+            // 收藏: 已收藏实心红色,未收藏线框
+            _buildIconButton(
+              isCollect ? Icons.favorite : Icons.favorite_border,
+              addingCollect ? () {} : _toggleCollect,
+              t,
+              isCollect ? const Color(0xFFFF2C55) : iconColor,
+              marginRight: 0.0,
+            ),
           ],
         ),
       );
@@ -322,8 +338,76 @@ Widget _buildTopBar() {
   );
 }
 
+/// 收藏/取消收藏
+/// * 接口 /api/goodscollect/add(带当前规格信息) 与 /api/goodscollect/delete(goods_id)
+Future<void> _toggleCollect() async {
+  if (addingCollect) return;
+  // 未登录先去登录,登录回来重新拉详情刷新收藏状态
+  if (!AuthStore.to.isLogin) {
+    await Get.toNamed('/login');
+    if (AuthStore.to.isLogin) loadDetail();
+    return;
+  }
+  setState(() => addingCollect = true);
+  try {
+    if (isCollect) {
+      final int ok = await GoodsApi.collectDelete(goodsId: goodsId);
+      if (ok > 0) {
+        detail['isCollect'] = false;
+        MyDialog.toast('已取消收藏');
+      }
+    } else {
+      final int id = await GoodsApi.collectAdd(
+        goodsId: goodsId,
+        skuId: skuId,
+        skuName: skuName,
+        skuPrice: price,
+        skuImage: skuImage,
+      );
+      if (id > 0) {
+        detail['isCollect'] = true;
+        MyDialog.toast('收藏成功');
+      }
+    }
+  } catch (e) {
+    MyDialog.toast('$e'.replaceAll(RegExp(r'^DioException.*message: '), ''));
+  } finally {
+    if (mounted) setState(() => addingCollect = false);
+  }
+}
+
 /// 顶部圆形图标按钮(透明时带半透明黑底,吸顶后无底色)
 Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
+  return _buildTopButton(
+    Icon(icon, size: 18.0, color: iconColor),
+    onTap,
+    t,
+    marginRight: marginRight,
+  );
+}
+
+/// 顶部圆形切图按钮(和底部操作栏用同一张图,按 iconColor 染色)
+Widget _buildTopImageButton(String asset, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
+  return _buildTopButton(
+    Image.asset(
+      asset,
+      width: 18.0,
+      height: 18.0,
+      fit: BoxFit.contain,
+      color: iconColor,
+      isAntiAlias: true,
+      // 切图缺失时退化成同尺寸占位,避免红屏
+      errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
+          const SizedBox(width: 18.0, height: 18.0),
+    ),
+    onTap,
+    t,
+    marginRight: marginRight,
+  );
+}
+
+/// 顶部按钮外壳: 34x34 圆底(滚动到商品区后底色透明),内容居中
+Widget _buildTopButton(Widget child, VoidCallback onTap, double t, {double marginRight = 6.0}) {
   return GestureDetector(
     onTap: onTap,
     child: Container(
@@ -335,7 +419,7 @@ Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconC
         shape: BoxShape.circle,
       ),
       alignment: Alignment.center,
-      child: Icon(icon, size: 18.0, color: iconColor),
+      child: child,
     ),
   );
 }

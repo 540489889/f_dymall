@@ -175,6 +175,9 @@ class GoodsApi {
       'goodsId': detail['goods_id'],
       'skuId': detail['sku_id'],
       'title': '${detail['goods_name'] ?? ''}',
+      // 收藏商品时要回传的规格信息
+      'skuName': '${detail['sku_name'] ?? detail['goods_name'] ?? ''}',
+      'skuImage': _fixImage('${detail['sku_image'] ?? ''}'),
       // 副标题/卖点
       'introduction': '${detail['introduction'] ?? ''}',
       // 价格: 优惠价 > 会员价 > 原价,均为字符串
@@ -208,6 +211,38 @@ class GoodsApi {
       'minBuy': _toNum(detail['min_buy']),
       'purchasedNum': _toNum(detail['purchased_num']),
     };
+  }
+
+  /// 收藏商品(/api/goodscollect/add)
+  /// * 返回收藏记录 id, > 0 表示收藏成功
+  static Future<int> collectAdd({
+    required int goodsId,
+    int skuId = 0,
+    String skuName = '',
+    num skuPrice = 0,
+    String skuImage = '',
+  }) async {
+    final dynamic res = await Request().post(
+      '/api/goodscollect/add',
+      data: <String, dynamic>{
+        'goods_id': goodsId,
+        'sku_id': skuId,
+        'sku_name': skuName,
+        'sku_price': skuPrice,
+        'sku_image': skuImage,
+      },
+    );
+    return _toNum(res is Map ? res['data'] ?? res : res).toInt();
+  }
+
+  /// 取消收藏(/api/goodscollect/delete)
+  /// * 返回影响行数, > 0 表示取消成功
+  static Future<int> collectDelete({required int goodsId}) async {
+    final dynamic res = await Request().post(
+      '/api/goodscollect/delete',
+      data: <String, dynamic>{'goods_id': goodsId},
+    );
+    return _toNum(res is Map ? res['data'] ?? res : res).toInt();
   }
 
   /// 详情轮播图: 按优先级取图并去重
