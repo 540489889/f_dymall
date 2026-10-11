@@ -31,8 +31,11 @@ class _GoodsState extends State<Goods> with TickerProviderStateMixin {
 late final ScrollController scrollController = ScrollController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
-// 顶部 TabBar 控制器
-late final TabController tabController = TabController(length: 4, vsync: this);
+// 顶部 TabBar 控制器(商品 / 评价 / 详情, 只保留页面内真实存在的区块)
+late final TabController tabController = TabController(length: 3, vsync: this);
+// Tab 锚点: 点击 Tab 滚动到对应区块
+final GlobalKey evaluateKey = GlobalKey();
+final GlobalKey detailKey = GlobalKey();
 // 接口返回的商品详情
 Map<String, dynamic> detail = const {};
 // 加载状态
@@ -272,8 +275,31 @@ Widget _buildContent() {
   );
 }
 
+/// Tab 点击: 滚动到对应区块(商品 -> 顶部 / 评价 -> 评价区 / 详情 -> 图文详情)
+Future<void> scrollToSection(int index) async {
+  if (index == 0) {
+    if (!scrollController.hasClients) return;
+    await scrollController.animateTo(0.0, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+    return;
+  }
+  // 评价模块未开启时没有对应内容,不给滚
+  if (index == 1 && !evaluateShow) {
+    Get.snackbar('提示', '暂无评价', snackPosition: SnackPosition.BOTTOM, duration: const Duration(seconds: 2));
+    return;
+  }
+  final BuildContext? ctx = index == 1 ? evaluateKey.currentContext : detailKey.currentContext;
+  if (ctx == null) return;
+  await Scrollable.ensureVisible(
+    ctx,
+    duration: const Duration(milliseconds: 300),
+    curve: Curves.easeOut,
+    alignment: 0.02,
+  );
+}
+
 /// 顶部悬浮栏(吸顶): 滚动时背景由透明渐变为白色,图标由白转黑
-/// * 对齐参考图: 白底圆角搜索框 + 购物车/收藏/更多 + Tab 切换
+/// * 对齐参考图: 白底圆角搜索框 + 购物车 + 商品/评价/详情 Tab 切换
+/// * 只保留页面里真实存在的入口,未接的收藏/分享/推荐不展示
 Widget _buildTopBar() {
   return ValueListenableBuilder<double>(
     valueListenable: scrollOffset,
@@ -301,7 +327,7 @@ Widget _buildTopBar() {
                     ),
                     Expanded(
                       child: GestureDetector(
-                        onTap: () => Get.toNamed('/goods/search'),
+                        onTap: () => Get.toNamed('/search'),
                         child: Container(
                           height: 34.0,
                           padding: const EdgeInsets.symmetric(horizontal: 12.0),
@@ -331,23 +357,12 @@ Widget _buildTopBar() {
                       icon: Icon(Icons.shopping_cart_outlined, color: iconColor, size: 20.0),
                       onPressed: () => Get.toNamed('/cart'),
                     ),
-                    IconButton(
-                      icon: Icon(
-                        isCollect ? Icons.favorite : Icons.favorite_border,
-                        color: isCollect ? const Color(0xFFFF2C55) : iconColor,
-                        size: 20.0,
-                      ),
-                      onPressed: () => setState(() => detail = {...detail, 'isCollect': !isCollect}),
-                    ),
-                    IconButton(
-                      icon: Icon(Icons.more_horiz, color: iconColor, size: 20.0),
-                      onPressed: () {},
-                    ),
                   ],
                 ),
                 TabBar(
                   controller: tabController,
-                  tabs: const <Widget>[Tab(text: '商品'), Tab(text: '评价'), Tab(text: '详情'), Tab(text: '推荐')],
+                  onTap: scrollToSection,
+                  tabs: const <Widget>[Tab(text: '商品'), Tab(text: '评价'), Tab(text: '详情')],
                   indicatorColor: const Color(0xFFFF2C55),
                   labelColor: const Color(0xFF333333),
                   unselectedLabelColor: const Color(0xFF999999),
@@ -772,6 +787,7 @@ Widget _buildPromotion() {
 Widget _buildEvaluate() {
   if (!evaluateShow) return const SizedBox.shrink();
   return Container(
+    key: evaluateKey,
     width: double.infinity,
     margin: const EdgeInsets.only(top: 10.0),
     padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 4.0),
@@ -968,6 +984,7 @@ Widget _buildAttrCell(String text, {required Color color}) {
 /// 图文详情(接口 goods_content 为 HTML)
 Widget _buildDetail() {
   return Container(
+    key: detailKey,
     width: double.infinity,
     margin: EdgeInsets.only(top: 10.0),
     padding: EdgeInsets.all(10.0),
