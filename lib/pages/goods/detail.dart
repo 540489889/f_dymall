@@ -319,8 +319,25 @@ Widget _buildTopBar() {
         child: Row(
           children: <Widget>[
             _buildIconButton(Icons.close, () => Get.back(), t, iconColor, marginRight: 0.0),
-            const Spacer(),
-            _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
+            const SizedBox(width: 6.0),
+            // 吸顶后展开成搜索框(滚动前透明占位,右侧按钮照常靠右)
+            Expanded(
+              child: Opacity(
+                opacity: t,
+                child: IgnorePointer(
+                  ignoring: t < 0.9,
+                  child: _buildSearchBox(),
+                ),
+              ),
+            ),
+            // 滚动前是圆形搜索按钮,吸顶后收起让位给搜索框
+            ClipRect(
+              child: Align(
+                alignment: Alignment.centerRight,
+                widthFactor: 1 - t,
+                child: _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
+              ),
+            ),
             // 购物车: 跟底部操作栏用同一张切图 assets/images/c3.png
             _buildTopImageButton('assets/images/c3.png', () => Get.toNamed('/cart'), t, iconColor),
             // 收藏: 已收藏实心红色,未收藏线框
@@ -335,6 +352,36 @@ Widget _buildTopBar() {
         ),
       );
     },
+  );
+}
+
+/// 吸顶后的搜索框(点击进搜索页)
+/// * 顶栏吸顶后只有白色背景没有标题,用搜索框把中间的空间填起来
+Widget _buildSearchBox() {
+  return GestureDetector(
+    onTap: () => Get.toNamed('/search'),
+    child: Container(
+      height: 32.0,
+      padding: const EdgeInsets.symmetric(horizontal: 10.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(16.0),
+      ),
+      child: Row(
+        children: const <Widget>[
+          Icon(Icons.search, size: 16.0, color: Color(0xFF999999)),
+          SizedBox(width: 6.0),
+          Expanded(
+            child: Text(
+              '搜索商品',
+              style: TextStyle(color: Color(0xFF999999), fontSize: 13.0),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    ),
   );
 }
 
