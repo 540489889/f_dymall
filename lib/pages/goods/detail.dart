@@ -279,9 +279,18 @@ Widget _buildSliverAppBar() {
         elevation: 0,
         scrolledUnderElevation: 0,
         expandedHeight: 280.0,
+        // leading 槽位给 44(默认 56 会把圆形按钮的盒子横向拉宽,圆底看着比右边大)
+        leadingWidth: 44.0,
         titleSpacing: 0.0,
         centerTitle: true,
-        leading: _buildIconButton(Icons.close, () => Get.back(), t, iconColor, isLeading: true),
+        // Align + Padding: 让按钮保持自身 34x34,不被 AppBar 的 leading 槽位拉伸
+        leading: Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 10.0),
+            child: _buildIconButton(Icons.close, () => Get.back(), t, iconColor),
+          ),
+        ),
         title: Opacity(
           opacity: t,
           child: Text(
@@ -293,7 +302,8 @@ Widget _buildSliverAppBar() {
         ),
         actions: <Widget>[
           _buildIconButton(Icons.search, () => Get.toNamed('/search'), t, iconColor),
-          _buildIconButton(Icons.shopping_cart_outlined, () => Get.toNamed('/cart'), t, iconColor),
+          // 最后一个按钮右边距与左侧返回按钮对齐
+          _buildIconButton(Icons.shopping_cart_outlined, () => Get.toNamed('/cart'), t, iconColor, marginRight: 10.0),
         ],
         flexibleSpace: FlexibleSpaceBar(background: _buildSwiper()),
       );
@@ -302,13 +312,14 @@ Widget _buildSliverAppBar() {
 }
 
 /// 顶部圆形图标按钮(透明时带半透明黑底,吸顶后无底色)
-Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {bool isLeading = false}) {
+/// * 尺寸固定 34x34,与右侧 actions 完全一致;左边距只在 leading 位置用 Padding 控制
+Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
   return GestureDetector(
     onTap: onTap,
     child: Container(
       width: 34.0,
       height: 34.0,
-      margin: EdgeInsets.only(left: isLeading ? 10.0 : 0.0, right: isLeading ? 0.0 : 6.0),
+      margin: EdgeInsets.only(right: marginRight),
       decoration: BoxDecoration(
         color: Color.lerp(Colors.black.withValues(alpha: 0.25), const Color(0x00FFFFFF), t),
         shape: BoxShape.circle,
