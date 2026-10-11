@@ -2310,10 +2310,16 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           // 商城商品id(goods_id)优先: id 可能是直播商品记录的主键
                                           final int? gid = int.tryParse('${talk['goods_id'] ?? talk['id'] ?? ''}'.trim());
                                           if (gid == null) return;
+                                          // 当前房间数据: 给详情页的悬浮小窗用(封面 / 主播名 / 拉流地址)
+                                          final Map<String, dynamic> room = _roomItem(liveIndexNotifier.value);
                                           // 带房间号: 详情页加购 / 下单要回传 live_roomid
                                           Get.toNamed('/goods', arguments: <String, dynamic>{
                                             'goodsId': gid,
                                             'live_roomid': roomSn,
+                                            // 悬浮小窗: 小窗继续播这路流,点它回直播间
+                                            'liveCover': '${room['poster'] ?? ''}'.trim(),
+                                            'liveAnchor': anchorNameOf(room),
+                                            'livePullUrl': pullUrl.isNotEmpty ? pullUrl : '${room['src'] ?? ''}'.trim(),
                                           });
                                         },
                                       ),
@@ -2387,6 +2393,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                             roomTitle: '${item['name'] ?? ''}'.trim(),
                                             // 房间号: 橱窗里点商品进详情后,加购 / 下单要回传 live_roomid
                                             roomSn: roomSn,
+                                            // 悬浮小窗: 封面 + 拉流地址(主播名走上面的 anchorName)
+                                            liveCover: '${item['poster'] ?? ''}'.trim(),
+                                            livePullUrl: pullUrl.isNotEmpty ? pullUrl : '${item['src'] ?? ''}'.trim(),
                                             )
                                           ));
                                             goodsTalkVisible = true;

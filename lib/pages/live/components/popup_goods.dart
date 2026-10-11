@@ -17,6 +17,8 @@ class PopupGoods extends StatefulWidget {
     this.anchorAvatar,
     this.roomTitle,
     this.roomSn,
+    this.liveCover,
+    this.livePullUrl,
   });
 
   // 带货商品列表(首屏数据; 打开后会被 onRefresh 的结果覆盖)
@@ -32,6 +34,10 @@ class PopupGoods extends StatefulWidget {
   final String? roomTitle;
   // 直播间房间号 sn: 点商品进详情时带给详情页, 加购/下单要回传 live_roomid
   final String? roomSn;
+  // 直播间封面: 详情页的悬浮小窗用(小窗首帧出来前显示)
+  final String? liveCover;
+  // 直播间拉流地址: 详情页的悬浮小窗用(小窗起一路静音流继续播画面)
+  final String? livePullUrl;
 
   @override
   State<PopupGoods> createState() => _PopupGoodsState();
@@ -359,6 +365,10 @@ Widget build(BuildContext context) {
                           'goodsId': gid,
                           // 直播间房间号: 详情里加购 / 下单要回传 live_roomid
                           'live_roomid': (widget.roomSn ?? '').trim(),
+                          // 悬浮小窗: 直播间封面 + 主播名 + 拉流地址(小窗继续播画面,点它回直播间)
+                          'liveCover': (widget.liveCover ?? '').trim(),
+                          'liveAnchor': (widget.anchorName ?? '').trim(),
+                          'livePullUrl': (widget.livePullUrl ?? '').trim(),
                         });
                       },
                       borderRadius: BorderRadius.circular(10.0),

@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../components/common_empty.dart';
+import '../../components/live_float_window.dart';
 import '../../controller/auth_store.dart';
 import 'package:get/get.dart';
 import 'package:card_swiper/card_swiper.dart';
@@ -70,6 +71,16 @@ void initState() {
   loadCartNum();
   // loadStore(); // 适用门店暂时隐藏, 暂不请求
   loadEvaluate();
+  // 从直播间进来的: 等首帧布局完再挂悬浮小窗(小窗继续播直播画面,点它回直播间)
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (!mounted || liveRoomId.isEmpty) return;
+    LiveFloatWindow.instance.show(
+      roomSn: liveRoomId,
+      cover: liveCover,
+      anchorName: liveAnchor,
+      pullUrl: livePullUrl,
+    );
+  });
 }
 
 /// 拉取购物车总件数(未登录或接口异常时静默失败,保持原值)
@@ -119,6 +130,8 @@ Future<void> loadEvaluate() async {
 
 @override
 void dispose() {
+  // 离开详情页收起直播间悬浮小窗(返回直播间时也是走这里)
+  LiveFloatWindow.instance.hide();
   scrollController.dispose();
   super.dispose();
 }
@@ -137,6 +150,25 @@ String get liveRoomId {
   final dynamic args = Get.arguments;
   if (args is! Map) return '';
   return '${args['live_roomid'] ?? ''}'.trim();
+}
+
+/// 直播间封面 / 主播名 / 拉流地址: 直播间进来时带上,给悬浮小窗用
+String get liveCover {
+  final dynamic args = Get.arguments;
+  if (args is! Map) return '';
+  return '${args['liveCover'] ?? ''}'.trim();
+}
+
+String get liveAnchor {
+  final dynamic args = Get.arguments;
+  if (args is! Map) return '';
+  return '${args['liveAnchor'] ?? ''}'.trim();
+}
+
+String get livePullUrl {
+  final dynamic args = Get.arguments;
+  if (args is! Map) return '';
+  return '${args['livePullUrl'] ?? ''}'.trim();
 }
 
 /// 加载商品详情
