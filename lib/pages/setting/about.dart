@@ -192,26 +192,16 @@ class _AboutPageState extends State<AboutPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Logo + 名称 + 标语
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              _buildLogo(),
-              const SizedBox(width: 10.0),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(_name,
-                      style: const TextStyle(fontSize: 22.0, fontWeight: FontWeight.bold, color: Colors.black87)),
-                  const SizedBox(height: 4.0),
-                  Text(_slogan,
-                      style: const TextStyle(fontSize: 13.0, color: Color(0xFF666666))),
-                ],
-              ),
-            ],
-          ),
+          // Logo / 名称 / 标语: 上下居中排列
+          _buildLogo(),
+          const SizedBox(height: 16.0),
+          Text(_name,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 22.0, fontWeight: FontWeight.bold, color: Colors.black87)),
+          const SizedBox(height: 6.0),
+          Text(_slogan,
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 13.0, color: Color(0xFF666666))),
           const SizedBox(height: 28.0),
           // 版本号
           Text(
@@ -226,33 +216,35 @@ class _AboutPageState extends State<AboutPage> {
   Widget _buildLogo() {
     if (_logo.isEmpty) {
       return Container(
-        width: 54.0,
-        height: 54.0,
-        decoration: BoxDecoration(color: _brandColor, borderRadius: BorderRadius.circular(14.0)),
-        child: const Icon(Icons.shopping_bag, size: 30.0, color: Colors.white),
+        width: 76.0,
+        height: 76.0,
+        decoration: BoxDecoration(color: _brandColor, borderRadius: BorderRadius.circular(18.0)),
+        child: const Icon(Icons.shopping_bag, size: 38.0, color: Colors.white),
       );
     }
     return CachedNetworkImage(
       imageUrl: _logo,
-      width: 54.0,
-      height: 54.0,
+      width: 76.0,
+      height: 76.0,
       fit: BoxFit.cover,
       imageBuilder: (BuildContext context, ImageProvider imageProvider) => Container(
+        width: 76.0,
+        height: 76.0,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14.0),
+          borderRadius: BorderRadius.circular(18.0),
           image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
         ),
       ),
       placeholder: (_, __) => Container(
-        width: 54.0,
-        height: 54.0,
-        decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(14.0)),
+        width: 76.0,
+        height: 76.0,
+        decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(18.0)),
       ),
       errorWidget: (_, __, ___) => Container(
-        width: 54.0,
-        height: 54.0,
-        decoration: BoxDecoration(color: _brandColor, borderRadius: BorderRadius.circular(14.0)),
-        child: const Icon(Icons.shopping_bag, size: 30.0, color: Colors.white),
+        width: 76.0,
+        height: 76.0,
+        decoration: BoxDecoration(color: _brandColor, borderRadius: BorderRadius.circular(18.0)),
+        child: const Icon(Icons.shopping_bag, size: 38.0, color: Colors.white),
       ),
     );
   }

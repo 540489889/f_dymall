@@ -225,8 +225,14 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 10.0),
             children: [
-              // 空态
-              if (dataList.isEmpty)
+              // 首屏 / 切筛选 / 搜索: 列表为空又在请求中时显示"加载中", 别先闪一下空态
+              if (dataList.isEmpty && isLoading)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 80.0),
+                  child: Loading(),
+                )
+              // 空态(请求结束确实没数据才显示)
+              else if (dataList.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 80.0),
                   child: Column(
