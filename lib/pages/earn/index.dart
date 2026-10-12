@@ -23,7 +23,6 @@ class _EarnPageState extends State<EarnPage> {
   // * /api/member/info 的 balance_money 是可提现余额, 金币/累计收益接口待补
   int goldCoin = 12700; // 可变: 看完激励视频要加金币
   final double balance = 27.10;
-  final double yesterdayPending = 0.30;
   // 看视频任务: 今日已看次数 / 上限
   int videoWatched = 0;
   static const int videoTotal = 20;
@@ -144,8 +143,6 @@ class _EarnPageState extends State<EarnPage> {
                 ),
                 const SizedBox(width: 4.0),
                 Icon(Icons.sync, color: Colors.white.withAlpha(230), size: 16.0),
-                const Spacer(),
-                _headerClaimButton(),
               ],
             ),
           ),
@@ -169,7 +166,13 @@ class _EarnPageState extends State<EarnPage> {
                       const SizedBox(width: 8.0),
                       Expanded(child: _headerWithdrawColumn()),
                       const SizedBox(width: 8.0),
-                      Expanded(child: _headerPendingColumn()),
+                      // 第三列: 去掉「昨日待结算」, 换成从右上角移下来的「去领取」
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: _headerClaimButton(),
+                        ),
+                      ),
                     ],
                   ),
                   const SizedBox(height: 12.0),
@@ -254,28 +257,6 @@ class _EarnPageState extends State<EarnPage> {
             Expanded(
               child: Text(
                 balance.toStringAsFixed(2),
-                style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _headerPendingColumn() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: <Widget>[
-        const Text('昨日待结算', style: TextStyle(color: Colors.white70, fontSize: 10.0)),
-        const SizedBox(height: 6.0),
-        Row(
-          children: <Widget>[
-            Expanded(
-              child: Text(
-                '${yesterdayPending.toStringAsFixed(2)}',
                 style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
