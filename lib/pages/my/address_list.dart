@@ -313,10 +313,12 @@ class _AddressListPageState extends State<AddressListPage> {
                     borderRadius: BorderRadius.circular(6.0),
                     onTap: () => setDefault(item),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 6.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 6.0),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: <Widget>[
                           const Text('设为默认地址', style: TextStyle(fontSize: 12.0, color: Color(0xFF666666))),
+                          const SizedBox(width: 6.0),
                           SizedBox(
                             height: 24.0,
                             width: 36.0,
@@ -337,6 +339,7 @@ class _AddressListPageState extends State<AddressListPage> {
                   ),
                 ),
                 const Spacer(),
+                const SizedBox(width: 8.0),
                 if (!isDefault)
                   InkWell(
                     borderRadius: BorderRadius.circular(12.0),
