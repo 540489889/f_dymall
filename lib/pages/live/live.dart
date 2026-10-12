@@ -27,6 +27,7 @@ import './components/animation_join.dart';
 import './components/popup_comment.dart';
 import './components/popup_activity_winner.dart';
 import './components/popup_goods.dart';
+import './components/panel_goods.dart';
 import './components/popup_hongbao.dart';
 import './components/popup_luckybag.dart';
 import './components/popup_sign_stamp.dart';
@@ -65,6 +66,8 @@ final ValueNotifier<int> liveIndexNotifier = ValueNotifier(0);
 final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
 // 首帧信号: 拉流解析出画面尺寸(width 非空)才算真有画面, 首帧之前继续显示封面, 避免起播瞬间黑闪
 final ValueNotifier<bool> firstFrameNotifier = ValueNotifier(false);
+// 直播间商品面板: 非 null 表示打开了某个商品的面板(点商品不跳页,直播画面在上方继续播)
+final ValueNotifier<int?> panelGoodsIdNotifier = ValueNotifier<int?>(null);
 // 直播流自动重连(Surface 重建触发的 seek 会打断 RTMP)
 late LiveReconnector liveReconnector;
 bool goodsTalkVisible = true;
@@ -573,6 +576,8 @@ Future<String> _refreshPullUrl() async {
 
 // 上下滑动切房: 换房间号 -> 清掉上一个房间的实时数据 -> 取该房间详情/拉流地址/带货商品 -> 起播并重进 socket
 Future<void> _switchRoom(int index) async {
+  // 切房: 面板里是上一个房间的商品,直接关掉
+  panelGoodsIdNotifier.value = null;
   setState(() {
     liveIndexNotifier.value = index;
     positionNotifier.value = Duration.zero;
@@ -1647,6 +1652,17 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
   return danmu;
 }
 
+  /// 打开商品面板: 不跳页,直播间的 Video 尺寸不变(不会触发 Surface 重建 -> seek -> 打断直播流)
+  void _openGoodsPanel(int goodsId) {
+    if (goodsId <= 0) return;
+    panelGoodsIdNotifier.value = goodsId;
+  }
+
+  /// 关闭商品面板
+  void _closeGoodsPanel() {
+    panelGoodsIdNotifier.value = null;
+  }
+
   @override
   Widget build(BuildContext context) {
     // 横屏直播间(type=horizontal): 复用竖版整页结构, 只是画面按 16:9 显示(不铺满), 聊天区随之上移
@@ -1659,7 +1675,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
       foregroundColor: Colors.white,
       toolbarHeight: 0,
     ),
-    body: Column(
+    body: Stack(
+      children: <Widget>[
+      Column(
       children: [
         Expanded(
           child: Stack(
@@ -2310,19 +2328,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           // 商城商品id(goods_id)优先: id 可能是直播商品记录的主键
                                           final int? gid = int.tryParse('${talk['goods_id'] ?? talk['id'] ?? ''}'.trim());
                                           if (gid == null) return;
-                                          // 当前房间数据: 给详情页的悬浮小窗用(封面 / 主播名 / 拉流地址)
-                                          final Map<String, dynamic> room = _roomItem(liveIndexNotifier.value);
-                                          // 带房间号: 详情页加购 / 下单要回传 live_roomid
-                                          Get.toNamed('/goods', arguments: <String, dynamic>{
-                                            'goodsId': gid,
-                                            // 标记来源: 详情页据此挂悬浮小窗(房间号为空的演示房间也要挂)
-                                            'fromLive': true,
-                                            'live_roomid': roomSn,
-                                            // 悬浮小窗: 小窗继续播这路流,点它回直播间
-                                            'liveCover': '${room['poster'] ?? ''}'.trim(),
-                                            'liveAnchor': anchorNameOf(room),
-                                            'livePullUrl': pullUrl.isNotEmpty ? pullUrl : '${room['src'] ?? ''}'.trim(),
-                                          });
+                                          // 不跳页: 直播间内直接开商品面板,直播画面在面板上方继续播
+                                          // * 不再走 /goods 路由,也就不需要再起一路 Player 挂悬浮小窗
+                                          _openGoodsPanel(gid);
                                         },
                                       ),
                                         ],
@@ -2380,6 +2388,8 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           navigator?.push(FadeRoute(
                                             effect: 'bottom',
                                             child: PopupGoods(
+                                            // 点商品: 直播间内直接开面板(不跳页),直播画面继续播
+                                            onOpenDetail: _openGoodsPanel,
                                             // 带货商品: /live/api/shop/onlineGoods(参数 no = 房间号)优先, 取不到才用下面两条演示数据
                                             goodsList: onlineGoods.isNotEmpty ? onlineGoods : [
                                               {'image': 'https://img12.360buyimg.com/jdcms/s240x240_jfs/t1/276851/40/403/125841/67ce85b7Fc7fb4cff/271d67aaea189a66.jpg', 'title': '茅台生肖系列酒 53度 老酒 收藏投资 春节送礼 2025年', 'tips': '销量超10万', 'price': '699.9', 'mprice': '999.9'},
@@ -2537,6 +2547,22 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
           ),
         ],
       ),
+        // 直播间商品面板: 点商品不跳页,面板盖住下半屏,上方露出直播画面(一直在播)
+        ValueListenableBuilder<int?>(
+          valueListenable: panelGoodsIdNotifier,
+          builder: (BuildContext context, int? goodsId, Widget? child) {
+            if (goodsId == null) return const SizedBox.shrink();
+            return PanelGoods(
+              // 换商品要重建: 否则详情页 State 被复用,不会重新拉数据
+              key: ValueKey<int>(goodsId),
+              goodsId: goodsId,
+              roomSn: roomSn,
+              onClose: _closeGoodsPanel,
+            );
+          },
+        ),
+      ],
+    ),
     );
   }
 }
