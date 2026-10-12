@@ -245,6 +245,72 @@ class GoodsApi {
     return _toNum(res is Map ? res['data'] ?? res : res).toInt();
   }
 
+  /// 我的收藏列表(/api/goodscollect/page)
+  /// * 与 H5 pages_tool/member/collection 同一接口(page / page_size)
+  /// * 原始字段: goods_id / sku_id / sku_name / goods_image(逗号分隔) / discount_price
+  /// * 返回 {list, count, pageCount, hasMore}; 请求失败返回空结果,页面按空态处理不弹错
+  static Future<Map<String, dynamic>> collectPage({int page = 1, int pageSize = 10}) async {
+    try {
+      final Map<String, dynamic> res = await Request().getRaw(
+        '/api/goodscollect/page',
+        queryParameters: <String, dynamic>{'page': page, 'page_size': pageSize},
+      );
+      if ('${res['code']}' != '0') {
+        debugPrint('[goods]收藏列表返回异常: ${res['code']} ${res['message']}');
+        return _emptyCollectPage();
+      }
+      final dynamic data = res['data'];
+      // 该接口可能直接返回数组,也可能包成 {list: [...]}
+      final dynamic raw = data is Map ? (data['list'] ?? data['data']) : data;
+      if (raw is! List) return _emptyCollectPage();
+      final List<Map<String, dynamic>> list = raw
+          .whereType<Map<dynamic, dynamic>>()
+          .map((Map<dynamic, dynamic> e) => _collectItem(e.cast<String, dynamic>()))
+          .where((Map<String, dynamic> e) => e['goodsId'] != 0)
+          .toList();
+      final int pageCount = data is Map ? _toNum(data['page_count'] ?? data['pageCount']).toInt() : 0;
+      final int count = data is Map ? _toNum(data['count'] ?? data['total']).toInt() : list.length;
+      return <String, dynamic>{
+        'list': list,
+        'count': count,
+        'pageCount': pageCount,
+        'hasMore': pageCount > 0 ? page < pageCount : list.length >= pageSize,
+      };
+    } catch (e) {
+      debugPrint('[goods]收藏列表加载失败: $e');
+      return _emptyCollectPage();
+    }
+  }
+
+  /// 收藏列表空结果(请求失败/无数据时返回,避免页面判空)
+  static Map<String, dynamic> _emptyCollectPage() => <String, dynamic>{
+        'list': <Map<String, dynamic>>[],
+        'count': 0,
+        'pageCount': 0,
+        'hasMore': false,
+      };
+
+  /// 收藏项转页面结构: 名称优先 sku 名(与 H5 一致),取不到再回退商品名
+  static Map<String, dynamic> _collectItem(Map<String, dynamic> item) {
+    final String goodsImage = '${item['goods_image'] ?? ''}';
+    final String skuImage = '${item['sku_image'] ?? ''}';
+    final List<String> images = (goodsImage.isNotEmpty ? goodsImage : skuImage)
+        .split(',')
+        .where((String e) => e.trim().isNotEmpty)
+        .map(_fixImage)
+        .toList();
+    final String skuName = '${item['sku_name'] ?? ''}'.trim();
+    final String goodsName = '${item['goods_name'] ?? ''}'.trim();
+    return <String, dynamic>{
+      'goodsId': _toNum(item['goods_id'] ?? item['id']).toInt(),
+      'skuId': _toNum(item['sku_id']).toInt(),
+      'title': skuName.isNotEmpty ? skuName : goodsName,
+      // 价格: 优惠价优先,没有再取 price(H5 直接取 discount_price)
+      'price': _toNum(item['discount_price'] ?? item['price']),
+      'image': images.isEmpty ? '' : images.first,
+    };
+  }
+
   /// 详情轮播图: 按优先级取图并去重
   /// 1) sku_images(逗号分隔)  2) goods_image_list[].pic_path
   /// 3) goods_image(逗号分隔) 4) sku_image_list.pic_path / sku_image

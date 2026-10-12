@@ -51,6 +51,8 @@ import '../pages/my/address_edit.dart';
 // 看播记录
 import '../pages/my/watching_record.dart';
 import '../pages/my/watching_record_detail.dart';
+// 我的收藏
+import '../pages/my/collection.dart';
 // 设置/个人资料
 import '../pages/setting/personal_info.dart';
 // 关于我们
@@ -116,6 +118,8 @@ final Map<String, Widget> routes = {
 // 看播记录(我的服务入口,个人看播数据,需登录)
 '/my/watching_record': const WatchingRecordPage(),
 '/my/watching_record/detail': const WatchingRecordDetailPage(),
+// 我的收藏(顶部收藏图标,个人收藏数据,需登录)
+'/my/collection': const CollectionPage(),
   '/address': const AddressListPage(),
   '/address/edit': const AddressEditPage(),
   '/personal_info': const PersonalInfoPage(),
@@ -157,6 +161,7 @@ const Set<String> authRoutes = {
   '/my/coupon',
   '/my/watching_record',
   '/my/watching_record/detail',
+  '/my/collection',
   '/address',
   '/address/edit',
   '/personal_info',

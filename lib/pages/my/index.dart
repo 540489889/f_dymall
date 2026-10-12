@@ -427,7 +427,7 @@ class _MyPageState extends State<MyPage> {
               children: [
                 // 公告(/api/notice/page): 游客也可查看
                 _topIcon('assets/images/me/mine_icon_msg.png', () => Get.toNamed('/notice')),
-                _topIcon('assets/images/me/mine_icon_star.png', () {}),
+                _topIcon('assets/images/me/mine_icon_star.png', () => Get.toNamed('/my/collection')),
                 _topIcon('assets/images/me/mine_icon_video.png', () => Get.snackbar('提示', '功能开发中')),
                 _topIcon('assets/images/me/mine_icon_setting.png', () => authStore.isLogin ? Get.toNamed('/personal_info') : Get.toNamed('/login')),
               ],
