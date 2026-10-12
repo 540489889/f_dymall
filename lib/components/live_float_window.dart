@@ -39,7 +39,7 @@ class LiveFloatWindow {
   ///     拿它查会返回 null(insert 时空指针,小窗就静默不显示)
   /// * [roomSn] 直播间房间号 sn(点小窗回直播间用)
   /// * [pullUrl] 拉流地址,为空时只显示封面
-  /// * [cover] 直播间封面(首帧出来前显示)
+  /// * [cover] 直播间封面(首帧出来前显示,铺满小窗)
   void show({
     required BuildContext context,
     required String roomSn,
@@ -86,6 +86,7 @@ class _LiveFloatCard extends StatefulWidget {
   });
 
   final String roomSn;
+  /// 直播间封面(首帧出来前显示,没配时退回纯色底)
   final String cover;
   final String anchorName;
   final String pullUrl;
@@ -262,23 +263,30 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
     );
   }
 
+  /// 封面: 直播间封面图(后台没配时退回纯色底 + 直播图标)
+  /// * 必须显式撑满: Stack 给子节点的是 loose 约束,图片/色块会按自身尺寸渲染,
+  ///   在 iOS 上就表现为封面没铺满小窗(四周留黑边)
   Widget _buildCover() {
     if (widget.cover.isEmpty) {
-      return Container(
-        color: const Color(0xFF333333),
-        alignment: Alignment.center,
-        child: const Icon(Icons.live_tv_rounded, size: 24.0, color: Colors.white70),
+      return SizedBox.expand(
+        child: Container(
+          color: const Color(0xFF333333),
+          alignment: Alignment.center,
+          child: const Icon(Icons.live_tv_rounded, size: 24.0, color: Colors.white70),
+        ),
       );
     }
-    return CachedNetworkImage(
-      imageUrl: widget.cover,
-      fit: BoxFit.cover,
-      fadeInDuration: Duration.zero,
-      placeholder: (_, __) => Container(color: const Color(0xFF333333)),
-      errorWidget: (_, __, ___) => Container(
-        color: const Color(0xFF333333),
-        alignment: Alignment.center,
-        child: const Icon(Icons.live_tv_rounded, size: 24.0, color: Colors.white70),
+    return SizedBox.expand(
+      child: CachedNetworkImage(
+        imageUrl: widget.cover,
+        fit: BoxFit.cover,
+        fadeInDuration: Duration.zero,
+        placeholder: (_, __) => Container(color: const Color(0xFF333333)),
+        errorWidget: (_, __, ___) => Container(
+          color: const Color(0xFF333333),
+          alignment: Alignment.center,
+          child: const Icon(Icons.live_tv_rounded, size: 24.0, color: Colors.white70),
+        ),
       ),
     );
   }

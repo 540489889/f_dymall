@@ -169,6 +169,8 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   final GlobalKey liveCardKey = GlobalKey();
   // 直播预览是否已出首帧(出帧后隐藏封面,避免封面盖住画面)
   final ValueNotifier<bool> liveFirstFrame = ValueNotifier(false);
+  // "画面稳定"判定定时器: 见 _scheduleLiveCoverHide
+  Timer? _liveStableTimer;
   // 排障用(仅 debug): 起播后的状态巡检定时器
   Timer? _liveDiagTimer;
 
@@ -497,7 +499,11 @@ Future<void> loadLiveRoom() async {
         : null,
     // 重连时把封面显示回来: "首帧已渲染"后封面是隐藏的, 重连这几秒 Video 没画面就会露出白板
     onReconnecting: () {
-      if (mounted) liveFirstFrame.value = false;
+      if (!mounted) return;
+      // 取消"画面已稳定、待隐藏封面"的那次计时: 接下来画面会空一会儿
+      _liveStableTimer?.cancel();
+      _liveStableTimer = null;
+      liveFirstFrame.value = false;
     },
   );
   liveReconnector = reconnector;
@@ -510,6 +516,9 @@ Future<void> loadLiveRoom() async {
   );
   liveVideoController = controller;
   liveFirstFrame.value = false;
+  // 起播前先把 Surface 尺寸设成视频实际尺寸: 出帧后那次 SetSize 就会因尺寸一致被跳过,
+  // Surface 不重建 -> 不触发 seek -> RTMP 不断 -> 不用重连(见 presetLiveSurfaceSize)
+  await presetLiveSurfaceSize(player, controller);
   // 真机排障日志: 拉流地址 / 播放状态 / 解码尺寸
   // * 这些流(尤其 mpv log)回调非常频繁,release 下直接不订阅,省掉主线程的字符串处理开销
   if(kDebugMode) {
@@ -540,12 +549,12 @@ Future<void> loadLiveRoom() async {
     // iOS 上 id 是视频 UIView 的 tag: 视图一创建就有值(此时还没有画面),
     // 拿它当"已出首帧"会在 iOS 上过早隐藏封面 -> 露出空白;
     // Android 的 id 是纹理 id(出画面才创建),照旧用它; iOS 只认 waitUntilFirstFrameRendered
-    if(isAndroidPlatform && (controller.id.value ?? -1) > 0 && !liveFirstFrame.value) liveFirstFrame.value = true;
+    if(isAndroidPlatform && (controller.id.value ?? -1) > 0) _scheduleLiveCoverHide('textureId');
   });
   if(kDebugMode) controller.rect.addListener(() => debugPrint('[live]输出rect=${controller.rect.value}'));
   controller.waitUntilFirstFrameRendered.then((_) {
     if(kDebugMode) debugPrint('[live]首帧已渲染');
-    if(mounted) liveFirstFrame.value = true;
+    if(mounted) _scheduleLiveCoverHide('首帧已渲染');
   });
   // 兜底: 解码出尺寸(视频轨就绪)也算已出帧, 隐藏封面
   // * 必须两端都启用, 两个原因:
@@ -555,11 +564,23 @@ Future<void> loadLiveRoom() async {
   // * Android 那条 textureId > 0 的判定实测也不生效(真机打出来 textureId=0), 只能靠这里
   // * Video 有 fill 深色兜底, 提前 1~2 帧隐藏封面不会露出白板
   player.stream.width.listen((int? width) {
-    if((width ?? 0) > 0 && mounted && !liveFirstFrame.value) {
-      if(kDebugMode) debugPrint('[live]视频轨就绪, 隐藏封面(兜底)');
-      liveFirstFrame.value = true;
+    if((width ?? 0) > 0) {
+      if(mounted) _scheduleLiveCoverHide('视频轨就绪');
+      return;
     }
+    // 视频轨没了(被 seek 打断 / 重连中): 取消待隐藏的封面, 避免"画面一闪又盖回封面"
+    _liveStableTimer?.cancel();
+    _liveStableTimer = null;
+    if(mounted && liveFirstFrame.value) liveFirstFrame.value = false;
   });
+  // 首页是静音预览: 直接禁掉音频轨(不只是静音),省掉 OpenSLES/AudioTrack 初始化与音频同步等待
+  // * 起播更快(日志里 AudioTrack createTrack_l / underrun 那一串就是这部分开销)
+  // * 只作用于首页这个 Player: 进直播间是另一路 Player,该有声音还是有声音
+  try {
+    await player.setAudioTrack(AudioTrack.no());
+  } catch (e) {
+    if(kDebugMode) debugPrint('[live]首页预览禁用音频轨失败(忽略): $e');
+  }
   await player.setVolume(0.0);
   if(!mounted) return;
   // 先把 Video 控件挂上树、等平台视图真正创建好,再起播
@@ -592,6 +613,25 @@ Future<void> loadLiveRoom() async {
   } finally {
     _liveLoading = false;
   }
+}
+
+// 画面稳定一会儿再隐藏封面
+// * 起播第一轮画面常常刚出来就被 Surface 重建打断(videoParams 变回 null、画面黑掉),
+//   一有画面就隐藏封面, 观感是"封面 -> 画面一闪 -> 封面 -> 黑屏 -> 再出画面";
+//   稳住 700ms 再隐藏, 观感就是干净的"封面 -> 画面"
+// * 这 700ms 里画面又没了(被打断)就不隐藏, 等下一轮重新计时
+// * 代价: 出画面的时刻比"一有帧就显示"晚 0.7s, 换来的是中间不闪
+void _scheduleLiveCoverHide(String from) {
+  if(!mounted) return;
+  _liveStableTimer?.cancel();
+  if(kDebugMode) debugPrint('[live]画面出现($from), 稳住 700ms 再隐藏封面');
+  _liveStableTimer = Timer(const Duration(milliseconds: 700), () {
+    _liveStableTimer = null;
+    if(!mounted) return;
+    if((livePlayer?.state.width ?? 0) <= 0) return;
+    if(!liveFirstFrame.value) liveFirstFrame.value = true;
+    if(kDebugMode) debugPrint('[live]画面已稳定, 隐藏封面');
+  });
 }
 
 // 排障用(仅 debug): 起播后定时打印预览链路的关键状态, 区分"播放器没画面"和"画面出来了但 UI 没画出来"
@@ -1171,6 +1211,7 @@ void initState() {
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();
+    _liveStableTimer?.cancel();
     _liveDiagTimer?.cancel();
     liveReconnector?.dispose();
     livePlayer?.dispose();

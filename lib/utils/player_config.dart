@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -59,8 +60,74 @@ Player createLivePlayer() {
 const VideoControllerConfiguration androidLiveVideoConfig = VideoControllerConfiguration(
   vo: 'gpu',
   hwdec: 'mediacodec-copy',
+  // 是否等视频参数(分辨率)到达后再挂 Surface
+  // * true(实测无效,已回退): 起播时 VO 是 [null], 收到分辨率后照样走
+  //   SetSurfaceSize -> wid 变化 -> 内部 seek -> RTMP 被打断, 一次重连照样发生;
+  //   而且第一轮根本没真输出画面(VO null), "首帧已渲染" 判定反而更不可靠
+  // * false: 起播就有 VO(能看到画面), 代价是首帧后被 seek 打断一次, 由 LiveReconnector 重连恢复
   androidAttachSurfaceAfterVideoParameters: false,
 );
+
+/// 最近一次直播视频的实际输出尺寸(经旋转换算,与 SetSize 用的尺寸一致)
+/// * 用于下次起播前预设 Surface 尺寸, 见 [presetLiveSurfaceSize]
+int? lastLiveVideoWidth;
+int? lastLiveVideoHeight;
+
+/// media_kit_video 的底层 channel(与插件内 AndroidVideoController 用的是同一个)
+/// * Android 的 VideoController.setSize 直接抛 UnsupportedError,
+///   但 Java 侧 `VideoOutputManager.SetSurfaceSize` 是通的, 只能绕过 Dart API 调它
+const MethodChannel liveVideoChannel = MethodChannel('com.alexmercerind/media_kit_video');
+
+/// 起播前先把 Surface 尺寸设成"视频的实际尺寸"
+///
+/// media_kit_video(Android) 收到视频分辨率后会走 `VideoOutputManager.SetSurfaceSize`:
+/// 1. Dart 侧: `isSame`(与缓存的 rect 比) 命中才 return, 否则调 Java
+/// 2. Java 侧: `surfaceProducer.getWidth()/getHeight()` 与新尺寸一致才 return, 否则
+///    重建 Surface -> wid 变化 -> widListener 内部 seek -> RTMP 被打断 -> 只能重连一次才稳定
+///
+/// 起播时 Surface 默认是 1x1(且 wid 还没挂上, mpv 的 VO 是 [null]), 必然不匹配,
+/// 所以每次起播都要重建一次 Surface: 首帧出来后立刻被 seek 打断, 起播时间直接翻倍。
+/// 这里提前把 Surface 建好并挂上, 让"收到分辨率"那次直接命中短路。
+/// * 尺寸猜错了没有副作用: 只是跟原来一样重建一次(由 LiveReconnector 重连兜底)
+/// * 优先用上次实测的尺寸(同一个主播的流分辨率一般不变), 首次用 1080p 兜底
+Future<void> presetLiveSurfaceSize(Player player, VideoController controller) async {
+  if (!isAndroidPlatform) return;
+  final int width = lastLiveVideoWidth ?? 1920;
+  final int height = lastLiveVideoHeight ?? 1080;
+  try {
+    final int handle = await player.handle;
+    for (int i = 0; i < 10; i++) {
+      await liveVideoChannel.invokeMethod(
+        'VideoOutputManager.SetSurfaceSize',
+        <String, Object>{
+          'handle': handle.toString(),
+          'width': width.toString(),
+          'height': height.toString(),
+        },
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      // rect 被更新说明 Java 侧真的建好了 Surface: VideoOutput 还没 Create 时这次调用会被静默忽略
+      if ((controller.rect.value?.width.toInt() ?? 0) == width) {
+        debugPrint('[live]预设 Surface 尺寸: ${width}x$height');
+        return;
+      }
+    }
+    debugPrint('[live]预设 Surface 尺寸未生效(忽略): 目标 ${width}x$height');
+  } catch (e) {
+    debugPrint('[live]预设 Surface 尺寸失败(忽略): $e');
+  }
+}
+
+/// 记录本次直播的实际输出尺寸(供下次起播预设)
+void recordLiveVideoSize(VideoParams params) {
+  final int? dw = params.dw;
+  final int? dh = params.dh;
+  if (dw == null || dh == null || dw <= 0 || dh <= 0) return;
+  // 90/270 度旋转时输出宽高是交换过的, 与 media_kit 里 SetSize 用的尺寸保持一致
+  final bool swap = params.rotate == 90 || params.rotate == 270;
+  lastLiveVideoWidth = swap ? dh : dw;
+  lastLiveVideoHeight = swap ? dw : dh;
+}
 
 /// 悬浮小窗的视频输出配置: 走软解(hwdec=no),不跟直播间抢硬解码码器
 ///
@@ -181,6 +248,8 @@ class LiveReconnector {
   Future<void> _onVideoParams(VideoParams params) async {
     final bool hasVideo = (params.dw ?? 0) > 0;
     if (hasVideo) {
+      // 记下实际输出尺寸: 下次起播前用它预设 Surface, 让这次的 SetSize 命中短路不再重建
+      recordLiveVideoSize(params);
       if (!_hadVideo) debugPrint('[live]视频轨就绪: ${params.dw}x${params.dh}');
       _hadVideo = true;
       return;
