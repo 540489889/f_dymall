@@ -2,6 +2,7 @@
 /// * 界面参考用户提供的 UI 图
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
@@ -10,6 +11,7 @@ import '../../api/member_account.dart';
 import '../../api/member_point.dart';
 import '../../api/member_signin.dart';
 import '../../api/member_withdraw.dart';
+import '../../controller/auth_store.dart';
 import '../../utils/ads.dart';
 import '../../utils/ads_config.dart';
 
@@ -207,10 +209,13 @@ class _EarnPageState extends State<EarnPage> {
     try {
       final int state = await MemberSigninApi.status();
       if (!mounted || state != 1) return;
+      // 逐个兜底,不能用裸的 Future.wait:
+      // /api/member/info 需要登录,游客进页面时它一定会失败,一个失败会让整块签到卡都不显示
+      // (游客看到的就是"没有签到板块"); 连续天数拿不到就按 0 处理,规则照常展示
       final List<dynamic> res = await Future.wait<dynamic>(<Future<dynamic>>[
-        MemberApi.info(),
-        MemberSigninApi.isSign(),
-        MemberSigninApi.award(),
+        MemberApi.info().catchError((_) => null),
+        MemberSigninApi.isSign().catchError((_) => 0),
+        MemberSigninApi.award().catchError((_) => <String, dynamic>{}),
       ]);
       if (!mounted) return;
       final dynamic info = res[0];
@@ -226,6 +231,9 @@ class _EarnPageState extends State<EarnPage> {
             ? reward.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList()
             : <Map<String, dynamic>>[];
       });
+      if (kDebugMode) {
+        debugPrint('[earn]签到: state=$state cycle=$cycle 规则${signRule.length}条 连签=$signDaysSeries 今日已签=$hasSign 有会员信息=${info is Map}');
+      }
     } catch (_) {
       // 静默: 接口异常时不展示签到卡
     }
@@ -252,6 +260,14 @@ class _EarnPageState extends State<EarnPage> {
   /// 执行签到(/api/membersignin/signin)
   Future<void> _signin() async {
     if (signState != 1 || hasSign == 1 || signSubmitting) return;
+    // 游客: 签到接口要求登录, 点了只会报错; 先去登录, 回来再刷一次签到状态
+    if (!AuthStore.to.isLogin) {
+      await Get.toNamed('/login');
+      if (!mounted) return;
+      await loadSignin();
+      await load();
+      return;
+    }
     setState(() => signSubmitting = true);
     try {
       final Map<String, dynamic> tip = await MemberSigninApi.signin();
