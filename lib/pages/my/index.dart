@@ -24,6 +24,15 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   final authStore = AuthStore.to;
 
+  /// 广告 / 服务的上次数据(static: 页面重建、重新进页面都还在)
+  /// * 首帧直接用缓存渲染, 接口回来再比对更新 —— 解决「先没有, 过一会才冒出来」的闪动
+  static List<Map<String, dynamic>> advCache = <Map<String, dynamic>>[];
+  static List<Map<String, dynamic>> serviceCache = <Map<String, dynamic>>[];
+
+  /// 是否已拉到结果(只有「无缓存的首次」才用骨架占位, 拿到结果后占位撤掉)
+  bool advLoaded = false;
+  bool serviceLoaded = false;
+
   // 我的服务: /api/Member/serviceNav 的配置项(为空则不展示「我的服务」卡片)
   final List<Map<String, dynamic>> serviceList = <Map<String, dynamic>>[];
 
@@ -37,6 +46,15 @@ class _MyPageState extends State<MyPage> {
   @override
   void initState() {
     super.initState();
+    // 先用缓存渲染首帧: 有缓存就当已有数据(loaded), 没有就走骨架占位
+    if (advCache.isNotEmpty) {
+      advList = advCache;
+      advLoaded = true;
+    }
+    if (serviceCache.isNotEmpty) {
+      serviceList.addAll(serviceCache);
+      serviceLoaded = true;
+    }
     loadServiceNav();
     loadAdv();
     // 已登录但会员信息为空(如启动时拉取失败),进入页面补拉一次
@@ -57,7 +75,8 @@ class _MyPageState extends State<MyPage> {
   Future<void> loadServiceNav() async {
     try {
       final List<Map<String, dynamic>> list = await MemberApi.serviceNav();
-      if (!mounted || list.isEmpty) return;
+      if (!mounted) return;
+      if (list.isNotEmpty) {
       final bool hasWatchRecord =
           list.any((Map<String, dynamic> e) => _serviceActionName(e) == 'WATCH_RECORD');
       if (!hasWatchRecord) {
@@ -67,10 +86,16 @@ class _MyPageState extends State<MyPage> {
           'nav_url': jsonEncode(<String, String>{'name': 'WATCH_RECORD'}),
         });
       }
+      }
+      // 与缓存一致就不 setState: 内容没变还重建, 会把整个列表/网格重新刷一遍(看起来就是闪一下)
+      final bool same = jsonEncode(list) == jsonEncode(serviceCache);
+      serviceCache = list;
+      if (same && serviceLoaded) return;
       setState(() {
         serviceList
           ..clear()
           ..addAll(list);
+        serviceLoaded = true;
       });
     } catch (e) {
       if (kDebugMode) debugPrint('[serviceNav] 请求失败, 不展示我的服务: $e');
@@ -80,11 +105,19 @@ class _MyPageState extends State<MyPage> {
   /// 广告图(/api/adv/detail keyword=MEMBER_M, 取 adv_list)
   /// * 失败 / 后台没配时列表为空, 「我的订单」上方的广告位不占高度
   Future<void> loadAdv() async {
-    final List<Map<String, dynamic>> list = await AdvApi.list('MEMBER_M');
-    if (!mounted || list.isEmpty) return;
-    setState(() {
-      advList = list;
-    });
+    try {
+      final List<Map<String, dynamic>> list = await AdvApi.list('MEMBER_M');
+      if (!mounted) return;
+      final bool same = jsonEncode(list) == jsonEncode(advCache);
+      advCache = list;
+      if (same && advLoaded) return;
+      setState(() {
+        advList = list;
+        advLoaded = true;
+      });
+    } catch (e) {
+      if (kDebugMode) debugPrint('[adv] 请求失败, 不展示广告位: $e');
+    }
   }
 
   /// 订单各状态数量(/api/order/num): 失败/未登录时为空, 角标不显示
@@ -108,8 +141,23 @@ class _MyPageState extends State<MyPage> {
   }
 
   /// 广告位: 「我的订单」卡片上方(多张自动轮播)
+  /// * 首次且没有缓存时显示等高占位: 数据来了直接替换, 下方内容不会往上顶
   Widget _buildAdvBanner() {
-    if (advList.isEmpty) return const SizedBox.shrink();
+    if (advList.isEmpty) {
+      if (advLoaded) return const SizedBox.shrink();
+      return Container(
+        margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+        height: 95.0,
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16.0)),
+        child: Container(
+          margin: const EdgeInsets.all(10.0),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF2F2F2),
+            borderRadius: BorderRadius.circular(10.0),
+          ),
+        ),
+      );
+    }
     return AdvBanner(
       list: advList,
       height: 95.0,
@@ -637,10 +685,51 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
+  /// 「我的服务」骨架占位: 形状贴近 4 列网格(圆标 + 文字条), 只在首次无缓存时出现
+  Widget _buildServiceSkeleton() {
+    Widget cell() {
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          Container(
+            width: 40.0,
+            height: 40.0,
+            decoration: const BoxDecoration(color: Color(0xFFF2F2F2), shape: BoxShape.circle),
+          ),
+          const SizedBox(height: 6.0),
+          Container(
+            width: 34.0,
+            height: 10.0,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF2F2F2),
+              borderRadius: BorderRadius.circular(5.0),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        const Text('我的服务', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
+        const SizedBox(height: 12.0),
+        Row(
+          children: List<Widget>.generate(4, (int i) => Expanded(child: cell())),
+        ),
+      ],
+    );
+  }
+
   // 我的服务(4 列网格,从左到右依次排列,自动换行)
   // * 只渲染 /api/Member/serviceNav 的后台配置, 没数据就整块不显示(不再有本地默认项)
   Widget _buildServiceCard() {
-    if (serviceList.isEmpty) return const SizedBox.shrink();
+    if (serviceList.isEmpty) {
+      // 首次且没有缓存: 占位顶住, 避免「我的服务」突然出现把下面的内容顶下去
+      if (serviceLoaded) return const SizedBox.shrink();
+      return _whiteCard(child: _buildServiceSkeleton());
+    }
     final List<Map<String, dynamic>> items = serviceList;
     return _whiteCard(
       child: Column(
