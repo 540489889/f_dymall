@@ -100,7 +100,8 @@ class _EarnPageState extends State<EarnPage> {
         slivers: <Widget>[
           SliverToBoxAdapter(child: _buildHeader()),
           SliverToBoxAdapter(child: _buildSignIn()),
-          SliverToBoxAdapter(child: _buildWithdraw()),
+          // 立即提现: 暂时隐藏(板块代码仍在 _buildWithdraw, 要恢复就注掉下面这行前面的注释)
+          // SliverToBoxAdapter(child: _buildWithdraw()),
           SliverToBoxAdapter(child: _buildHotTasks()),
           // Banner 广告位(未配置广告位时不展示)
           if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
@@ -391,7 +392,8 @@ class _EarnPageState extends State<EarnPage> {
     );
   }
 
-  // 立即提现卡
+  // 立即提现卡(暂时不展示: 见 build 里的注释, 恢复时把 build 那行注回来)
+  // ignore: unused_element
   Widget _buildWithdraw() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 0.0),
