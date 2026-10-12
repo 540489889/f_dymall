@@ -17,16 +17,48 @@ class AppConfig extends GetxController {
   dynamic get(String key, [dynamic fallback]) =>
       data.value.containsKey(key) ? data.value[key] : fallback;
 
+  /// 拉取失败后的最大重试次数
+  static const int maxRetry = 3;
+
+  bool _fetching = false;
+  int _retries = 0;
+
   @override
   void onInit() {
     super.onInit();
-    // 进入 App 即拉取配置(失败忽略,不影响首屏)
+    // 进入 App 即拉取配置
     fetch();
+  }
+
+  /// 配置为空时补拉一次
+  /// * 幂等: 已有配置或正在拉取时直接返回, 多处调用不会重复发请求
+  /// * 主要场景见 [fetch] 的重试说明: 首启那次请求失败后再给一次机会
+  Future<void> fetchIfEmpty() async {
+    if (data.value.isNotEmpty || _fetching) return;
+    await fetch();
   }
 
   /// 拉取 /api/config/init 并写入 data
   Future<void> fetch() async {
-    final Map<String, dynamic> res = await ConfigApi.init();
-    if (res.isNotEmpty) data.value = res;
+    if (_fetching) return;
+    _fetching = true;
+    try {
+      final Map<String, dynamic> res = await ConfigApi.init();
+      if (res.isNotEmpty) {
+        data.value = res;
+        _retries = 0;
+        return;
+      }
+    } finally {
+      _fetching = false;
+    }
+    // 首启(iOS 首次安装)时这个请求经常被系统网络授权弹窗打断: 弹窗没点之前请求直接失败,
+    // 而它只拉这一次, 失败后本次启动就一直拿不到 diy 底部导航 -> 底部 tab 只剩文字没有图标。
+    // 这里退避重试几次, 覆盖"用户点完授权弹窗 / 网络刚连上"这段时间
+    if (_retries >= maxRetry) return;
+    _retries += 1;
+    await Future<void>.delayed(Duration(seconds: 2 * _retries));
+    if (data.value.isNotEmpty) return;
+    await fetch();
   }
 }

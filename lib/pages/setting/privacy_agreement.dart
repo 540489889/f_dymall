@@ -4,12 +4,15 @@
 /// * 协议名可点击跳转 /agreement
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
+import '../../controller/app_config.dart';
 import '../../utils/privacy_agreement.dart';
 
 /// 主色
@@ -31,6 +34,10 @@ class PrivacyAgreementPage extends StatelessWidget {
   /// * 先置 agreed: MyApp 会插入启动图遮罩, 首页首屏数据到位后自动淡出, 避免先看到"暂无数据"
   static Future<void> _agree() async {
     await PrivacyAgreement.setAgreed(true);
+    // 补拉一次全局配置: 首次安装时启动那次请求常被 iOS 的网络授权弹窗打断(弹窗没点之前请求直接失败),
+    // 拿不到配置底部 diy 导航就不生效(只剩文字没有图标)。点完同意时网络已经可用, 这里再给一次机会
+    // * 不 await: 网络差时不能卡住跳转; 请求在后台跑, 拉到后 Layout 是 Obx 包裹的会自动刷新
+    unawaited(AppConfig.to.fetchIfEmpty());
     Get.offAllNamed('/');
   }
 

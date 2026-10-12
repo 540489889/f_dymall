@@ -1,6 +1,7 @@
 /// 布局模板
 library;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -30,6 +31,9 @@ class _LayoutState extends State<Layout> {
   void initState() {
     super.initState();
     pageController = PageController(initialPage: pageCurrent, viewportFraction: 1.0);
+    // 进首页时配置还是空的(首启那次请求被系统网络弹窗打断了), 再补拉一次:
+    // 拿不到 diy 配置就只能显示默认导航(只有文字没有图标)
+    AppConfig.to.fetchIfEmpty();
   }
 
   /// 把 diy 的 link.type 映射到对应页面(未知类型回退首页)
@@ -121,7 +125,10 @@ class _LayoutState extends State<Layout> {
       fit: BoxFit.contain,
       fadeInDuration: Duration.zero,
       placeholder: (BuildContext c, String u) => SizedBox(width: size, height: size),
-      errorWidget: (BuildContext c, String u, Object e) => SizedBox(width: size, height: size),
+      errorWidget: (BuildContext c, String u, Object e) {
+        if (kDebugMode) debugPrint('[nav]tab 图标加载失败: $u $e');
+        return SizedBox(width: size, height: size);
+      },
     );
     if (!selected) return icon;
     // 选中态: 播放一次"轻微放大弹入 + 上浮"的动画
