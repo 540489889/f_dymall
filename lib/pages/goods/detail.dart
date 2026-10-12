@@ -32,6 +32,8 @@ class Goods extends StatefulWidget {
     this.liveRoomId,
     // 返回按钮: 面板里是"关闭面板",默认退路由
     this.onBack,
+    // 滚动控制器: 直播间面板内嵌时由面板给(实现"先撑开面板,再滚内容"的联动)
+    this.scrollController,
   });
 
 /// 商品id: 非空时优先于路由参数(直播间面板直接传)
@@ -40,6 +42,8 @@ final int? goodsId;
 final String? liveRoomId;
 /// 返回/关闭回调(面板里传关闭面板)
 final VoidCallback? onBack;
+/// 外部滚动控制器(直播间面板用): 不传则页面自建自毁
+final ScrollController? scrollController;
 
 @override
 State<Goods> createState() => _GoodsState();
@@ -50,7 +54,8 @@ class _GoodsState extends State<Goods> {
 late final Map<String, dynamic> args = Get.arguments is Map
     ? Map<String, dynamic>.from(Get.arguments as Map)
     : const <String, dynamic>{};
-late final ScrollController scrollController = ScrollController();
+// 直播间面板内嵌时用面板给的控制器(面板升降与内容滚动联动), 不传则自建
+late final ScrollController scrollController = widget.scrollController ?? ScrollController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 // 接口返回的商品详情
@@ -159,7 +164,8 @@ Future<void> loadEvaluate() async {
 void dispose() {
   // 离开详情页收起直播间悬浮小窗(返回直播间时也是走这里)
   LiveFloatWindow.instance.hide();
-  scrollController.dispose();
+  // 外部传入的(直播间面板)由面板管理, 本页不销毁
+  if (widget.scrollController == null) scrollController.dispose();
   super.dispose();
 }
 
