@@ -9,6 +9,7 @@ import '../../api/member.dart';
 import '../../api/member_account.dart';
 import '../../api/member_point.dart';
 import '../../api/member_signin.dart';
+import '../../api/member_withdraw.dart';
 import '../../utils/ads.dart';
 import '../../utils/ads_config.dart';
 
@@ -44,6 +45,22 @@ class _EarnPageState extends State<EarnPage> {
   int cycle = 0; // 周期天数
   List<Map<String, dynamic>> signRule = <Map<String, dynamic>>[]; // [{ day, point, growth }]
   bool signSubmitting = false;
+
+  // 默认提现账户的收款授权(/api/memberbankaccount/defaultinfo)
+  bool withdrawLoaded = false; // 是否已拉到账户信息
+  bool withdrawAccountBound = false; // 是否已绑定提现账户
+  bool withdrawIsWechat = false; // 默认账户是否微信
+  bool withdrawAuthed = false; // 是否已微信免确认收款授权(auth_status != '0')
+
+  /// 授权是否 OK: 已绑定账户,且微信账户已完成收款授权(与提现账户页 auth_status 同口径)
+  bool get withdrawAuthOk => withdrawAccountBound && (!withdrawIsWechat || withdrawAuthed);
+
+  /// 授权状态文案
+  String get withdrawAuthText {
+    if (!withdrawAccountBound) return '未绑定提现账户，绑定后才能提现';
+    if (withdrawIsWechat && !withdrawAuthed) return '提现账户未微信免确认收款授权';
+    return '提现账户已收款授权，提现免确认';
+  }
 
   // 立即提现
   final double todayWithdraw = 0.30;
@@ -102,6 +119,7 @@ class _EarnPageState extends State<EarnPage> {
     super.initState();
     load();
     loadSignin();
+    loadWithdrawAccount();
   }
 
   /// 现金余额 + 积分(并发拉取;失败静默,顶部保持 0,不影响其它板块)
@@ -210,6 +228,24 @@ class _EarnPageState extends State<EarnPage> {
       });
     } catch (_) {
       // 静默: 接口异常时不展示签到卡
+    }
+  }
+
+  /// 默认提现账户 + 收款授权状态(/api/memberbankaccount/defaultinfo)
+  /// * auth_status == '0' 为未授权(与提现账户页同口径),其它值视为已授权
+  Future<void> loadWithdrawAccount() async {
+    try {
+      final Map<String, dynamic> info = await MemberWithdrawApi.accountDefaultInfo();
+      if (!mounted) return;
+      final int id = int.tryParse('${info['id'] ?? 0}') ?? 0;
+      setState(() {
+        withdrawLoaded = true;
+        withdrawAccountBound = id > 0;
+        withdrawIsWechat = '${info['withdraw_type'] ?? ''}' == 'wechatpay';
+        withdrawAuthed = '${info['auth_status'] ?? ''}' != '0';
+      });
+    } catch (_) {
+      // 静默: 未登录/接口异常时保持原说明文案
     }
   }
 
@@ -331,7 +367,7 @@ class _EarnPageState extends State<EarnPage> {
                     ],
                   ),
                   const SizedBox(height: 12.0),
-                  // 底部说明（盒内：半透明白底白字 + 盾牌图标）
+                  // 底部说明（盒内：半透明白底 + 提现账户收款授权状态;未拉到数据时先显示原说明）
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
@@ -342,13 +378,47 @@ class _EarnPageState extends State<EarnPage> {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
-                      children: const <Widget>[
-                        Icon(Icons.verified_user, color: Colors.white, size: 14.0),
-                        SizedBox(width: 4.0),
-                        Text(
-                          '现金余额可提现至微信账户',
-                          style: TextStyle(color: Colors.white, fontSize: 11.0),
-                        ),
+                      children: <Widget>[
+                        if (!withdrawLoaded) ...<Widget>[
+                          const Icon(Icons.verified_user, color: Colors.white, size: 14.0),
+                          const SizedBox(width: 4.0),
+                          const Text(
+                            '现金余额可提现至微信账户',
+                            style: TextStyle(color: Colors.white, fontSize: 11.0),
+                          ),
+                        ] else ...<Widget>[
+                          Icon(
+                            withdrawAuthOk ? Icons.verified_user : Icons.error_outline,
+                            color: withdrawAuthOk ? Colors.white : coinGold,
+                            size: 14.0,
+                          ),
+                          const SizedBox(width: 4.0),
+                          Flexible(
+                            child: Text(
+                              withdrawAuthText,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.white, fontSize: 11.0),
+                            ),
+                          ),
+                          if (!withdrawAuthOk) ...<Widget>[
+                            const SizedBox(width: 6.0),
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: () => Get.toNamed('/my/withdraw_account'),
+                              child: Text(
+                                withdrawAccountBound ? '去授权' : '去绑定',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 11.0,
+                                  fontWeight: FontWeight.w700,
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ],
                     ),
                   ),
