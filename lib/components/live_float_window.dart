@@ -237,40 +237,6 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
                   ],
                 ),
               ),
-              // 底部信息条: 直播中 + 主播名
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(5.0, 10.0, 5.0, 4.0),
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: <Color>[Color(0x00000000), Color(0x99000000)],
-                    ),
-                  ),
-                  child: Row(
-                    children: <Widget>[
-                      Container(
-                        width: 5.0,
-                        height: 5.0,
-                        decoration: const BoxDecoration(color: Color(0xFFFF2C55), shape: BoxShape.circle),
-                      ),
-                      const SizedBox(width: 3.0),
-                      Expanded(
-                        child: Text(
-                          widget.anchorName.isEmpty ? '直播中' : widget.anchorName,
-                          style: const TextStyle(color: Colors.white, fontSize: 10.0, fontWeight: FontWeight.w500),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
               // 关闭
               Positioned(
                 right: 0,
