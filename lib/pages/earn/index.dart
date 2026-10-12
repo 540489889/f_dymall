@@ -5,6 +5,8 @@ library;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
+import '../../api/member_account.dart';
+import '../../api/member_point.dart';
 import '../../utils/ads.dart';
 import '../../utils/ads_config.dart';
 
@@ -20,10 +22,13 @@ class _EarnPageState extends State<EarnPage> {
   static const Color primary = Color(0xFFFF5C33);
   static const Color coinGold = Color(0xFFFFE08A);
 
-  // 收益数据: 接接口后替换
-  // * /api/member/info 的 balance_money 是可提现余额, 金币/累计收益接口待补
-  int goldCoin = 12700; // 可变: 看完激励视频要加金币
-  final double balance = 27.10;
+  // 收益数据(接口):
+  // * 可提现 = 「我的余额」的现金余额(/api/memberaccount/info 的 balance_money)
+  // * 金币位 = 会员积分(/api/memberaccount/point 的 point)
+  double balanceMoney = 0.0;
+  int point = 0;
+  // 看视频任务加的金币(仅本地累计,暂不展示)
+  int goldCoin = 12700;
   // 看视频任务: 今日已看次数 / 上限
   int videoWatched = 0;
   static const int videoTotal = 20;
@@ -85,6 +90,33 @@ class _EarnPageState extends State<EarnPage> {
       'adType': 'interstitial',
     },
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+  }
+
+  /// 现金余额 + 积分(并发拉取;失败静默,顶部保持 0,不影响其它板块)
+  Future<void> load() async {
+    try {
+      final List<dynamic> res = await Future.wait<dynamic>(<Future<dynamic>>[
+        MemberAccountApi.info(),
+        MemberPointApi.point(),
+      ]);
+      if (!mounted) return;
+      final Map<String, dynamic> account =
+          res[0] is Map ? (res[0] as Map).cast<String, dynamic>() : <String, dynamic>{};
+      final Map<String, dynamic> pointInfo =
+          res[1] is Map ? (res[1] as Map).cast<String, dynamic>() : <String, dynamic>{};
+      setState(() {
+        balanceMoney = double.tryParse('${account['balance_money'] ?? 0}') ?? 0;
+        point = int.tryParse('${pointInfo['point'] ?? 0}') ?? 0;
+      });
+    } catch (_) {
+      // 静默: 未登录/接口异常时保持 0
+    }
+  }
 
   String _fmtCoin(int value) {
     return value.toString().replaceAllMapped(
@@ -218,7 +250,7 @@ class _EarnPageState extends State<EarnPage> {
         Row(
           children: <Widget>[
             Flexible(
-              child: Text('我的金币', style: const TextStyle(color: Colors.white70, fontSize: 10.0), maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text('我的积分', style: const TextStyle(color: Colors.white70, fontSize: 10.0), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const SizedBox(width: 2.0),
             Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
@@ -229,7 +261,7 @@ class _EarnPageState extends State<EarnPage> {
           children: <Widget>[
             Expanded(
               child: Text(
-                _fmtCoin(goldCoin),
+                _fmtCoin(point),
                 style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -259,7 +291,7 @@ class _EarnPageState extends State<EarnPage> {
           children: <Widget>[
             Expanded(
               child: Text(
-                balance.toStringAsFixed(2),
+                balanceMoney.toStringAsFixed(2),
                 style: const TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900, fontFamily: 'Arial'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
