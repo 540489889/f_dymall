@@ -5,8 +5,10 @@ library;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
+import '../../api/member.dart';
 import '../../api/member_account.dart';
 import '../../api/member_point.dart';
+import '../../api/member_signin.dart';
 import '../../utils/ads.dart';
 import '../../utils/ads_config.dart';
 
@@ -35,9 +37,13 @@ class _EarnPageState extends State<EarnPage> {
   // 广告播放中: 防止连点重复拉广告
   bool adPlaying = false;
 
-  // 签到数据(演示): 今天已领, 明天起递增
-  final int signBase = 120;
-  final List<int> signRewards = const <int>[120, 30, 40, 50, 60, 80];
+  // 签到: 走「每日签到」同一套规则(/api/membersignin/*), 不再用写死的演示奖励
+  int signState = 0; // 签到开关(1 开启)
+  int hasSign = 0; // 今日是否已签到
+  int signDaysSeries = 0; // 连续签到天数
+  int cycle = 0; // 周期天数
+  List<Map<String, dynamic>> signRule = <Map<String, dynamic>>[]; // [{ day, point, growth }]
+  bool signSubmitting = false;
 
   // 立即提现
   final double todayWithdraw = 0.30;
@@ -95,6 +101,7 @@ class _EarnPageState extends State<EarnPage> {
   void initState() {
     super.initState();
     load();
+    loadSignin();
   }
 
   /// 现金余额 + 积分(并发拉取;失败静默,顶部保持 0,不影响其它板块)
@@ -115,6 +122,119 @@ class _EarnPageState extends State<EarnPage> {
       });
     } catch (_) {
       // 静默: 未登录/接口异常时保持 0
+    }
+  }
+
+  /// 每日默认积分(规则里 day == 1 那条)
+  int get signDefaultPoint {
+    for (final Map<String, dynamic> item in signRule) {
+      if ('${item['day']}' == '1') return int.tryParse('${item['point'] ?? 0}') ?? 0;
+    }
+    return signRule.isEmpty ? 0 : (int.tryParse('${signRule.first['point'] ?? 0}') ?? 0);
+  }
+
+  /// 今日/明日可领积分(每日奖励 + 命中连签额外奖励)
+  int get signPointTomorrow {
+    final int next = signDaysSeries + 1;
+    int point = signDefaultPoint;
+    for (final Map<String, dynamic> item in signRule) {
+      if ('${item['day']}' == '$next') point += int.tryParse('${item['point'] ?? 0}') ?? 0;
+    }
+    return point;
+  }
+
+  /// 展示的天数窗口(与「每日签到」页 showSignDays 同逻辑: 最多 7 天,末位为周期大奖)
+  List<Map<String, dynamic>> get signDays {
+    int defaultPoint = 0;
+    final Map<int, int> reward = <int, int>{};
+    final List<int> rewardRuleDay = <int>[];
+    for (final Map<String, dynamic> item in signRule) {
+      final int day = int.tryParse('${item['day'] ?? 0}') ?? 0;
+      final int point = int.tryParse('${item['point'] ?? 0}') ?? 0;
+      if (day == 1) {
+        defaultPoint = point;
+      } else {
+        rewardRuleDay.add(day);
+        reward[day] = point;
+      }
+    }
+    final int totalDay = cycle;
+    int startDay = 1;
+    int endDay = 7;
+    if (signDaysSeries > 5) startDay = signDaysSeries - 5;
+    if (totalDay >= signDaysSeries + 1) endDay = signDaysSeries + 1;
+    if (signDaysSeries <= 5) endDay = 8 - startDay;
+    if ((endDay - startDay) < 7 && totalDay >= startDay + 6) endDay = startDay + 6;
+    if (totalDay == signDaysSeries && signDaysSeries > 0) {
+      startDay = signDaysSeries - 6;
+      endDay = signDaysSeries;
+    }
+    final List<Map<String, dynamic>> days = <Map<String, dynamic>>[];
+    for (int i = 1; i <= totalDay; i++) {
+      if (i >= startDay && i <= endDay) {
+        days.add(<String, dynamic>{'day': i, 'is_last': 0, 'point': defaultPoint});
+      }
+    }
+    if (days.isNotEmpty) days.last['is_last'] = 1;
+    for (final Map<String, dynamic> item in days) {
+      final int day = item['day'] as int;
+      // 连签额外奖励 = 额外奖励 + 每日默认奖励
+      if (rewardRuleDay.contains(day)) item['point'] = (reward[day] ?? 0) + defaultPoint;
+    }
+    return days;
+  }
+
+  /// 签到信息(开关 + 是否已签 + 周期奖励);商家未开启签到时整块不展示
+  Future<void> loadSignin() async {
+    try {
+      final int state = await MemberSigninApi.status();
+      if (!mounted || state != 1) return;
+      final List<dynamic> res = await Future.wait<dynamic>(<Future<dynamic>>[
+        MemberApi.info(),
+        MemberSigninApi.isSign(),
+        MemberSigninApi.award(),
+      ]);
+      if (!mounted) return;
+      final dynamic info = res[0];
+      final Map<String, dynamic> award =
+          res[2] is Map ? (res[2] as Map).cast<String, dynamic>() : <String, dynamic>{};
+      final dynamic reward = award['reward'];
+      setState(() {
+        signState = state;
+        if (info is Map) signDaysSeries = int.tryParse('${info['sign_days_series'] ?? 0}') ?? 0;
+        hasSign = int.tryParse('${res[1]}') ?? 0;
+        cycle = int.tryParse('${award['cycle'] ?? 0}') ?? 0;
+        signRule = reward is List
+            ? reward.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList()
+            : <Map<String, dynamic>>[];
+      });
+    } catch (_) {
+      // 静默: 接口异常时不展示签到卡
+    }
+  }
+
+  /// 执行签到(/api/membersignin/signin)
+  Future<void> _signin() async {
+    if (signState != 1 || hasSign == 1 || signSubmitting) return;
+    setState(() => signSubmitting = true);
+    try {
+      final Map<String, dynamic> tip = await MemberSigninApi.signin();
+      if (!mounted) return;
+      final int point = int.tryParse('${tip['point'] ?? 0}') ?? 0;
+      MyDialog.toast(point > 0 ? '签到成功，获得${point}积分' : '签到成功');
+      // 先本地置为已签(接口返回可能有延迟), 再拉最新规则
+      if (mounted) {
+        setState(() {
+          hasSign = 1;
+          signDaysSeries += 1;
+        });
+      }
+      await loadSignin();
+      await load();
+    } catch (e) {
+      if (mounted) MyDialog.toast(MemberSigninApi.errorMsg(e, '签到失败'));
+    } finally {
+      if (mounted) setState(() => signSubmitting = false);
     }
   }
 
@@ -326,9 +446,10 @@ class _EarnPageState extends State<EarnPage> {
     );
   }
 
-  // 签到卡
+  // 签到卡(规则取 /api/membersignin/award;商家未开启签到时整块不展示)
   Widget _buildSignIn() {
-    final DateTime now = DateTime.now();
+    final List<Map<String, dynamic>> days = signDays;
+    if (signState != 1 || days.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(12.0, 4.0, 12.0, 0.0),
       padding: const EdgeInsets.all(14.0),
@@ -345,8 +466,8 @@ class _EarnPageState extends State<EarnPage> {
               const Icon(Icons.calendar_today, color: primary, size: 20.0),
               const SizedBox(width: 6.0),
               const Text('签到领 ', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
-              Text('$signBase', style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w800)),
-              const Text(' 金币', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
+              Text('$signPointTomorrow', style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w800)),
+              const Text(' 积分', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
@@ -354,20 +475,21 @@ class _EarnPageState extends State<EarnPage> {
                   color: primary.withAlpha(18),
                   borderRadius: BorderRadius.circular(10.0),
                 ),
-                child: const Text('最多领120金币', style: TextStyle(color: primary, fontSize: 10.0)),
+                child: Text('已连续签到$signDaysSeries天', style: const TextStyle(color: primary, fontSize: 10.0)),
               ),
             ],
           ),
           const SizedBox(height: 14.0),
-          // 6 天签到
+          // 周期奖励窗口(第N天 + 可得积分, 已签到的高亮)
           Row(
-            children: List<Widget>.generate(signRewards.length, (int i) {
-              final DateTime day = now.add(Duration(days: i));
-              final String dateText = i == 0 ? '今天' : '${day.month}/${day.day}';
-              final bool isToday = i == 0;
+            children: days.map((Map<String, dynamic> item) {
+              final int day = item['day'] as int;
+              final int point = item['point'] as int;
+              final bool isLast = '${item['is_last']}' == '1';
+              final bool signed = day <= signDaysSeries;
               return Expanded(
                 child: Container(
-                  margin: EdgeInsets.only(right: i == signRewards.length - 1 ? 0.0 : 6.0),
+                  margin: EdgeInsets.only(right: isLast ? 0.0 : 6.0),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
@@ -375,54 +497,52 @@ class _EarnPageState extends State<EarnPage> {
                         width: double.infinity,
                         padding: const EdgeInsets.symmetric(vertical: 6.0),
                         decoration: BoxDecoration(
-                          color: isToday ? primary : const Color(0xFFF9F9F9),
+                          color: signed ? primary : const Color(0xFFF9F9F9),
                           borderRadius: BorderRadius.circular(12.0),
                         ),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: <Widget>[
-                            Image.asset(
-                              isToday
-                                  ? 'assets/images/make/money_icon_sign_1.png'
-                                  : 'assets/images/make/money_icon_sign_${i + 1}.png',
-                              width: isToday ? 28.0 : 22.0,
-                              height: isToday ? 28.0 : 22.0,
-                              fit: BoxFit.contain,
-                            ),
+                            isLast
+                                ? Icon(Icons.card_giftcard, size: 22.0, color: signed ? Colors.white : const Color(0xFFCCCCCC))
+                                : Image.asset('assets/images/sign-icon.png', width: 22.0, height: 22.0, fit: BoxFit.contain),
                             const SizedBox(height: 4.0),
-                            Text('+${signRewards[i]}', style: TextStyle(color: isToday ? Colors.white : const Color(0xFFFFA500), fontSize: 11.0, fontWeight: FontWeight.w700)),
+                            Text('+$point', style: TextStyle(color: signed ? Colors.white : const Color(0xFFFFA500), fontSize: 11.0, fontWeight: FontWeight.w700)),
                           ],
                         ),
                       ),
                       const SizedBox(height: 2.0),
-                      Text(dateText, style: const TextStyle(color: Colors.black54, fontSize: 10.0)),
+                      Text('第$day天', style: const TextStyle(color: Colors.black54, fontSize: 10.0)),
                     ],
                   ),
                 ),
               );
-            }),
+            }).toList(),
           ),
           const SizedBox(height: 14.0),
           // 签到按钮
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 12.0),
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: <Color>[Color(0xFFFF9A70), primary],
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: (hasSign == 1 || signSubmitting) ? null : _signin,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 12.0),
+              decoration: BoxDecoration(
+                gradient: hasSign == 1 ? null : const LinearGradient(colors: <Color>[Color(0xFFFF9A70), primary]),
+                color: hasSign == 1 ? Colors.grey.shade300 : null,
+                borderRadius: BorderRadius.circular(24.0),
               ),
-              borderRadius: BorderRadius.circular(24.0),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: const <Widget>[
-                Icon(Icons.calendar_today, color: Colors.white, size: 16.0),
-                SizedBox(width: 4.0),
-                Text(
-                  '签到领120金币',
-                  style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700),
-                ),
-              ],
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: <Widget>[
+                  Icon(hasSign == 1 ? Icons.check_circle_outline : Icons.calendar_today, color: Colors.white, size: 16.0),
+                  const SizedBox(width: 4.0),
+                  Text(
+                    hasSign == 1 ? '今日已签到' : '签到领$signPointTomorrow积分',
+                    style: const TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700),
+                  ),
+                ],
+              ),
             ),
           ),
         ],
