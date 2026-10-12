@@ -563,6 +563,16 @@ class _LoginState extends State<Login> {
     return '/';
   }
 
+  /// 顶部返回: 栈里还有上一页就返回,没有(路由中间件重定向过来,previousRoute 为空)直接回首页
+  /// * 原来只判 Get.previousRoute,为空时点了完全没反应
+  void onBack() {
+    if (Get.previousRoute.isNotEmpty) {
+      Get.back();
+      return;
+    }
+    Get.offAllNamed('/');
+  }
+
   @override
   Widget build(BuildContext context) {
     // 状态栏高度: 红色头部顶到状态栏,不露白边
@@ -683,9 +693,7 @@ class _LoginState extends State<Login> {
           left: 12.0,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onTap: () {
-              if (Get.previousRoute.isNotEmpty) Get.back();
-            },
+            onTap: onBack,
             child: const Padding(
               padding: EdgeInsets.all(6.0),
               child: Icon(Icons.arrow_back_ios_new_rounded, size: 20.0, color: Color(0xFF333333)),

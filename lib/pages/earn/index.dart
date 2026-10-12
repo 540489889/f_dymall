@@ -322,9 +322,9 @@ class _EarnPageState extends State<EarnPage> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
           SizedBox(height: statusTop),
-          // 标题
+          // 标题(左右边距同卡片,和下面各板块左边缘对齐)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),
             child: Row(
               children: <Widget>[
                 const Text(
@@ -338,8 +338,9 @@ class _EarnPageState extends State<EarnPage> {
           ),
           const SizedBox(height: 8.0),
           // 收益概览（整块统一橙色盒子）
+          // * 左右边距与其它卡片(签到/热门任务)一致用 12, 否则盒子会比下面的卡片窄一截
           Padding(
-            padding: const EdgeInsets.fromLTRB(16.0, 0.0, 16.0, 6.0),
+            padding: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 6.0),
             child: Container(
               padding: const EdgeInsets.all(12.0),
               decoration: BoxDecoration(

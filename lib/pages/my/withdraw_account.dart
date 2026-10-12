@@ -222,19 +222,7 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
           ),
           const SizedBox(height: 6.0),
           const Text('添加账户后，提现一键到账', style: TextStyle(fontSize: 12.0, color: Color(0xFFAAAAAA))),
-          const SizedBox(height: 18.0),
-          SizedBox(
-            width: 140.0,
-            height: 38.0,
-            child: FilledButton(
-              style: ButtonStyle(
-                backgroundColor: WidgetStateProperty.all(primary),
-                shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(19.0))),
-              ),
-              onPressed: () => toEdit(),
-              child: const Text('新增账户', style: TextStyle(fontSize: 14.0)),
-            ),
-          ),
+          // 新增按钮只保留底部固定那一个(底部栏在空态也一直显示),这里不再重复放一个
         ],
       ),
     );
