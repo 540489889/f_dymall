@@ -3,6 +3,7 @@
 library;
 
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../utils/ads.dart';
 import '../../utils/ads_config.dart';
@@ -270,20 +271,25 @@ class _EarnPageState extends State<EarnPage> {
     );
   }
 
+  /// 「去领取」: 进申请提现页(/my/withdraw)
   Widget _headerClaimButton() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.0),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: <Widget>[
-          Image.asset('assets/images/make/money_icon_sign_2.png', width: 16.0, height: 16.0, fit: BoxFit.contain),
-          const SizedBox(width: 2.0),
-          const Text('去领取', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w700)),
-        ],
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Get.toNamed('/my/withdraw'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(20.0),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Image.asset('assets/images/make/money_icon_sign_2.png', width: 16.0, height: 16.0, fit: BoxFit.contain),
+            const SizedBox(width: 2.0),
+            const Text('去领取', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w700)),
+          ],
+        ),
       ),
     );
   }
