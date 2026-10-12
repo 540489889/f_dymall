@@ -34,6 +34,8 @@ class Goods extends StatefulWidget {
     this.onBack,
     // 滚动控制器: 直播间面板内嵌时由面板给(实现"先撑开面板,再滚内容"的联动)
     this.scrollController,
+    // 滚动物理: 直播间面板内嵌时由面板给(面板没撑满时吃掉滚动量,先改面板高度)
+    this.physics,
   });
 
 /// 商品id: 非空时优先于路由参数(直播间面板直接传)
@@ -44,6 +46,8 @@ final String? liveRoomId;
 final VoidCallback? onBack;
 /// 外部滚动控制器(直播间面板用): 不传则页面自建自毁
 final ScrollController? scrollController;
+/// 外部滚动物理(直播间面板用): 不传则用默认(behavior 提供的)物理
+final ScrollPhysics? physics;
 
 @override
 State<Goods> createState() => _GoodsState();
@@ -304,6 +308,8 @@ Widget _buildContent() {
     children: <Widget>[
       CustomScrollView(
     scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
+    // 直播间面板内嵌时由面板接管(面板没撑满时位移先改面板高度, 内容不动)
+    physics: widget.physics,
     controller: scrollController,
     slivers: [
       _buildSliverAppBar(),

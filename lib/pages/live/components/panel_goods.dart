@@ -1,9 +1,10 @@
 /// 直播间商品面板
 /// * 点商品不跳页: 面板从底部升起盖住下半屏,上方露出直播画面(就是直播间自己的 Video,一直在播)
-/// * 抖音式升降: 初始占屏 80%, 三种方式都能改高度
-///   * 拖顶部把手(最可靠): 直接改面板高度, 松手就近吸附到 80% / 全屏
-///   * 内容在顶部时上滑: 自动撑到全屏(见下面的滚动兜底)
-///   * 内容滚到顶继续往下拉: 越界量交回面板, 收回到 80%
+/// * 抖音式升降: 初始占屏 80%
+///   * 内容停在顶部时手指上滑 -> 位移先给面板, 面板撑大到全屏, 内容不动
+///   * 面板全屏后继续上滑 -> 内容才开始滚
+///   * 内容滚回顶部继续往下拉 -> 面板收回到 80%(到 80% 后不再变小)
+///   * 另外顶部有把手, 按住它也能直接拖高度
 /// * 内容直接复用商品详情页 Goods: 轮播 / 价格 / 促销 / 评价 / 属性 / 优惠券 /
 ///   图文详情 / 加购购买都在,商城详情页和直播间共用一套逻辑
 library;
@@ -11,6 +12,34 @@ library;
 import 'package:flutter/material.dart';
 
 import '../../goods/detail.dart';
+
+/// 面板专用滚动物理: 内容停在顶部时, 把手指位移先交给面板改高度, 内容不动
+/// * 面板没到边界(80% / 全屏) -> 位移吃给面板, 返回 0 让内容不动(抖音那种手感)
+/// * 面板已到边界 -> 放行, 内容正常滚
+/// * 为什么不用 DraggableScrollableSheet 自带的越界机制: 它依赖内部列表刚好停在
+///   pixels == 0 且方向判定全部命中, 详情页是 Stack + SliverAppBar 结构, 实测不触发
+class _PanelScrollPhysics extends ClampingScrollPhysics {
+  const _PanelScrollPhysics({super.parent, required this.onDelta});
+
+  /// [dy] > 0 表示手指上滑(面板应变高), < 0 表示手指下滑(面板应变矮)
+  /// * 返回 true: 这段位移被面板吃掉, 内容不滚
+  final bool Function(double dy) onDelta;
+
+  @override
+  _PanelScrollPhysics applyTo(ScrollPhysics? ancestor) {
+    return _PanelScrollPhysics(parent: buildParent(ancestor), onDelta: onDelta);
+  }
+
+  @override
+  double applyPhysicsToUserOffset(ScrollMetrics position, double offset) {
+    // 只在内容停在顶部时接管(内容已经滚起来了就让它正常滚)
+    // * offset < 0 = 手指上滑(要看下面的内容) -> 转成正的 dy 让面板变高
+    if (position.pixels <= 0.0 && offset != 0.0 && onDelta(-offset)) {
+      return 0.0;
+    }
+    return super.applyPhysicsToUserOffset(position, offset);
+  }
+}
 
 /// 直播间商品面板: 可拖拽升降(80% <-> 全屏), 上方留白露出直播画面
 /// * 外层换商品时要带 key(ValueKey(goodsId)): 否则 widget 被复用,详情页不会重新加载
@@ -46,6 +75,7 @@ class _PanelGoodsState extends State<PanelGoods> {
   double _size = _kMinRatio;
 
   late final DraggableScrollableController _sheetController = DraggableScrollableController();
+  late final _PanelScrollPhysics _physics = _PanelScrollPhysics(onDelta: _onDragDelta);
 
   @override
   void initState() {
@@ -72,13 +102,22 @@ class _PanelGoodsState extends State<PanelGoods> {
     setState(() => _size = size);
   }
 
-  /// 把手拖动: 手指向上 -> 面板变高(delta.dy 为负, 取反后是正增量)
-  void _onHandleDrag(DragUpdateDetails details) {
-    if (!_sheetController.isAttached) return;
+  /// 把滚动位移转成面板高度(内容滚动 / 拖把手都走这里)
+  /// * [dy] > 0 面板变高; 返回 false 表示面板已到边界, 位移该还给内容
+  bool _onDragDelta(double dy) {
+    if (!_sheetController.isAttached) return false;
     final double height = MediaQuery.sizeOf(context).height;
-    if (height <= 0) return;
-    final double delta = -details.delta.dy / height;
-    _sheetController.jumpTo((_sheetController.size + delta).clamp(_kMinRatio, 1.0));
+    if (height <= 0) return false;
+    final double current = _sheetController.size;
+    final double next = (current + dy / height).clamp(_kMinRatio, 1.0);
+    if (next == current) return false;
+    _sheetController.jumpTo(next);
+    return true;
+  }
+
+  /// 把手拖动: 手指向上(delta.dy 为负) -> 面板变高
+  void _onHandleDrag(DragUpdateDetails details) {
+    _onDragDelta(-details.delta.dy);
   }
 
   // 松手: 就近吸附到 80% 或全屏
@@ -93,35 +132,6 @@ class _PanelGoodsState extends State<PanelGoods> {
     );
   }
 
-  // 滚动兜底: 详情页是 Stack + SliverAppBar 结构, 光靠 sheet 自己的越界机制未必触发,
-  // 这里按滚动通知再补两条, 保证"上滑展开 / 到顶下拉收起"一定能用
-  bool _onScroll(ScrollNotification notification) {
-    if (!_sheetController.isAttached) return false;
-    // 内容在顶部还继续上滑(想看下面的内容): 先撑满面板
-    if (notification is ScrollUpdateNotification) {
-      final double? delta = notification.scrollDelta;
-      if (notification.metrics.pixels <= 2.0 && delta != null && delta > 0.0 && _sheetController.size < 1.0) {
-        _sheetController.animateTo(
-          1.0,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-        );
-      }
-      return false;
-    }
-    // 内容已到顶还往下拉(越界): 面板收回 80%
-    if (notification is OverscrollNotification) {
-      if (notification.overscroll < 0.0 && _sheetController.size > _kMinRatio) {
-        _sheetController.animateTo(
-          _kMinRatio,
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-        );
-      }
-    }
-    return false;
-  }
-
   @override
   Widget build(BuildContext context) {
     return Stack(
@@ -134,70 +144,68 @@ class _PanelGoodsState extends State<PanelGoods> {
             child: const SizedBox.expand(),
           ),
         ),
-        // 面板本体: 入场从底部升起, 之后可拖拽升降(80% <-> 全屏)
+        // 面板本体: 入场从底部升起, 之后可升降(80% <-> 全屏)
         AnimatedSlide(
           offset: _entered ? Offset.zero : const Offset(0.0, 1.0),
           duration: _kDuration,
           curve: Curves.easeOutCubic,
           child: SizedBox.expand(
-            child: NotificationListener<ScrollNotification>(
-              onNotification: _onScroll,
-              child: DraggableScrollableSheet(
-                controller: _sheetController,
-                initialChildSize: _kMinRatio,
-                minChildSize: _kMinRatio,
-                maxChildSize: 1.0,
-                // 松手后吸到最近的档位(80% / 全屏), 不会停在中间高度
-                snap: true,
-                snapSizes: <double>[_kMinRatio, 1.0],
-                builder: (BuildContext context, ScrollController scrollController) {
-                  return Stack(
-                    children: <Widget>[
-                      ClipRRect(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(_size >= 0.995 ? 0.0 : _kRadius),
-                        ),
-                        child: Goods(
-                          // 和外层 key 对应: 换商品时重建详情页,重新拉数据
-                          key: ValueKey<int>(widget.goodsId),
-                          goodsId: widget.goodsId,
-                          liveRoomId: widget.roomSn,
-                          onBack: widget.onClose,
-                          // 用面板给的控制器: 面板没撑满时拖动先撑面板, 撑满后才滚内容
-                          scrollController: scrollController,
-                        ),
+            child: DraggableScrollableSheet(
+              controller: _sheetController,
+              initialChildSize: _kMinRatio,
+              minChildSize: _kMinRatio,
+              maxChildSize: 1.0,
+              // 松手后吸到最近的档位(80% / 全屏), 不会停在中间高度
+              snap: true,
+              snapSizes: <double>[_kMinRatio, 1.0],
+              builder: (BuildContext context, ScrollController scrollController) {
+                return Stack(
+                  children: <Widget>[
+                    ClipRRect(
+                      borderRadius: BorderRadius.vertical(
+                        top: Radius.circular(_size >= 0.995 ? 0.0 : _kRadius),
                       ),
-                      // 顶部把手: 拖它直接改面板高度(不依赖内容滚动越界, 最好拖)
-                      Positioned(
-                        top: 0.0,
-                        left: 0.0,
-                        right: 0.0,
-                        height: _kHandleHeight,
-                        child: Center(
-                          child: GestureDetector(
-                            behavior: HitTestBehavior.opaque,
-                            onVerticalDragUpdate: _onHandleDrag,
-                            onVerticalDragEnd: (DragEndDetails details) => _snapSheet(),
-                            child: const SizedBox(
-                              width: 64.0,
-                              height: _kHandleHeight,
-                              child: Center(
-                                child: DecoratedBox(
-                                  decoration: BoxDecoration(
-                                    color: Color(0x33000000),
-                                    borderRadius: BorderRadius.all(Radius.circular(2.0)),
-                                  ),
-                                  child: SizedBox(width: 36.0, height: 4.0),
+                      child: Goods(
+                        // 和外层 key 对应: 换商品时重建详情页,重新拉数据
+                        key: ValueKey<int>(widget.goodsId),
+                        goodsId: widget.goodsId,
+                        liveRoomId: widget.roomSn,
+                        onBack: widget.onClose,
+                        scrollController: scrollController,
+                        // 关键: 面板没撑满时, 滚动位移先改面板高度(内容不动)
+                        physics: _physics,
+                      ),
+                    ),
+                    // 顶部把手: 按住它直接拖面板高度(只占中间一小条, 不挡详情页按钮)
+                    Positioned(
+                      top: 0.0,
+                      left: 0.0,
+                      right: 0.0,
+                      height: _kHandleHeight,
+                      child: Center(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onVerticalDragUpdate: _onHandleDrag,
+                          onVerticalDragEnd: (DragEndDetails details) => _snapSheet(),
+                          child: const SizedBox(
+                            width: 64.0,
+                            height: _kHandleHeight,
+                            child: Center(
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: Color(0x33000000),
+                                  borderRadius: BorderRadius.all(Radius.circular(2.0)),
                                 ),
+                                child: SizedBox(width: 36.0, height: 4.0),
                               ),
                             ),
                           ),
                         ),
                       ),
-                    ],
-                  );
-                },
-              ),
+                    ),
+                  ],
+                );
+              },
             ),
           ),
         ),
