@@ -29,6 +29,7 @@ import '../../pages/live/index.dart';
 import '../../api/seckill.dart';
 import '../../api/cart.dart';
 import '../../controller/auth_store.dart';
+import '../../controller/my_preload.dart';
 import '../../api/index.dart';
 import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
 import 'package:flutter/services.dart';
@@ -700,6 +701,9 @@ Widget liveBg() {
 void initState() {
   super.initState();
   scrollController.addListener(_onScroll);
+
+  // 预拉「我的」页首屏数据(启动时已拉过就跳过, 幂等): 进「我的」时首帧就有内容
+  MyPreload.start();
 
   // 已登录但会员信息为空(启动时拉取失败): 补拉一次, 避免门店绑定状态拿不到还显示"去绑定门店"
   if (Get.isRegistered<AuthStore>() && AuthStore.to.isLogin && AuthStore.to.memberInfo.isEmpty) {

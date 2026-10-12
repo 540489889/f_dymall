@@ -8,12 +8,11 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import '../../api/adv.dart';
-import '../../api/member.dart';
 import '../../api/order.dart';
 import '../../components/adv_banner.dart';
 import '../../controller/auth_store.dart';
 import '../../controller/app_config.dart';
+import '../../controller/my_preload.dart';
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -24,12 +23,8 @@ class MyPage extends StatefulWidget {
 class _MyPageState extends State<MyPage> {
   final authStore = AuthStore.to;
 
-  /// 广告 / 服务的上次数据(static: 页面重建、重新进页面都还在)
-  /// * 首帧直接用缓存渲染, 接口回来再比对更新 —— 解决「先没有, 过一会才冒出来」的闪动
-  static List<Map<String, dynamic>> advCache = <Map<String, dynamic>>[];
-  static List<Map<String, dynamic>> serviceCache = <Map<String, dynamic>>[];
-
-  /// 是否已拉到结果(只有「无缓存的首次」才用骨架占位, 拿到结果后占位撤掉)
+  /// 是否已拉到结果(只有「没有预拉缓存」时才用骨架占位, 拿到结果后占位撤掉)
+  /// * 数据本身走 MyPreload(启动时预拉 + 页面刷新共用一份缓存)
   bool advLoaded = false;
   bool serviceLoaded = false;
 
@@ -46,13 +41,13 @@ class _MyPageState extends State<MyPage> {
   @override
   void initState() {
     super.initState();
-    // 先用缓存渲染首帧: 有缓存就当已有数据(loaded), 没有就走骨架占位
-    if (advCache.isNotEmpty) {
-      advList = advCache;
+    // 首帧直接用 MyPreload 的预拉结果: 启动时已拉到就当已有数据(loaded), 没拉到才走骨架占位
+    if (MyPreload.advLoaded) {
+      advList = MyPreload.adv;
       advLoaded = true;
     }
-    if (serviceCache.isNotEmpty) {
-      serviceList.addAll(serviceCache);
+    if (MyPreload.serviceLoaded) {
+      serviceList.addAll(MyPreload.service);
       serviceLoaded = true;
     }
     loadServiceNav();
@@ -74,22 +69,11 @@ class _MyPageState extends State<MyPage> {
   /// * 看播记录是内置入口: 后台没配 WATCH_RECORD 时自动补一项,保证入口一定可达
   Future<void> loadServiceNav() async {
     try {
-      final List<Map<String, dynamic>> list = await MemberApi.serviceNav();
+      // 走 MyPreload: 内部已补「看播记录」入口, 并把结果写回共享缓存
+      final List<Map<String, dynamic>> list = await MyPreload.loadService();
       if (!mounted) return;
-      if (list.isNotEmpty) {
-      final bool hasWatchRecord =
-          list.any((Map<String, dynamic> e) => _serviceActionName(e) == 'WATCH_RECORD');
-      if (!hasWatchRecord) {
-        list.add(<String, dynamic>{
-          'nav_name': '看播记录',
-          'nav_image': 'assets/images/me/mine_icon_svc_livemic.png',
-          'nav_url': jsonEncode(<String, String>{'name': 'WATCH_RECORD'}),
-        });
-      }
-      }
-      // 与缓存一致就不 setState: 内容没变还重建, 会把整个列表/网格重新刷一遍(看起来就是闪一下)
-      final bool same = jsonEncode(list) == jsonEncode(serviceCache);
-      serviceCache = list;
+      // 与当前渲染的一致就不 setState: 内容没变还重建, 会把整个网格重新刷一遍(看起来就是闪一下)
+      final bool same = jsonEncode(list) == jsonEncode(serviceList);
       if (same && serviceLoaded) return;
       setState(() {
         serviceList
@@ -98,6 +82,8 @@ class _MyPageState extends State<MyPage> {
         serviceLoaded = true;
       });
     } catch (e) {
+      // 拉不到(预拉也失败): 撤掉骨架, 恢复「没数据就不展示」
+      if (mounted) setState(() => serviceLoaded = true);
       if (kDebugMode) debugPrint('[serviceNav] 请求失败, 不展示我的服务: $e');
     }
   }
@@ -106,16 +92,16 @@ class _MyPageState extends State<MyPage> {
   /// * 失败 / 后台没配时列表为空, 「我的订单」上方的广告位不占高度
   Future<void> loadAdv() async {
     try {
-      final List<Map<String, dynamic>> list = await AdvApi.list('MEMBER_M');
+      final List<Map<String, dynamic>> list = await MyPreload.loadAdv();
       if (!mounted) return;
-      final bool same = jsonEncode(list) == jsonEncode(advCache);
-      advCache = list;
+      final bool same = jsonEncode(list) == jsonEncode(advList);
       if (same && advLoaded) return;
       setState(() {
         advList = list;
         advLoaded = true;
       });
     } catch (e) {
+      if (mounted) setState(() => advLoaded = true);
       if (kDebugMode) debugPrint('[adv] 请求失败, 不展示广告位: $e');
     }
   }
@@ -312,22 +298,6 @@ class _MyPageState extends State<MyPage> {
         ),
       ),
     );
-  }
-
-  /// 服务项的动作码: nav_url 可能是 Map 也可能是 JSON 字符串(与首页金刚区同一套约定)
-  /// * 解析不了返回空串(后台该入口没配好)
-  String _serviceActionName(Map<String, dynamic> item) {
-    final dynamic rawUrl = item['nav_url'];
-    if (rawUrl is Map) return '${rawUrl['name'] ?? ''}';
-    final String text = '${rawUrl ?? ''}'.trim();
-    if (text.isEmpty) return '';
-    try {
-      final dynamic decoded = jsonDecode(text);
-      if (decoded is Map) return '${decoded['name'] ?? ''}';
-    } catch (_) {
-      return '';
-    }
-    return '';
   }
 
   /// 我的服务跳转: nav_url 为 JSON 字符串(与首页金刚区同一套约定), name 是动作码
