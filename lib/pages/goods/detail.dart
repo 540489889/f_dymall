@@ -34,7 +34,7 @@ class Goods extends StatefulWidget {
     this.onBack,
     // 滚动控制器: 直播间面板内嵌时由面板给(实现"先撑开面板,再滚内容"的联动)
     this.scrollController,
-    // 滚动物理: 直播间面板内嵌时由面板给(面板没撑满时吃掉滚动量,先改面板高度)
+    // 滚动物理: 预留给内嵌场景(smooth_sheets 自己接管滚动后暂用不到, 不传走默认物理)
     this.physics,
   });
 
@@ -308,7 +308,7 @@ Widget _buildContent() {
     children: <Widget>[
       CustomScrollView(
     scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
-    // 直播间面板内嵌时由面板接管(面板没撑满时位移先改面板高度, 内容不动)
+    // 内嵌场景(直播间面板)可传入自定义物理; 不传走 behavior 的默认物理
     physics: widget.physics,
     controller: scrollController,
     slivers: [
