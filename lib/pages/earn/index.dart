@@ -160,7 +160,8 @@ class _EarnPageState extends State<EarnPage> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: <Widget>[
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    // 三列都垂直居中: 「去领取」是矮按钮, 顶部对齐会显得贴着上边
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: <Widget>[
                       Expanded(child: _headerCoinColumn()),
                       const SizedBox(width: 8.0),
