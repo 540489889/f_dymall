@@ -19,7 +19,6 @@ class PopupGoods extends StatefulWidget {
     this.roomSn,
     this.liveCover,
     this.livePullUrl,
-    this.onOpenDetail,
   });
 
   // 带货商品列表(首屏数据; 打开后会被 onRefresh 的结果覆盖)
@@ -39,9 +38,6 @@ class PopupGoods extends StatefulWidget {
   final String? liveCover;
   // 直播间拉流地址: 详情页的悬浮小窗用(小窗起一路静音流继续播画面)
   final String? livePullUrl;
-  // 点商品: 由直播间决定怎么开(直播间内开面板 / 跳 /goods 页面)
-  // * 传了它就不跳页: 面板盖在直播间上, 直播画面继续播, 不需要小窗
-  final void Function(int goodsId)? onOpenDetail;
 
   @override
   State<PopupGoods> createState() => _PopupGoodsState();
@@ -364,17 +360,6 @@ Widget build(BuildContext context) {
                       onTap: gid == null ? null : () {
                         if (kDebugMode) {
                           debugPrint('[live]购物车跳详情: goods_id=$gid live_id=${item['live_id'] ?? ''}');
-                        }
-                        // 直播间给了回调就在直播间内开面板(不跳页, 直播画面继续播)
-                        // * 必须先关掉本弹窗: 面板挂在直播间页面里, 在弹窗(路由层)下面,
-                        //   不关的话会看到"弹窗 + 面板"叠在一起(像两个弹窗)
-                        final void Function(int)? openDetail = widget.onOpenDetail;
-                        if (openDetail != null) {
-                          // 先取局部变量: pop 之后本页会被销毁, 不能再用 widget / context
-                          Navigator.of(context).pop();
-                          // 等弹窗退场动画走完(300ms)再开面板, 两个动画不打架
-                          Future<void>.delayed(const Duration(milliseconds: 300), () => openDetail(gid));
-                          return;
                         }
                         Get.toNamed('/goods', arguments: <String, dynamic>{
                           'goodsId': gid,

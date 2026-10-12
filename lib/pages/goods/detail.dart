@@ -25,29 +25,7 @@ import './delivery_sheet.dart';
 import './evaluate.dart';
 
 class Goods extends StatefulWidget {
-  const Goods({
-    super.key,
-    // 直播间商品面板内嵌显示时直接传 id / 房间号,不走路由参数
-    this.goodsId,
-    this.liveRoomId,
-    // 返回按钮: 面板里是"关闭面板",默认退路由
-    this.onBack,
-    // 滚动控制器: 直播间面板内嵌时由面板给(实现"先撑开面板,再滚内容"的联动)
-    this.scrollController,
-    // 滚动物理: 预留给内嵌场景(smooth_sheets 自己接管滚动后暂用不到, 不传走默认物理)
-    this.physics,
-  });
-
-/// 商品id: 非空时优先于路由参数(直播间面板直接传)
-final int? goodsId;
-/// 直播间房间号: 非空时优先于路由参数(面板里加购/下单同样要回传 live_roomid)
-final String? liveRoomId;
-/// 返回/关闭回调(面板里传关闭面板)
-final VoidCallback? onBack;
-/// 外部滚动控制器(直播间面板用): 不传则页面自建自毁
-final ScrollController? scrollController;
-/// 外部滚动物理(直播间面板用): 不传则用默认(behavior 提供的)物理
-final ScrollPhysics? physics;
+  const Goods({ super.key });
 
 @override
 State<Goods> createState() => _GoodsState();
@@ -58,8 +36,7 @@ class _GoodsState extends State<Goods> {
 late final Map<String, dynamic> args = Get.arguments is Map
     ? Map<String, dynamic>.from(Get.arguments as Map)
     : const <String, dynamic>{};
-// 直播间面板内嵌时用面板给的控制器(面板升降与内容滚动联动), 不传则自建
-late final ScrollController scrollController = widget.scrollController ?? ScrollController();
+late final ScrollController scrollController = ScrollController();
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 // 接口返回的商品详情
@@ -105,10 +82,8 @@ void initState() {
     if (kDebugMode) {
       debugPrint('[live]商品详情: fromLive=$fromLive liveRoomId=$liveRoomId cover=${liveCover.isNotEmpty} pullUrl=${livePullUrl.isNotEmpty}');
     }
-    // 只有"从直播间通过路由进详情页"才挂小窗(靠路由参数 fromLive 认):
-    // * 房间号为空(演示房间)也要挂,点小窗靠退栈回直播间
-    // * 直播间内嵌面板(fromLive=false)不挂: 面板上方就是直播画面,不需要小窗
-    if (!fromLive) return;
+    // 直播间进来就挂小窗: 房间号为空(演示房间)也要挂,点小窗靠退栈回直播间
+    if (!fromLive && liveRoomId.isEmpty) return;
     LiveFloatWindow.instance.show(
       context: context,
       roomSn: liveRoomId,
@@ -168,16 +143,12 @@ Future<void> loadEvaluate() async {
 void dispose() {
   // 离开详情页收起直播间悬浮小窗(返回直播间时也是走这里)
   LiveFloatWindow.instance.hide();
-  // 外部传入的(直播间面板)由面板管理, 本页不销毁
-  if (widget.scrollController == null) scrollController.dispose();
+  scrollController.dispose();
   super.dispose();
 }
 
 /// 商品id: 支持路由传 Map({'goodsId' 或 'id'})、数字或字符串
 int get goodsId {
-  // 直播间面板内嵌: 直接用构造传入的 id(没有路由参数)
-  final int? fromWidget = widget.goodsId;
-  if (fromWidget != null) return fromWidget;
   if (args.isNotEmpty) return int.tryParse('${args['goodsId'] ?? args['id'] ?? 1}') ?? 1;
   final dynamic raw = Get.arguments;
   return int.tryParse('$raw') ?? 1;
@@ -186,12 +157,7 @@ int get goodsId {
 /// 直播间房间号 sn: 从直播间点商品进来时由直播间页带过来
 /// * 加购 / 下单都要回传给后台(live_roomid),用于统计直播间成交
 /// * 普通商品详情没有这个参数,为空表示非直播间下单(演示房间的 sn 也可能为空)
-String get liveRoomId {
-  // 直播间面板内嵌: 用构造传入的房间号(面板不走路由,但要照样回传 live_roomid)
-  final String? fromWidget = widget.liveRoomId;
-  if (fromWidget != null && fromWidget.trim().isNotEmpty) return fromWidget.trim();
-  return '${args['live_roomid'] ?? ''}'.trim();
-}
+String get liveRoomId => '${args['live_roomid'] ?? ''}'.trim();
 
 /// 是否从直播间进来: 房间号为空(演示房间)时也要靠它判断要不要挂悬浮小窗
 /// * 直播间在栈里,点小窗退栈就能回去,所以没有 sn 也能回
@@ -308,8 +274,6 @@ Widget _buildContent() {
     children: <Widget>[
       CustomScrollView(
     scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
-    // 内嵌场景(直播间面板)可传入自定义物理; 不传走 behavior 的默认物理
-    physics: widget.physics,
     controller: scrollController,
     slivers: [
       _buildSliverAppBar(),
@@ -392,8 +356,7 @@ Widget _buildTopBar() {
         right: 10.0,
         child: Row(
           children: <Widget>[
-            // 面板里这个按钮是"关闭面板"(关闭回调由直播间传入),普通路由进来还是退页面
-            _buildIconButton(Icons.close, widget.onBack ?? () => Get.back(), t, iconColor, marginRight: 0.0),
+            _buildIconButton(Icons.close, () => Get.back(), t, iconColor, marginRight: 0.0),
             const SizedBox(width: 6.0),
             // 吸顶后展开成搜索框(滚动前透明占位,右侧按钮照常靠右)
             Expanded(
