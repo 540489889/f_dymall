@@ -208,7 +208,6 @@ class _LiveFloatCardState extends State<_LiveFloatCard> {
           decoration: BoxDecoration(
             color: Colors.black,
             borderRadius: BorderRadius.circular(10.0),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.9), width: 1.5),
             boxShadow: const <BoxShadow>[
               BoxShadow(color: Color(0x33000000), blurRadius: 8.0, offset: Offset(0.0, 2.0)),
             ],
