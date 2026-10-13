@@ -25,10 +25,13 @@
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>NSCameraUsageDescription</key>
-	<string>用于扫描门店二维码完成门店绑定</string>
+	<string>用于扫描门店二维码完成门店绑定,以及直播连麦时采集画面</string>
 	<!-- 扫码组件支持从相册选图识别(image_picker) -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于从相册选择门店二维码图片进行识别</string>
+	<!-- 直播连麦(TRTC)采集声音: 缺失时 iOS 申请麦克风会被系统直接拒绝(甚至崩溃) -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>用于直播连麦时采集你的声音</string>
 	<!-- 广告SDK(穿山甲/GroMore)在 iOS 上请求跟踪权限(ATT)所必需, 缺失会导致启动闪退 -->
 	<key>NSUserTrackingUsageDescription</key>
 	<string>用于向您推荐更相关的广告内容</string>

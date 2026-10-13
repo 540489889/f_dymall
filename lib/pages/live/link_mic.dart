@@ -8,11 +8,13 @@ library;
 
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show debugPrint;
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show FilteringTextInputFormatter, TextInputFormatter;
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:shirne_dialog/shirne_dialog.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_def.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_listener.dart';
@@ -26,6 +28,17 @@ import '../../utils/request.dart';
 /// 连麦状态
 /// * input 输入连麦码 / waiting 等待主播同意 / linking 连麦中
 enum LinkMicStep { input, waiting, linking }
+
+/// 连麦默认美颜参数(基础美颜, 全部 0-9, 0 = 关闭)
+/// * nature 自然风格: 保留面部细节, 比 smooth(光滑) 更适合普通连麦; 秀场想要更"磨皮"可换成 smooth
+/// * 这里只给一个观感适中的默认值, 想调直接改这四个常量即可
+const TRTCBeautyStyle kBeautyStyle = TRTCBeautyStyle.nature;
+/// 磨皮(美颜)级别
+const int kBeautyLevel = 5;
+/// 美白级别
+const int kWhitenessLevel = 4;
+/// 红润级别
+const int kRuddinessLevel = 3;
 
 class LinkMicPage extends StatefulWidget {
   const LinkMicPage({super.key});
@@ -80,7 +93,8 @@ class _LinkMicPageState extends State<LinkMicPage> {
     if (submitting) return;
     final String code = codeController.text.trim();
     if (code.isEmpty) {
-      Get.snackbar('提示', '请输入连麦码');
+      // 提示与直播间一致: 居中 toast(不用顶部 snackbar)
+      MyDialog.toast('请输入连麦码');
       return;
     }
     setState(() {
@@ -92,12 +106,12 @@ class _LinkMicPageState extends State<LinkMicPage> {
       submitting = false;
     });
     if (res['ok'] != true) {
-      Get.snackbar('提示', '${res['message'] ?? '申请失败'}');
+      MyDialog.toast('${res['message'] ?? '申请失败'}');
       return;
     }
     roomSn = '${res['sn'] ?? ''}'.trim();
     if (roomSn.isEmpty) {
-      Get.snackbar('提示', '未获取到直播间信息');
+      MyDialog.toast('未获取到直播间信息');
       return;
     }
     _initSocket();
@@ -134,7 +148,8 @@ class _LinkMicPageState extends State<LinkMicPage> {
     }
   }
 
-  /// 进房: (重)连成功后发 join, 服务端据此把 meeting_accept/meeting_close 推给这条连接
+  /// 进房: (重)连成功后发 micer, 服务端据此把本连接标记为连麦者, 才会推 meeting_accept/meeting_close
+  /// * 连麦者用 micer 而不是观看页的 join: join 只注册成观众, 收不到主播同意连麦的通知
   void _initSocket() {
     socket?.close();
     socket = LiveSocket(
@@ -145,10 +160,13 @@ class _LinkMicPageState extends State<LinkMicPage> {
     socket!.connect();
   }
 
+  /// 对齐 H5 liveChat.nvue sendJoinRoom: {type:'micer', data:{room_id, token}}
   void _sendJoinRoom() {
     if (roomSn.isEmpty) return;
-    // 与 H5 sendJoinRoom / 观看页进房格式 #0 一致
-    socket?.send('join', <String, dynamic>{
+    if (kDebugMode) {
+      debugPrint('[link]发送进房消息: type=micer room_id=$roomSn');
+    }
+    socket?.send('micer', <String, dynamic>{
       'room_id': roomSn,
       'token': Request.currentToken,
     });
@@ -173,7 +191,7 @@ class _LinkMicPageState extends State<LinkMicPage> {
   /// 主播结束/拒绝: 退房回到输入态
   void _onClosed(String message) {
     if (!mounted) return;
-    Get.snackbar('提示', message);
+    MyDialog.toast(message);
     unawaited(_stopRing());
     unawaited(_exitTrtc());
     setState(() {
@@ -187,7 +205,7 @@ class _LinkMicPageState extends State<LinkMicPage> {
     await _stopRing();
     final Map<String, dynamic> params = LiveApi.trtcParamsOf(data);
     if (params.isEmpty) {
-      Get.snackbar('提示', '连麦参数不完整，请重新申请');
+      MyDialog.toast('连麦参数不完整，请重新申请');
       setState(() {
         step = LinkMicStep.input;
       });
@@ -196,7 +214,13 @@ class _LinkMicPageState extends State<LinkMicPage> {
     // 相机/麦克风: 没授权就先申请, 被拒直接不进房(进了也只有黑屏)
     final bool granted = await _requestPermissions();
     if (!granted) {
-      Get.snackbar('提示', '需要相机和麦克风权限才能连麦');
+      if (await _permissionBlocked()) {
+        // 被永久拒绝(勾了"不再询问"/系统里关掉): 再 request 也不会弹窗, 只能去设置页
+        MyDialog.toast('相机/麦克风权限已被拒绝，请在系统设置中开启');
+        await openAppSettings();
+      } else {
+        MyDialog.toast('需要相机和麦克风权限才能连麦');
+      }
       setState(() {
         step = LinkMicStep.input;
       });
@@ -223,6 +247,7 @@ class _LinkMicPageState extends State<LinkMicPage> {
     );
     listener = value;
     cloud.registerListener(value);
+    _applyBeauty(cloud);
     cloud.startLocalAudio(TRTCAudioQuality.defaultMode);
     cloud.enterRoom(
       TRTCParams(
@@ -241,13 +266,36 @@ class _LinkMicPageState extends State<LinkMicPage> {
     });
   }
 
+  /// 应用默认美颜: 进房前设一次, 本地预览起播后再设一次(预览视图重建时仍保持)
+  /// * 只对本地采集生效: 连麦者自己看到的预览和推给主播的画面都会带上
+  /// * 全部为 0 即关闭美颜; 直播期间退出房间不会残留
+  void _applyBeauty(TRTCCloud cloud) {
+    cloud.setBeautyStyle(kBeautyStyle, kBeautyLevel, kWhitenessLevel, kRuddinessLevel);
+    if (kDebugMode) {
+      debugPrint('[link]默认美颜: ${kBeautyStyle.name} 磨皮$kBeautyLevel 美白$kWhitenessLevel 红润$kRuddinessLevel');
+    }
+  }
+
   /// 申请相机 + 麦克风权限
+  /// * 前提是两端都声明了权限: AndroidManifest 的 CAMERA/RECORD_AUDIO、Info.plist 的 NSCamera/NSMicrophone
+  ///   没声明时 request 直接返回 denied 且不弹系统弹窗, 表现就是"一进来就提示需要权限"
   Future<bool> _requestPermissions() async {
     final Map<Permission, PermissionStatus> statuses = await <Permission>[
       Permission.camera,
       Permission.microphone,
     ].request();
-    return statuses[Permission.camera]?.isGranted == true && statuses[Permission.microphone]?.isGranted == true;
+    final bool ok = statuses[Permission.camera]?.isGranted == true && statuses[Permission.microphone]?.isGranted == true;
+    if (kDebugMode) {
+      debugPrint('[link]权限结果: camera=${statuses[Permission.camera]} mic=${statuses[Permission.microphone]}');
+    }
+    return ok;
+  }
+
+  /// 是否已被永久拒绝(勾过"不再询问" / 系统设置里关掉): 这种再 request 也不会弹窗
+  Future<bool> _permissionBlocked() async {
+    final PermissionStatus camera = await Permission.camera.status;
+    final PermissionStatus mic = await Permission.microphone.status;
+    return camera.isPermanentlyDenied || mic.isPermanentlyDenied;
   }
 
   /// 结束连麦(主动挂断 / 主播结束 / 页面销毁)
@@ -309,7 +357,11 @@ class _LinkMicPageState extends State<LinkMicPage> {
           Positioned.fill(
             child: TRTCCloudVideoView(
               onViewCreated: (int viewId) {
-                trtc?.startLocalPreview(frontCamera, viewId);
+                final TRTCCloud? cloud = trtc;
+                if (cloud == null) return;
+                cloud.startLocalPreview(frontCamera, viewId);
+                // 预览视图重建后补一次(美颜是绑定采集侧的, 保险起见重设)
+                _applyBeauty(cloud);
               },
             ),
           ),
@@ -386,6 +438,9 @@ class _LinkMicPageState extends State<LinkMicPage> {
               onSubmitted: (_) => apply(),
               cursorColor: const Color(0xFFFF2C55),
               style: const TextStyle(fontSize: 14.0, color: Colors.white),
+              // 连麦码是纯数字: 弹数字键盘, 并用 formatter 过滤掉非数字(含粘贴进来的字母/符号)
+              keyboardType: TextInputType.number,
+              inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
               decoration: const InputDecoration(
                 hintText: '请输入连麦码',
                 hintStyle: TextStyle(fontSize: 13.0, color: Colors.white30),

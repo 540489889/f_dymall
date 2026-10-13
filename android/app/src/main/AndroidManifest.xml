@@ -92,10 +92,16 @@
       Internet access permissions.
       -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- 扫码绑定门店需要相机权限 -->
+    <!-- 扫码绑定门店 + 直播连麦需要相机权限 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
+    <!-- 直播连麦(TRTC)需要麦克风: 不声明时 permission_handler 申请会直接被拒, 连麦进不去房 -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <!-- Android 12+ 蓝牙耳机采集(TRTC 建议) -->
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- 穿山甲广告SDK建议权限: 网络状态用于广告请求, 定位用于提升填充率(缺少时SDK会日志告警) -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
