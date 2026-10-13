@@ -1,6 +1,8 @@
 /// 直播首页模板
 library;
 
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -10,6 +12,12 @@ import '../../components/backtop.dart';
 import '../../components/live_playing_bars.dart';
 import '../../api/live.dart';
 import './scan.dart';
+
+/// 底部导航切到「直播」tab 的刷新信号(由 lib/layouts/index.dart 的 onNavTap 自增)
+/// * 直播页被 KeepAliveWrapper 保活, initState 只跑一次: 切回 tab 不会重新请求,
+///   直播间开播/下架、在线人数这些变化要等手动下拉才看得到
+/// * 用全局信号而不是重建页面: 保活是为了留住滚动位置与筛选状态, 直接重建会丢
+final ValueNotifier<int> liveTabRefreshTick = ValueNotifier<int>(0);
 
 class LivePage extends StatefulWidget {
   const LivePage({super.key, this.fromHome = false});
@@ -114,11 +122,25 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
         }
       }
     });
+    // 底部导航切到直播 tab(含重复点当前 tab): 重新拉第一页
+    // * 只在底部 tab 这个实例上监听: 首页「全部」进来的那个实例(fromHome)不跟着刷,
+    //   否则两个实例同在时会各拉一次
+    if (!widget.fromHome) {
+      liveTabRefreshTick.addListener(_onTabRefreshTick);
+    }
     loadRoomPage();
+  }
+
+  /// 切到直播 tab: 保留旧列表占位重新拉第一页(不清空, 避免切 tab 闪一下空白)
+  /// * 保留当前筛选/搜索关键字: 用户切走再回来时还在看同一个筛选条件
+  void _onTabRefreshTick() {
+    if (!mounted) return;
+    unawaited(loadRoomPage(refresh: true, keepOld: true));
   }
 
   @override
   void dispose() {
+    liveTabRefreshTick.removeListener(_onTabRefreshTick);
     scrollController.dispose();
     searchController.dispose();
     super.dispose();

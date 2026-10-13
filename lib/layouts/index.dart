@@ -175,12 +175,31 @@ class _LayoutState extends State<Layout> {
     }).toList();
   }
 
+  /// 每个 tab 对应的页面类型(与 _pages 顺序一致)
+  /// * 默认 5 个 tab 写死顺序; diy 配置时取每条 link.type
+  List<String> get _pageTypes {
+    if (!_useDiy) {
+      return const <String>['home', 'video', 'live', 'earn', 'mine'];
+    }
+    return _diyList.map<String>((dynamic e) {
+      final Map<String, dynamic> item = e as Map<String, dynamic>;
+      final Map<String, dynamic> link =
+          item['link'] is Map ? item['link'] as Map<String, dynamic> : <String, dynamic>{};
+      return '${link['type'] ?? ''}';
+    }).toList();
+  }
+
   void onNavTap(int index) {
     setState(() {
       pageCurrent = index;
     });
     videoStore.updateBottomNavigationIndex(index);
     pageController.jumpToPage(index);
+    // 切到直播 tab(包括重复点当前 tab)时让直播列表重新拉一次:
+    // * 直播页被 KeepAliveWrapper 保活, 不主动刷新的话列表一直停在首次进 tab 时的数据
+    if (index < _pageTypes.length && _pageTypes[index] == 'live') {
+      liveTabRefreshTick.value++;
+    }
   }
 
   @override
