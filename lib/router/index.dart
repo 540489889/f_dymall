@@ -12,6 +12,7 @@ import '../pages/store/bind_store.dart';
 import '../pages/store/detail.dart';
 // 直播
 import '../pages/live/live.dart';
+import '../pages/live/link_mic.dart';
 // 商品详细
 import '../pages/goods/detail.dart';
 import '../pages/goods/search.dart';
@@ -140,12 +141,16 @@ final Map<String, Widget> routes = {
   '/point/confirm': const PointOrderConfirmPage(),
   '/point/result': const PointResultPage(),
   '/point/order_list': const PointOrderListPage(),
+  // 直播连麦(观众/嘉宾端: 输连麦码 -> 等主播同意 -> TRTC 同屏), 从「我的服务」后台入口进
+  '/live/link_mic': const LinkMicPage(),
 };
 
 // 需要登录后才能访问的路由(其余路由游客可直接浏览)
 const Set<String> authRoutes = {
   // 直播间: 进房要连 WebSocket 发弹幕/点赞,必须登录
   '/live',
+  // 连麦: 要申请连麦并占用摄像头/麦克风,必须登录
+  '/live/link_mic',
   '/my/wallet',
   '/my/recharge',
   '/my/balance_detail',
@@ -193,7 +198,8 @@ final List<GetPage> routePages = [
 GetPage(name: '/register', page: () => const Register()),
   GetPage(name: '/goods/evaluate', page: () => const GoodsEvaluatePage()),
   GetPage(name: '/store/detail', page: () => const StoreDetailPage()),
-  GetPage(name: '/bind_store', page: () => const BindStorePage()),
+  // 绑定门店: 未登录直接跳 /login(首页右上角「绑定门店」/「我的」页入口都走这条)
+  GetPage(name: '/bind_store', page: () => const BindStorePage(), middlewares: [RouteMiddleware()]),
   GetPage(name: '/bind_mobile', page: () => const BindMobilePage()),
   // 学习课程 / 素材库(游客可见,不进 authRoutes)
   GetPage(name: '/study', page: () => const StudyIndexPage()),

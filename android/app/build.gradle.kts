@@ -18,7 +18,9 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.chongloutech.lehui"
-    compileSdk = flutter.compileSdkVersion
+    // permission_handler_android 要求编译 SDK >= 37, Flutter 默认的 flutter.compileSdkVersion(36) 编不过
+    // * 若提示找不到 android-37, 用 Android Studio 的 SDK Manager 安装 "Android SDK Platform 37"
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {

@@ -25,7 +25,21 @@ import './delivery_sheet.dart';
 import './evaluate.dart';
 
 class Goods extends StatefulWidget {
-  const Goods({ super.key });
+  const Goods({
+    super.key,
+    // 直播间商品面板内嵌显示时直接传 id / 房间号,不走路由参数
+    this.goodsId,
+    this.liveRoomId,
+    // 返回按钮: 面板里是"关闭面板",默认退路由
+    this.onBack,
+  });
+
+/// 商品id: 非空时优先于路由参数(直播间面板直接传)
+final int? goodsId;
+/// 直播间房间号: 非空时优先于路由参数(面板里加购/下单同样要回传 live_roomid)
+final String? liveRoomId;
+/// 返回/关闭回调(面板里传关闭面板)
+final VoidCallback? onBack;
 
 @override
 State<Goods> createState() => _GoodsState();

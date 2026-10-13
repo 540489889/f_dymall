@@ -5,6 +5,7 @@
 library;
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
@@ -12,6 +13,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
+import '../../components/dialog_privacy_exit.dart';
 import '../../controller/app_config.dart';
 import '../../utils/privacy_agreement.dart';
 
@@ -21,11 +23,18 @@ const Color _primary = Color(0xFFFF2C55);
 class PrivacyAgreementPage extends StatelessWidget {
   const PrivacyAgreementPage({super.key});
 
-  /// 不同意: Android 返回桌面, 其它平台无法强制退出, 保持当前页面阻塞使用
-  static void _exitApp() {
+  /// 不同意: Android 直接回桌面; iOS 没有合法的系统退出接口(只能 exit(0),观感像崩溃),
+  /// 所以先弹「是否退出」二次确认, 用户点「退出」才真的结束进程; 点「返回并同意」则留在弹窗继续看协议
+  static Future<void> _exitApp() async {
     if (defaultTargetPlatform == TargetPlatform.android) {
       SystemNavigator.pop();
+      return;
     }
+    final bool confirmed = await showPrivacyExitDialog();
+    if (!confirmed) {
+      return;
+    }
+    exit(0);
   }
 
   /// 同意: 持久化标志后, 用首页替换掉整个路由栈
@@ -163,7 +172,7 @@ class PrivacyAgreementPage extends StatelessWidget {
         children: <InlineSpan>[
           const TextSpan(text: '在使用本软件前，请认真阅读并充分理解'),
           TextSpan(
-            text: '《惠买服务协议》',
+            text: '《服务协议》',
             style: const TextStyle(color: _primary, fontWeight: FontWeight.w500),
             recognizer: TapGestureRecognizer()
               ..onTap = () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'SERVICE'}),

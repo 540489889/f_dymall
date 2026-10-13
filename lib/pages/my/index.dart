@@ -320,11 +320,20 @@ class _MyPageState extends State<MyPage> {
         return;
       }
     }
-    final String name = '${info['name'] ?? ''}';
+    // 后台可能存成小写 / 带空格, 统一成大写再匹配
+    final String name = '${info['name'] ?? ''}'.trim().toUpperCase();
+    if (kDebugMode) {
+      debugPrint('[serviceNav] 点击: ${item['nav_name']} -> name=$name nav_url=$rawUrl');
+    }
     _checkLogin(() {
       switch (name) {
         case 'LIVE_CONNECT':
           Get.toNamed('/live');
+          break;
+        // 直播连麦: 进连麦页输主播给的连麦码, 主播同意后进 TRTC 房间同屏
+        // * 后台配: {"name":"LINK_MIC"}
+        case 'LINK_MIC':
+          Get.toNamed('/live/link_mic');
           break;
         case 'WATCH_RECORD':
           Get.toNamed('/my/watching_record');

@@ -337,6 +337,86 @@ class LiveApi {
     }
   }
 
+  /// 从 map 的多候选字段里取第一个非空字符串(字段为空则看下一个)
+  static String _pick(Map<dynamic, dynamic> src, List<String> keys) {
+    for (final String key in keys) {
+      final String val = '${src[key] ?? ''}'.trim();
+      if (val.isEmpty || val == 'null') continue;
+      return val;
+    }
+    return '';
+  }
+
+  /// 申请连麦(/live/api/shop/applyLink)
+  /// * [code] 主播给的连麦码(观众/嘉宾端输入)
+  /// * 返回 {ok: 是否成功, message: 提示文案, sn: 直播间号}
+  ///   sn 用来连 WebSocket 进房(join 的 room_id): 服务端据此把 meeting_accept 推给这条连接
+  /// * 失败/异常 ok=false,页面直接提示 message,不再往下走
+  static Future<Map<String, dynamic>> applyLink(String code) async {
+    final String linkCode = code.trim();
+    if (linkCode.isEmpty) {
+      return <String, dynamic>{'ok': false, 'message': '请输入连麦码', 'sn': ''};
+    }
+    try {
+      final Map<String, dynamic> res = await Request().postRaw(
+        '/live/api/shop/applyLink',
+        // 连麦码字段名按 code 传; 后端若用别的名字(如 link_code)只改这里
+        data: <String, dynamic>{'code': linkCode},
+      );
+      final bool ok = '${res['code']}' == '0';
+      String message = '${res['message'] ?? ''}'.trim();
+      final dynamic data = res['data'];
+      if (data is String && data.trim().isNotEmpty) message = data.trim();
+      if (message.isEmpty) message = ok ? '申请已提交，等待主播同意' : '申请失败，请稍后再试';
+      if (!ok) debugPrint('[live]申请连麦返回异常: ${res['code']} ${res['message']}');
+      return <String, dynamic>{
+        'ok': ok,
+        'message': message,
+        // 房间号: 各端字段名不统一, 逐个候选取第一个非空值
+        'sn': _pick(data is Map ? data : res, const <String>['sn', 'room_sn', 'roomSn', 'room_id', 'roomId', 'roomid', 'no']),
+      };
+    } catch (e) {
+      debugPrint('[live]申请连麦失败: $e');
+      return <String, dynamic>{'ok': false, 'message': '申请失败，请稍后再试', 'sn': ''};
+    }
+  }
+
+  /// TRTC 进房参数归一化(socket 推 meeting_accept 时的 data)
+  /// * 输出: sdkAppId(int) / userId / userSig / roomId(int) / strRoomId / role(int: 20 主播 21 观众)
+  /// * 必填项缺任一(sdkAppId / userId / userSig / 房间号)返回空 map, 页面据此提示"参数不完整"
+  /// * 参数一律由服务端下发(客户端不持有密钥), 各端字段命名不统一, 这里逐个候选取值
+  static Map<String, dynamic> trtcParamsOf(dynamic raw) {
+    if (raw is! Map) return const <String, dynamic>{};
+    Map<dynamic, dynamic> data = raw;
+    // 少数端会再包一层: {trtc: {...}} / {data: {...}} / {params: {...}}
+    for (final String key in const <String>['trtc', 'data', 'params']) {
+      final dynamic inner = raw[key];
+      if (inner is Map) {
+        data = inner;
+        break;
+      }
+    }
+    final int sdkAppId = intOf(data['sdkAppId'] ?? data['sdk_app_id'] ?? data['sdkAppID'] ?? data['appId'] ?? data['app_id']);
+    final String userId = _pick(data, const <String>['userId', 'user_id', 'userid', 'userID', 'uid']);
+    final String userSig = _pick(data, const <String>['userSig', 'user_sig', 'usersig', 'userSign', 'sig']);
+    final int roomId = intOf(data['roomId'] ?? data['room_id'] ?? data['roomid'] ?? data['roomID']);
+    final String strRoomId = _pick(data, const <String>['strRoomId', 'str_room_id', 'strRoomID', 'room_id_str']);
+    final int role = intOf(data['role'] ?? data['userRole'] ?? data['user_role']);
+    // 没 sdkAppId / userSig 进不去房; 房间号二选一(数字房号或字符串房号)
+    if (sdkAppId <= 0 || userId.isEmpty || userSig.isEmpty || (roomId <= 0 && strRoomId.isEmpty)) {
+      debugPrint('[live]连麦参数不完整: sdkAppId=$sdkAppId userId=$userId roomId=$roomId strRoomId=$strRoomId');
+      return const <String, dynamic>{};
+    }
+    return <String, dynamic>{
+      'sdkAppId': sdkAppId,
+      'userId': userId,
+      'userSig': userSig,
+      'roomId': roomId,
+      'strRoomId': strRoomId,
+      'role': role,
+    };
+  }
+
   /// 是否横屏直播间: 直播间数据里的 type 字段
   /// * 直播间以 getRoomInfo(/live/api/shop/getRoomInfo) 返回的 type 为准:
   ///   'horizontal' 横屏直播; 'vertical' / 空 / 其它值都按竖屏处理(容错大小写与首尾空格)
@@ -357,14 +437,13 @@ class LiveApi {
   static Future<List<Map<String, dynamic>>> onlineGoods(String no, {String categoryId = ''}) async {
     if (no.isEmpty) return const <Map<String, dynamic>>[];
     try {
-      // POST: 参数走请求体(与直播其它接口 subscribeRoom / complaint 等一致)
-      final Map<String, dynamic> body = <String, dynamic>{'no': no};
+      final Map<String, dynamic> query = <String, dynamic>{'no': no};
       // 分类筛选: 只在选中具体分类时带(「全部」= 空串, 不带参数, 按接口默认返回全部)
       final String cid = categoryId.trim();
-      if (cid.isNotEmpty && cid != '0') body['category_id'] = cid;
-      final Map<String, dynamic> res = await Request().postRaw(
+      if (cid.isNotEmpty && cid != '0') query['category_id'] = cid;
+      final Map<String, dynamic> res = await Request().getRaw(
         '/live/api/shop/onlineGoods',
-        data: body,
+        queryParameters: query,
       );
       if ('${res['code']}' != '0') {
         debugPrint('[live]带货商品返回异常: ${res['code']} ${res['message']}');
@@ -379,10 +458,6 @@ class LiveApi {
       for (final dynamic raw in list) {
         final Map<String, dynamic>? item = goodsItem(raw);
         if (item != null) items.add(item);
-      }
-      // 排查分类筛选用: 打印请求参数与返回条数(切 tab 列表没变化时先看这条)
-      if (kDebugMode) {
-        debugPrint('[live]带货商品 no=$no category_id=${cid.isEmpty ? '(全部)' : cid} -> ${items.length} 条');
       }
       return items;
     } catch (e) {
