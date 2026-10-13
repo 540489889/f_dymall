@@ -11,6 +11,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:media_kit/media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_def.dart';
@@ -45,9 +46,14 @@ class _LinkMicPageState extends State<LinkMicPage> {
   TRTCCloud? trtc;
   TRTCCloudListener? listener;
   /// 远端连麦者(连麦中渲染成右侧小窗)
-  final List<String> remoteUsers = <String>[];
+  final   List<String> remoteUsers = <String>[];
   bool frontCamera = true;
   bool micMuted = false;
+
+  /// 呼叫提示音: 申请连麦后循环播放, 主播同意/拒绝/取消/离开时停
+  /// * 用 media_kit(项目已有, 不必再引一个音频插件); 资源在 pubspec 的 assets/audio/ 下
+  static const String ringAsset = 'asset:///assets/audio/incoming-call-ringtone.wav';
+  Player? ringPlayer;
 
   @override
   void initState() {
@@ -63,6 +69,8 @@ class _LinkMicPageState extends State<LinkMicPage> {
   void dispose() {
     codeController.dispose();
     socket?.close();
+    // 离开页面必须停掉呼叫音, 否则它会一直响到进程结束
+    unawaited(_stopRing());
     unawaited(_exitTrtc());
     super.dispose();
   }
@@ -96,6 +104,34 @@ class _LinkMicPageState extends State<LinkMicPage> {
     setState(() {
       step = LinkMicStep.waiting;
     });
+    // 等待主播同意期间播呼叫音(与拨电话一样, 让主播侧/用户知道还在呼叫)
+    await _startRing();
+  }
+
+  /// 开始播呼叫提示音(循环)
+  Future<void> _startRing() async {
+    try {
+      final Player ring = ringPlayer ?? Player();
+      ringPlayer = ring;
+      await ring.setPlaylistMode(PlaylistMode.loop);
+      await ring.setVolume(100.0);
+      await ring.open(Media(ringAsset), play: true);
+    } catch (e) {
+      debugPrint('[link]呼叫提示音播放失败(忽略): $e');
+    }
+  }
+
+  /// 停止呼叫提示音(主播同意/拒绝、取消申请、挂断、离开页面)
+  Future<void> _stopRing() async {
+    final Player? ring = ringPlayer;
+    ringPlayer = null;
+    if (ring == null) return;
+    try {
+      await ring.stop();
+      await ring.dispose();
+    } catch (e) {
+      debugPrint('[link]停止呼叫提示音异常(忽略): $e');
+    }
   }
 
   /// 进房: (重)连成功后发 join, 服务端据此把 meeting_accept/meeting_close 推给这条连接
@@ -138,6 +174,7 @@ class _LinkMicPageState extends State<LinkMicPage> {
   void _onClosed(String message) {
     if (!mounted) return;
     Get.snackbar('提示', message);
+    unawaited(_stopRing());
     unawaited(_exitTrtc());
     setState(() {
       step = LinkMicStep.input;
@@ -146,6 +183,8 @@ class _LinkMicPageState extends State<LinkMicPage> {
 
   /// 进 TRTC 房间(参数由服务端下发, 客户端不持有密钥)
   Future<void> _enterRoom(dynamic data) async {
+    // 主播已同意: 停掉呼叫音, 接下来说话走 TRTC
+    await _stopRing();
     final Map<String, dynamic> params = LiveApi.trtcParamsOf(data);
     if (params.isEmpty) {
       Get.snackbar('提示', '连麦参数不完整，请重新申请');
@@ -230,6 +269,7 @@ class _LinkMicPageState extends State<LinkMicPage> {
 
   /// 主动挂断
   Future<void> _hangUp() async {
+    await _stopRing();
     await _exitTrtc();
     if (!mounted) return;
     setState(() {
@@ -403,6 +443,7 @@ class _LinkMicPageState extends State<LinkMicPage> {
           GestureDetector(
             onTap: () {
               socket?.close();
+              unawaited(_stopRing());
               setState(() {
                 step = LinkMicStep.input;
               });

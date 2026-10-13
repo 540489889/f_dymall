@@ -63,8 +63,12 @@ late VideoController liveVideoController = VideoController(
 final ValueNotifier<int> liveIndexNotifier = ValueNotifier(0);
 // 当前时长
 final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
-// 首帧信号: 拉流解析出画面尺寸(width 非空)才算真有画面, 首帧之前继续显示封面, 避免起播瞬间黑闪
+// 首帧信号: 画面稳定后才置 true, 在此之前一直显示封面, 避免起播瞬间露出 Video 的黑底
 final ValueNotifier<bool> firstFrameNotifier = ValueNotifier(false);
+// 画面稳定计时器: 出帧后再稳一会儿才显示(见 _scheduleVideoShow), 避免"画面一闪 -> 黑屏"
+Timer? _videoStableTimer;
+// 起播前预置 Surface 尺寸的 Future(同一个 Player 只需一次, 切房沿用同一个 Surface)
+Future<void>? _presetFuture;
 // 直播流自动重连(Surface 重建触发的 seek 会打断 RTMP)
 late LiveReconnector liveReconnector;
 bool goodsTalkVisible = true;
@@ -174,22 +178,35 @@ final Set<String> endedActivityIds = <String>{};
   pageHorizontalController = PageController(initialPage: 1, viewportFraction: 1.0);
   // 走 LiveReconnector: 抵消 Surface 重建触发的 seek 对直播流的打断
   // 重连时用 _refreshPullUrl 重新取地址(m3u8 的 auth_key 有时效, 过期旧地址会 403)
-  liveReconnector = LiveReconnector(player, srcProvider: _refreshPullUrl);
+  liveReconnector = LiveReconnector(
+    player,
+    srcProvider: _refreshPullUrl,
+    // 重连期间画面是空的: 上层要把封面重新露出来, 否则这会儿就是一整片黑屏
+    onReconnecting: _onReconnecting,
+  );
   player.setPlaylistMode(PlaylistMode.loop);
   // 监听视频播放进度
   player.stream.position.listen((event) {
     positionNotifier.value = event;
     });
   // 监听画面尺寸: 解码出首帧后 width 才有值, 用它控制 Video 的显示时机(未出画前保持封面)
-  // * 只置位不回退: Android 上 Surface 重建会让 width 短暂变 null(紧跟着一次自动重连),
-  //   若跟着回退成 false, 画面会先闪回封面再等一次起播, 观感就是"视频迟迟不出来"
+  // * 不能直接置 true: 拿到尺寸时纹理可能还没渲染, 这时露出 Video 就是一片黑(它的 fill 是纯黑)
+  // * 视频轨没了(被 seek 打断 / 重连中)就撤掉画面继续显示封面: 黑屏比"退回封面"难看得多
   player.stream.width.listen((event) {
-    if ((event ?? 0) > 0 && !firstFrameNotifier.value) {
-      firstFrameNotifier.value = true;
-      // 排查起播慢用: 这行与上面的"发起起播耗时"之间就是建连 + 缓冲 + 解码的时间
-      if (kDebugMode) debugPrint('[live]首帧已解码, 画面开始显示');
+    if ((event ?? 0) > 0) {
+      _scheduleVideoShow('视频轨就绪');
+      return;
     }
+    _videoStableTimer?.cancel();
+    _videoStableTimer = null;
+    if (firstFrameNotifier.value) firstFrameNotifier.value = false;
     });
+  // 首帧真正渲染上屏(纹理已交给 Flutter)再显示画面
+  // * 只回调一次: 重连后不会再触发, 所以上面那个 width 兜底必须保留
+  liveVideoController.waitUntilFirstFrameRendered.then((_) {
+    if (kDebugMode) debugPrint('[live]首帧已渲染');
+    _scheduleVideoShow('首帧已渲染');
+  });
   // 上下滑动的直播间列表: roomPage 接口(与房间信息并行加载)
   _loadRoomList();
   // 进入直播间: 先查房间信息(getRoomInfo)与拉流地址(getPullUrl),拿到后再起播
@@ -253,6 +270,13 @@ String anchorNameOf(Map<String, dynamic> item) {
   return '${item['name'] ?? ''}'.trim();
 }
 
+// 列表项的封面: feeds_img 优先, 取不到用 live_bg
+String _posterOf(Map<String, dynamic> room) {
+  final String feeds = LiveApi.imageOf(room['feeds_img']);
+  if (feeds.isNotEmpty) return feeds;
+  return LiveApi.imageOf(room['live_bg']);
+}
+
 // 接口房间 -> 页面渲染字段(沿用原来的字段名, 渲染层不用改)
 // * 真实房间没有演示字段: 销量/点赞走 socket, 历史弹幕为空, 关注默认未关注
 Map<String, dynamic> _roomFromApi(Map<String, dynamic> room) => <String, dynamic>{
@@ -262,7 +286,9 @@ Map<String, dynamic> _roomFromApi(Map<String, dynamic> room) => <String, dynamic
       // 主播名(顶部主播信息栏/红包"xxx的红包"用)
       'anchor_name': '${room['anchor_name'] ?? ''}'.trim(),
       'logo': '${room['anchor_img'] ?? ''}'.trim(),
-      'poster': '${room['feeds_img'] ?? ''}'.trim(),
+      // 封面: feeds_img 优先, 没有用 live_bg; 都走 imageOf(补域名 + 拆多图串),
+      // 否则拿到相对路径/多图串会请求失败 -> 封面位空着露出黑底
+      'poster': _posterOf(room),
       'src': '${room['push_link'] ?? ''}'.trim(),
       // 横竖屏默认竖屏: 接口不下发 type 时(直播预告常见)按 vertical 处理
       'type': '${room['type'] ?? ''}'.trim().isEmpty ? 'vertical' : '${room['type']}'.trim(),
@@ -346,7 +372,13 @@ Future<void> _loadRoomInfo() async {
   //   入口地址万一失效, 由 LiveReconnector 重连时换成最新的 pullUrl(见 srcProvider)
   final String entrySrc = '${arguments['src'] ?? ''}'.trim();
   final bool started = entrySrc.isNotEmpty && shouldOpenStream(entryIndex);
-  if (started) unawaited(liveReconnector.open(entrySrc));
+  // 预置 Surface 与 getPullUrl 并行: 不额外占一个接口往返的时间
+  final Future<void> presetFuture = _presetSurfaceOnce();
+  if (started) {
+    await presetFuture;
+    if (!mounted) return;
+    unawaited(liveReconnector.open(entrySrc));
+  }
   final String url = (await urlFuture).trim();
   if (!mounted) return;
   if (kDebugMode) debugPrint('[live]详情页 getPullUrl: sn=$sn url=$url 入口src=$entrySrc');
@@ -554,7 +586,44 @@ Future<void> _openEntryStream() async {
   if (liveSrc.isEmpty) return;
   // 预告片是静音播的, 起直播流时恢复音量
   await player.setVolume(100.0);
+  // 起播前预置 Surface 尺寸(只需一次): 避免出帧后重建 Surface 打断 RTMP 触发重连
+  await _presetSurfaceOnce();
+  if (!mounted) return;
   await liveReconnector.open(liveSrc);
+}
+
+// 重连时回调: 接下来画面会空一段时间, 把封面露出来(否则这几秒就是一整片黑屏)
+void _onReconnecting() {
+  if (!mounted) return;
+  _videoStableTimer?.cancel();
+  _videoStableTimer = null;
+  firstFrameNotifier.value = false;
+}
+
+// 画面出现后再稳一会儿才显示
+// * 起播第一轮画面常刚出来就被 Surface 重建打断(videoParams 变回 null、画面黑掉),
+//   一有帧就显示, 观感是"封面 -> 画面一闪 -> 黑屏 -> 再出画面"; 稳住 700ms 再显示,
+//   观感就是干净的"封面 -> 画面"
+// * 这 700ms 里画面又没了(被打断/重连)就不显示, 等下一轮重新计时
+// * 代价: 出画面比"一有帧就显示"晚 0.7s, 换来的是中间不闪
+void _scheduleVideoShow(String from) {
+  if (!mounted) return;
+  _videoStableTimer?.cancel();
+  if (kDebugMode) debugPrint('[live]画面出现($from), 稳住 700ms 再显示');
+  _videoStableTimer = Timer(const Duration(milliseconds: 700), () {
+    _videoStableTimer = null;
+    if (!mounted) return;
+    if ((player.state.width ?? 0) <= 0) return;
+    if (!firstFrameNotifier.value) firstFrameNotifier.value = true;
+  });
+}
+
+// 起播前把 Surface 尺寸设成视频实际尺寸(只需一次)
+// * 命中时出帧后那次 SetSurfaceSize 会被跳过: Surface 不重建 -> 不触发 seek -> RTMP 不断 -> 不用重连
+//   也就没有"画面出来又被打断"那一段黑屏(见 presetLiveSurfaceSize)
+Future<void> _presetSurfaceOnce() {
+  // 复用同一个 Future: 进房那条链路与 _openEntryStream 可能都要等它, 只真跑一次
+  return _presetFuture ??= presetLiveSurfaceSize(player, liveVideoController);
 }
 
 // 重连前重新获取拉流地址: m3u8 带 auth_key 时效, 过期后必须换新地址才连得上
@@ -577,6 +646,9 @@ Future<void> _switchRoom(int index) async {
     liveIndexNotifier.value = index;
     positionNotifier.value = Duration.zero;
     // 切房: 等新流解码出首帧再显示画面, 期间继续显示封面
+    // * 顺带撤掉上一个房间待显示的计时, 否则它会在新流还没出帧时就把画面露出来(露出的是黑底)
+    _videoStableTimer?.cancel();
+    _videoStableTimer = null;
     firstFrameNotifier.value = false;
     // 预告片/倒计时是上一个房间的, 新房间详情回来后重新取
     preVideo = '';
@@ -1428,6 +1500,8 @@ bool _isDemoRoom(int index) => false;
   activityTimer?.cancel();
   // 开播倒计时(预告房间)
   countdownTimer?.cancel();
+  _videoStableTimer?.cancel();
+  _videoStableTimer = null;
   liveSocket.close();
   likeHearts.dispose();
   danmuMessages.dispose();

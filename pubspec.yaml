@@ -111,6 +111,8 @@ flutter:
     - assets/images/me/
     - assets/images/avatar/
     - assets/images/svg/
+    # 连麦呼叫提示音(link_mic.dart: 申请连麦后循环播放, 主播同意/拒绝即停)
+    - assets/audio/
     # gift list
     - assets/images/gift/
     # emoj list
