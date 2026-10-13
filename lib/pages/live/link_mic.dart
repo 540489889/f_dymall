@@ -15,6 +15,7 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_def.dart';
 import 'package:tencent_rtc_sdk/trtc_cloud_listener.dart';
@@ -71,6 +72,8 @@ class _LinkMicPageState extends State<LinkMicPage> {
   @override
   void initState() {
     super.initState();
+    // 连麦期间保持常亮: 举手等待/通话中都不熄屏(离开页面在 dispose 里恢复)
+    WakelockPlus.enable();
     // 从观看页跳过来: 那边收到 meeting_accept 时会直接带进房参数开本页, 这里直接进房
     final dynamic args = Get.arguments;
     if (args is Map && args['trtc'] != null) {
@@ -80,6 +83,8 @@ class _LinkMicPageState extends State<LinkMicPage> {
 
   @override
   void dispose() {
+    // 离开连麦页恢复系统息屏策略
+    WakelockPlus.disable();
     codeController.dispose();
     socket?.close();
     // 离开页面必须停掉呼叫音, 否则它会一直响到进程结束

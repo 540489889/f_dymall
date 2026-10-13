@@ -13,6 +13,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../api/live.dart';
 import '../../config/index.dart';
 import '../../controller/auth_store.dart';
@@ -160,6 +161,8 @@ final Set<String> endedActivityIds = <String>{};
   @override
   void initState() {
   super.initState();
+  // 看直播期间保持常亮: 长时间不操作也不熄屏(离开页面在 dispose 里恢复)
+  WakelockPlus.enable();
 
   // 没有传参(直接打开直播页)时用空参数, 房间数据全部来自 roomPage 接口
   arguments ??= <String, dynamic>{};
@@ -1494,6 +1497,8 @@ bool _isDemoRoom(int index) => false;
 
   @override
   void dispose() {
+  // 离开直播间恢复系统息屏策略(不还原的话回到其它页面也一直亮着, 白耗电)
+  WakelockPlus.disable();
   // 离开直播间断开 socket(与H5 onUnload/onBackPress 一致)
   _joinWatchdog?.cancel();
   // 活动倒计时: 离开直播间一并停掉
@@ -2446,19 +2451,21 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           child: Image.asset('assets/images/icon-cart.png', width: 23.0,),
                                         ),
                                         onTap: () {
-                                          // 真实直播间拿不到带货商品时不做演示数据兜底, 避免演示商品串进真实房间
-                                          if (onlineGoods.isEmpty && roomSn.isNotEmpty) {
-                                            _toast('暂无带货商品');
+                                          // 房间号都没拿到(no 参数缺失)时才拦: 没有 no 连商品接口都没法请求
+                                          // * 不能再用"进房时那份商品为空"来拦: 那份只代表进房那一刻的结果,
+                                          //   接口慢/当时没上架都会被拦在门外, 弹窗打不开就永远不会重新请求
+                                          // * 现在交给弹窗自己拉(见 onRefresh), 拉不到由弹窗显示空态
+                                          if (roomSn.isEmpty) {
+                                            _toast('直播间信息未就绪');
                                             return;
                                           }
                                           navigator?.push(FadeRoute(
                                             effect: 'bottom',
                                             child: PopupGoods(
-                                            // 带货商品: /live/api/shop/onlineGoods(参数 no = 房间号)优先, 取不到才用下面两条演示数据
-                                            goodsList: onlineGoods.isNotEmpty ? onlineGoods : [
-                                              {'image': 'https://img12.360buyimg.com/jdcms/s240x240_jfs/t1/276851/40/403/125841/67ce85b7Fc7fb4cff/271d67aaea189a66.jpg', 'title': '茅台生肖系列酒 53度 老酒 收藏投资 春节送礼 2025年', 'tips': '销量超10万', 'price': '699.9', 'mprice': '999.9'},
-                                              {'image': 'https://img14.360buyimg.com/jdcms/s240x240_jfs/t1/351318/40/12365/75748/68ee092bF4b501684/81f47e3e9ed16754.jpg', 'title': '罗蒙（ROMON）夹克男士秋冬季户外防风连帽保暖冲锋衣', 'tips': '好评1000+', 'price': '319.9', 'mprice': '359.9'},
-                                            ],
+                                            // 首屏占位用进房那份, 打开后立即被 onRefresh 的结果整体替换
+                                            // * 不再做演示数据兜底: 演示房间已停用(_isDemoRoom 恒 false),
+                                            //   真实房间串进写死的演示商品会误导
+                                            goodsList: onlineGoods,
                                             // 每次打开购物车 / 切分类都重新拉一次(商品会上下架/改价, 进房时那份可能已过期)
                                             // * 参数是当前选中的商品分类 id(「全部」为空串), 后端按 category_id 返回
                                             onRefresh: (String categoryId) => LiveApi.onlineGoods(roomSn, categoryId: categoryId),
