@@ -2451,14 +2451,8 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           child: Image.asset('assets/images/icon-cart.png', width: 23.0,),
                                         ),
                                         onTap: () {
-                                          // 房间号都没拿到(no 参数缺失)时才拦: 没有 no 连商品接口都没法请求
-                                          // * 不能再用"进房时那份商品为空"来拦: 那份只代表进房那一刻的结果,
-                                          //   接口慢/当时没上架都会被拦在门外, 弹窗打不开就永远不会重新请求
-                                          // * 现在交给弹窗自己拉(见 onRefresh), 拉不到由弹窗显示空态
-                                          if (roomSn.isEmpty) {
-                                            _toast('直播间信息未就绪');
-                                            return;
-                                          }
+                                          // 一律打开橱窗, 不再做任何前置拦截/toast:
+                                          // * 商品由弹窗自己拉(见 onRefresh), 拉不到由弹窗显示空态
                                           navigator?.push(FadeRoute(
                                             effect: 'bottom',
                                             child: PopupGoods(

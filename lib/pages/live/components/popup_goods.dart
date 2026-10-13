@@ -5,6 +5,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../components/common_empty.dart';
 import '../../../api/goods.dart';
 import '../../../behavior/custom_scroll_behavior.dart';
 
@@ -338,11 +339,11 @@ Widget build(BuildContext context) {
                     // 列表为空(接口返回空/该分类下没商品): 给个空提示,而不是一片空白
                     // * 请求中不显示: 否则每次切 tab 都会先闪一下空态
                     child: visibleGoods.isEmpty && !refreshing
-                        ? Center(
-                            child: Text(
-                              _currentCategoryId.isEmpty ? '暂无带货商品' : '该分类下暂无商品',
-                              style: const TextStyle(color: Colors.black38, fontSize: 13.0),
-                            ),
+                        // 空态用通用空状态组件(assets/images/common-empty.png + 文案)
+                        ? CommonEmpty(
+                            imageWidth: 110.0,
+                            textColor: Colors.black38,
+                            text: _currentCategoryId.isEmpty ? '暂无带货商品' : '该分类下暂无商品',
                           )
                         : ListView.builder(
                       shrinkWrap: true,
