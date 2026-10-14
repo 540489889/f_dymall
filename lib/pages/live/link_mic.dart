@@ -11,7 +11,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show FilteringTextInputFormatter, SystemUiOverlayStyle, TextInputFormatter;
+import 'package:flutter/services.dart'
+    show FilteringTextInputFormatter, SystemChrome, SystemUiMode, SystemUiOverlay, SystemUiOverlayStyle, TextInputFormatter;
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -45,8 +46,12 @@ const Color kLinkTextSub = Color(0xFF8A8F99);
 /// 输入框底色与描边(浅灰卡片 + 极淡描边)
 const Color kLinkFieldBg = Color(0xFFF5F6F8);
 const Color kLinkFieldBorder = Color(0xFFE9EBF0);
-/// 等待接听页底色(仿微信语音通话等待页): 白字白图标; 有封面时上面还会叠一层封面做氛围底
+/// 等待接听页底色(预览还没起来时的兜底深色): 白字白图标
 const Color kCallBgBottom = Color(0xFF191C23);
+/// 通话页文字阴影: 画面上不盖遮罩, 靠阴影保证白字在任何画面上都看得清
+const List<Shadow> kCallTextShadows = <Shadow>[
+  Shadow(color: Color(0x99000000), blurRadius: 6.0, offset: Offset(0.0, 1.0)),
+];
 
 /// 连麦默认美颜参数(基础美颜, 全部 0-9, 0 = 关闭)
 /// * nature 自然风格: 保留面部细节, 比 smooth(光滑) 更适合普通连麦; 秀场想要更"磨皮"可换成 smooth
@@ -86,6 +91,8 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
 
   TRTCCloud? trtc;
   TRTCCloudListener? listener;
+  /// 本地预览视图 id(等待主播同意时就起预览, 所以视图在 waiting 阶段就已创建)
+  int? localViewId;
   /// 远端连麦者(连麦中渲染成右侧小窗)
   final   List<String> remoteUsers = <String>[];
   bool frontCamera = true;
@@ -101,6 +108,9 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     super.initState();
     // 连麦期间保持常亮: 举手等待/通话中都不熄屏(离开页面在 dispose 里恢复)
     WakelockPlus.enable();
+    // 边到边: 视频画面铺到状态栏/导航栏区域(否则顶部电量栏那一条是系统底色, 看着像没铺满)
+    // * 内容层本来就有 SafeArea, 按钮不会被系统栏压住; 离开页面在 dispose 里恢复
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     // 从观看页跳过来: 那边收到 meeting_accept 时会直接带进房参数开本页, 这里直接进房
     final dynamic args = Get.arguments;
     if (args is Map && args['trtc'] != null) {
@@ -112,6 +122,11 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   void dispose() {
     // 离开连麦页恢复系统息屏策略
     WakelockPlus.disable();
+    // 退出边到边: 恢复其他页面的默认系统栏
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: <SystemUiOverlay>[SystemUiOverlay.top, SystemUiOverlay.bottom],
+    );
     callingCtrl.dispose();
     codeController.dispose();
     socket?.close();
@@ -147,6 +162,20 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
       MyDialog.toast('未获取到直播间信息');
       return;
     }
+    // 申请后就要起本地预览(等待期间展示自己的画面): 没权限别进等待态, 不然只有黑屏
+    if (!await _requestPermissions()) {
+      if (await _permissionBlocked()) {
+        // 被永久拒绝(勾了"不再询问"/系统里关掉): 再 request 也不会弹窗, 只能去设置页
+        MyDialog.toast('相机/麦克风权限已被拒绝，请在系统设置中开启');
+        await openAppSettings();
+      } else {
+        MyDialog.toast('需要相机和麦克风权限才能连麦');
+      }
+      return;
+    }
+    // 先把 TRTC 实例准备好, 再切等待态: 预览视图一创建就能立刻出画面
+    await _preparePreview();
+    if (!mounted) return;
     _initSocket();
     setState(() {
       // 直播间信息直接用 applyLink 返回的(data 里已带 sn/name/feeds_img/anchor_img/anchor_name)
@@ -287,7 +316,12 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     listener = value;
     cloud.registerListener(value);
     _applyBeauty(cloud);
-    cloud.startLocalAudio(TRTCAudioQuality.defaultMode);
+    // 等待期间就静音过的话, 进房后沿用: 不在这里又把麦克风打开
+    if (micMuted) {
+      cloud.stopLocalAudio();
+    } else {
+      cloud.startLocalAudio(TRTCAudioQuality.defaultMode);
+    }
     cloud.enterRoom(
       TRTCParams(
         sdkAppId: params['sdkAppId'] as int,
@@ -313,6 +347,26 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     if (kDebugMode) {
       debugPrint('[link]默认美颜: ${kBeautyStyle.name} 磨皮$kBeautyLevel 美白$kWhitenessLevel 红润$kRuddinessLevel');
     }
+  }
+
+  /// 起本地预览(自己的画面): 主播同意前也要展示(仿微信视频通话的等待页)
+  /// * TRTC 允许进房前先 startLocalPreview; 主播同意后进房, 预览不中断直接开始推流
+  Future<void> _preparePreview() async {
+    final TRTCCloud cloud = await TRTCCloud.sharedInstance();
+    trtc = cloud;
+    _applyBeauty(cloud);
+    // 视图可能已经先创建好了(比如从连麦中退回再申请): 补一次起播
+    _startPreviewIfReady();
+  }
+
+  /// 本地预览起播: viewId 和 TRTC 实例都就绪才调(两者创建顺序不定, 所以各自就绪时都试一次)
+  void _startPreviewIfReady() {
+    final int? viewId = localViewId;
+    final TRTCCloud? cloud = trtc;
+    if (viewId == null || cloud == null) return;
+    cloud.startLocalPreview(frontCamera, viewId);
+    // 预览视图重建后补一次(美颜绑定在采集侧, 保险起见重设)
+    _applyBeauty(cloud);
   }
 
   /// 申请相机 + 麦克风权限
@@ -343,6 +397,8 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     final TRTCCloudListener? value = listener;
     trtc = null;
     listener = null;
+    // 预览停了, 视图也跟着销毁: 清掉 viewId, 下次申请重新起
+    localViewId = null;
     if (cloud == null) return;
     if (value != null) cloud.unRegisterListener(value);
     cloud.stopLocalPreview();
@@ -373,10 +429,15 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
       value: (calling ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
           .copyWith(statusBarColor: Colors.transparent),
       child: PopScope(
-      // 连麦中拦截返回键: 先退房再退出, 否则相机/麦克风会被一直占着
-      canPop: step != LinkMicStep.linking,
+      // 等待中/连麦中拦截返回键: 先停预览/退房再退出, 否则相机/麦克风会被一直占着
+      canPop: step == LinkMicStep.input,
       onPopInvokedWithResult: (bool didPop, dynamic result) {
         if (didPop) return;
+        if (step == LinkMicStep.waiting) {
+          _cancelApply();
+          Get.back<dynamic>();
+          return;
+        }
         unawaited(_hangUp().then((_) => Get.back<dynamic>()));
       },
       child: Scaffold(
@@ -385,10 +446,8 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
         resizeToAvoidBottomInset: false,
         body: Stack(
           children: <Widget>[
-            // 连麦中: 本地大画面 + 右上角远端小窗
-            if (step == LinkMicStep.linking) _buildVideoLayer(),
-            // 等待接听: 深色通话底铺满整屏(Scaffold 只支持单色背景, 底图放这层)
-            if (calling) _buildCallBackground(),
+            // 等待接听/连麦中: 本地预览(自己的画面)铺满; 连麦中再叠远端小窗
+            if (step != LinkMicStep.input) _buildVideoLayer(),
             SafeArea(child: _buildContent()),
           ],
         ),
@@ -397,49 +456,17 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     );
   }
 
-  /// 等待接听页底图: 直播间封面 + 深色渐变遮罩(没有封面时就是纯深色渐变通话底)
-  /// * 封面压在暗色下面只当氛围底, 不影响白字/头像可读性
-  Widget _buildCallBackground() {
-    final String cover = '${roomInfo?['feeds_img'] ?? ''}'.trim();
-    return Positioned.fill(
-      child: Stack(
-        fit: StackFit.expand,
-        children: <Widget>[
-          if (cover.isNotEmpty)
-            CachedNetworkImage(
-              imageUrl: cover,
-              fit: BoxFit.cover,
-              fadeInDuration: Duration.zero,
-              errorWidget: (BuildContext c, String u, Object e) => const SizedBox.shrink(),
-            ),
-          const DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: <Color>[Color(0xC7333947), Color(0xF2171A21)],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   /// 连麦画面层
   Widget _buildVideoLayer() {
     return Positioned.fill(
       child: Stack(
         children: <Widget>[
-          // 本地预览(自己): 大画面铺满
+          // 本地预览(自己): 等待主播同意/连麦中都铺满当底图
           Positioned.fill(
             child: TRTCCloudVideoView(
               onViewCreated: (int viewId) {
-                final TRTCCloud? cloud = trtc;
-                if (cloud == null) return;
-                cloud.startLocalPreview(frontCamera, viewId);
-                // 预览视图重建后补一次(美颜是绑定采集侧的, 保险起见重设)
-                _applyBeauty(cloud);
+                localViewId = viewId;
+                _startPreviewIfReady();
               },
             ),
           ),
@@ -478,17 +505,23 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     if (step == LinkMicStep.linking) return _buildLinkingBar();
     return Stack(
       children: <Widget>[
-        // 左上角返回: 这页没有 AppBar(连麦中画面要铺满), 白底上给一个深色返回键
+        // 左上角返回: 这页没有 AppBar(连麦中/等待中画面要铺满)
         // * 连麦中不给返回: 走 PopScope 先退房再退出
-        SafeArea(
-          child: Align(
-            alignment: Alignment.topLeft,
-            child: IconButton(
-              onPressed: () => Get.back<dynamic>(),
-              icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20.0, color: kLinkText),
+        // * 等待中底图是自己的画面(深色): 图标改白色, 点返回等于取消申请
+        if (step != LinkMicStep.linking)
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: IconButton(
+                onPressed: step == LinkMicStep.waiting ? _cancelApply : () => Get.back<dynamic>(),
+                icon: Icon(
+                  Icons.arrow_back_ios_new_rounded,
+                  size: 20.0,
+                  color: step == LinkMicStep.waiting ? Colors.white : kLinkText,
+                ),
+              ),
             ),
           ),
-        ),
         if (step == LinkMicStep.waiting) _buildWaiting() else _buildInput(),
       ],
     );
@@ -597,131 +630,241 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     );
   }
 
-  /// 等待主播同意: 仿微信语音通话的"等待对方接受邀请"页
-  /// * 深色渐变全屏(不再是大片白底): 中间大头像 + 呼吸光圈, 下面是主播名/状态, 底部红色挂断按钮
-  /// * 头像下方带一行直播间标题, 让用户确认自己连的是哪个直播间
+  /// 等待主播同意: 仿微信视频通话等待页
+  /// * 底图是自己的本地预览画面, 上面叠主播头像/名字/标题 + 等待点 + 底部三按钮
   Widget _buildWaiting() {
     final Map<String, dynamic>? room = roomInfo;
     final String avatar = '${room?['anchor_img'] ?? ''}'.trim();
     final String anchorName = '${room?['anchor_name'] ?? ''}'.trim();
     final String title = '${room?['name'] ?? ''}'.trim();
     return SizedBox.expand(
-      child: Column(
+      child: Stack(
         children: <Widget>[
-          const Spacer(flex: 3),
-          _callingAvatar(avatar),
-          const SizedBox(height: 22.0),
-          Text(
-            anchorName.isEmpty ? '主播' : anchorName,
-            style: const TextStyle(
-              fontSize: 20.0,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 10.0),
-          const Text(
-            '正在等待对方接受邀请…',
-            style: TextStyle(fontSize: 15.0, color: Colors.white70),
-          ),
-          if (title.isNotEmpty) ...<Widget>[
-            const SizedBox(height: 8.0),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 32.0),
-              child: Text(
-                title,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13.0, color: Colors.white54),
+          // 底部按钮区渐变(顶部不遮画面, 铺到状态栏)
+          Positioned(
+            left: 0.0,
+            right: 0.0,
+            bottom: 0.0,
+            child: Container(
+              height: 280.0,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: <Color>[Colors.transparent, Color(0xB3000000)],
+                ),
               ),
             ),
-          ],
-          const Spacer(flex: 4),
+          ),
           Column(
-            mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              GestureDetector(
-                onTap: _cancelApply,
-                child: Container(
-                  width: 66.0,
-                  height: 66.0,
-                  decoration: const BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[kLinkPrimaryLight, kLinkPrimary],
+              const SizedBox(height: 56.0),
+              if (title.isNotEmpty) ...<Widget>[
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                  child: Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.0,
+                      color: Colors.white70,
+                      shadows: kCallTextShadows,
                     ),
                   ),
-                  child: const Icon(Icons.call_end_rounded, size: 32.0, color: Colors.white),
                 ),
-              ),
+                const SizedBox(height: 14.0),
+              ],
+              _callingAvatar(avatar),
               const SizedBox(height: 12.0),
-              GestureDetector(
-                onTap: _cancelApply,
-                child: const Text(
-                  '取消申请',
-                  style: TextStyle(fontSize: 14.0, color: Colors.white70),
+              Text(
+                anchorName.isEmpty ? '主播' : anchorName,
+                style: const TextStyle(
+                  fontSize: 18.0,
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                  shadows: kCallTextShadows,
                 ),
               ),
+              const SizedBox(height: 10.0),
+              _callingDots(),
+              const Spacer(),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32.0),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: <Widget>[
+                    // 静音(左): 图标/文字随状态切换
+                    _callButton(
+                      icon: micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                      label: micMuted ? '麦克风已关' : '麦克风已开',
+                      active: micMuted,
+                      onTap: () {
+                        micMuted = !micMuted;
+                        if (micMuted) {
+                          trtc?.stopLocalAudio();
+                        } else {
+                          trtc?.startLocalAudio(TRTCAudioQuality.defaultMode);
+                        }
+                        setState(() {});
+                      },
+                    ),
+                    // 挂断(中): 取消申请
+                    _callButton(
+                      icon: Icons.call_end_rounded,
+                      label: '取消申请',
+                      isHangup: true,
+                      onTap: _cancelApply,
+                    ),
+                    // 切换摄像头(右): 等待期间调整自己的画面
+                    _callButton(
+                      icon: Icons.cameraswitch_rounded,
+                      label: '摄像头切换',
+                      onTap: () {
+                        frontCamera = !frontCamera;
+                        trtc?.getDeviceManager().switchCamera(frontCamera);
+                        setState(() {});
+                      },
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 28.0),
             ],
           ),
-          const SizedBox(height: 36.0),
         ],
       ),
     );
   }
 
-  /// 呼叫中的头像: 外圈循环扩散淡出(微信呼叫中那个光圈效果)
+  /// 等待中的头像: 圆角矩形(仿截图), 静止不抖动
   Widget _callingAvatar(String avatar) {
+    return Container(
+      width: 80.0,
+      height: 80.0,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18.0),
+        color: Colors.white.withOpacity(0.14),
+        border: Border.all(color: Colors.white54, width: 1.5),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x66000000), blurRadius: 10.0),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: avatar.isEmpty
+          ? const Icon(Icons.person_rounded, size: 44.0, color: Colors.white70)
+          : CachedNetworkImage(
+              imageUrl: avatar,
+              fit: BoxFit.cover,
+              fadeInDuration: Duration.zero,
+              placeholder: (BuildContext c, String u) =>
+                  const Icon(Icons.person_rounded, size: 44.0, color: Colors.white70),
+              errorWidget: (BuildContext c, String u, Object e) =>
+                  const Icon(Icons.person_rounded, size: 44.0, color: Colors.white70),
+            ),
+    );
+  }
+
+  /// 等待中的三个点(对方未接提示): 循环淡入淡出
+  Widget _callingDots() {
     return AnimatedBuilder(
       animation: callingCtrl,
       builder: (BuildContext context, Widget? child) {
         final double t = callingCtrl.value;
-        return Stack(
-          alignment: Alignment.center,
+        double wave(double x) {
+          final double v = (x - x.floor()) * 2.0 - 1.0;
+          return 0.25 + 0.75 * (1.0 - v.abs());
+        }
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Opacity(
-              opacity: (1.0 - t) * 0.5,
-              child: Container(
-                width: 96.0 + 56.0 * t,
-                height: 96.0 + 56.0 * t,
-                decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white24),
-              ),
-            ),
-            if (child != null) child,
+            _callDot(wave(t * 3.0)),
+            const SizedBox(width: 6.0),
+            _callDot(wave(t * 3.0 + 1.0)),
+            const SizedBox(width: 6.0),
+            _callDot(wave(t * 3.0 + 2.0)),
           ],
         );
       },
+    );
+  }
+
+  Widget _callDot(double opacity) {
+    return Opacity(
+      opacity: opacity,
       child: Container(
-        width: 96.0,
-        height: 96.0,
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: Colors.white.withOpacity(0.14),
-          border: Border.all(color: Colors.white24),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: avatar.isEmpty
-            ? const Icon(Icons.person_rounded, size: 48.0, color: Colors.white70)
-            : CachedNetworkImage(
-                imageUrl: avatar,
-                fit: BoxFit.cover,
-                fadeInDuration: Duration.zero,
-                placeholder: (BuildContext c, String u) =>
-                    const Icon(Icons.person_rounded, size: 48.0, color: Colors.white70),
-                errorWidget: (BuildContext c, String u, Object e) =>
-                    const Icon(Icons.person_rounded, size: 48.0, color: Colors.white70),
-              ),
+        width: 6.0,
+        height: 6.0,
+        decoration: const BoxDecoration(shape: BoxShape.circle, color: Colors.white),
       ),
     );
   }
 
-  /// 取消申请: 关掉连接/呼叫音回到输入态
+  /// 通话页底部按钮(等待态): 圆按钮 + 下方文字
+  /// * 静音/切换摄像头 48px + 24px 图标; 挂断 66px + 32px 图标
+  /// * [label] 传空就不显示文字(挂断按钮只留图标)
+  /// * [active] 静音关闭态: 白底变主色底, 图标变白
+  /// * [isHangup] 挂断: 主色底, 白图标
+  Widget _callButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    String? label,
+    bool active = false,
+    bool isHangup = false,
+  }) {
+    // 三颗按钮统一尺寸: 只有颜色不同(挂断是主色底), 避免大小不一看着不整齐
+    const double size = 56.0;
+    const double iconSize = 28.0;
+    final Color bg;
+    final Color iconColor;
+    if (isHangup) {
+      bg = kLinkPrimary;
+      iconColor = Colors.white;
+    } else if (active) {
+      bg = kLinkPrimary;
+      iconColor = Colors.white;
+    } else {
+      bg = const Color(0xE6FFFFFF);
+      iconColor = kLinkText;
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(
+              color: bg,
+              shape: BoxShape.circle,
+              boxShadow: const <BoxShadow>[
+                BoxShadow(color: Color(0x1A000000), blurRadius: 6.0, offset: Offset(0.0, 2.0)),
+              ],
+            ),
+            child: Icon(icon, color: iconColor, size: iconSize),
+          ),
+        ),
+        if (label != null) ...<Widget>[
+          const SizedBox(height: 8.0),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 12.0, color: Colors.white, shadows: kCallTextShadows),
+          ),
+        ],
+      ],
+    );
+  }
+
+  /// 取消申请: 关掉连接/呼叫音/本地预览, 回到输入态
   void _cancelApply() {
     socket?.close();
     unawaited(_stopRing());
+    // 预览在等待期间就起了: 取消时必须一起停掉, 否则相机一直被占着
+    unawaited(_exitTrtc());
     setState(() {
       roomInfo = null;
       step = LinkMicStep.input;
@@ -739,6 +882,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
             children: <Widget>[
               _circleButton(
                 icon: micMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+                active: micMuted,
                 onTap: () {
                   micMuted = !micMuted;
                   if (micMuted) {
@@ -787,20 +931,25 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   }
 
   /// 连麦中的圆形控制按钮: 半透明白底 + 深色图标(视频画面亮度不定, 白底最稳)
-  Widget _circleButton({required IconData icon, required VoidCallback onTap}) {
+  /// * [active] 关闭态(如已静音): 换成主色底 + 白图标, 一眼能看出麦克风关着
+  Widget _circleButton({
+    required IconData icon,
+    required VoidCallback onTap,
+    bool active = false,
+  }) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
         width: 40.0,
         height: 40.0,
         decoration: BoxDecoration(
-          color: const Color(0xE6FFFFFF),
+          color: active ? kLinkPrimary : const Color(0xE6FFFFFF),
           borderRadius: BorderRadius.circular(20.0),
           boxShadow: const <BoxShadow>[
             BoxShadow(color: Color(0x1A000000), blurRadius: 6.0, offset: Offset(0.0, 2.0)),
           ],
         ),
-        child: Icon(icon, color: kLinkText, size: 20.0),
+        child: Icon(icon, color: active ? Colors.white : kLinkText, size: 20.0),
       ),
     );
   }
