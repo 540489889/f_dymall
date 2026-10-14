@@ -573,8 +573,23 @@ class _EarnPageState extends State<EarnPage> {
           // 标题行
           Row(
             children: <Widget>[
-              const Icon(Icons.calendar_today, color: primary, size: 20.0),
-              const SizedBox(width: 6.0),
+              Container(
+                width: 26.0,
+                height: 26.0,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: <Color>[Color(0xFFFF9A70), primary],
+                  ),
+                  borderRadius: BorderRadius.circular(8.0),
+                  boxShadow: <BoxShadow>[
+                    BoxShadow(color: primary.withAlpha(40), blurRadius: 4.0, offset: const Offset(0, 2)),
+                  ],
+                ),
+                child: const Icon(Icons.calendar_today, color: Colors.white, size: 16.0),
+              ),
+              const SizedBox(width: 8.0),
               const Text('签到领 ', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
               Text('$signPointTomorrow', style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w800)),
               const Text(' 积分', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),

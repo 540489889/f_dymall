@@ -64,6 +64,8 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   LinkMicStep step = LinkMicStep.input;
   final TextEditingController codeController = TextEditingController();
   bool submitting = false;
+  /// 连麦码是否已输入: 控制「申请连麦」按钮置灰/可点击(空时置灰)
+  bool codeFilled = false;
 
   /// 等待接听的呼吸/扩散光圈动画(仿微信呼叫中): 头像外圈循环放大淡出
   late final AnimationController callingCtrl = AnimationController(
@@ -96,6 +98,8 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
+    // 监听连麦码输入, 实时更新「申请连麦」按钮的置灰/可点击状态
+    codeController.addListener(_onCodeChanged);
     // 连麦期间保持常亮: 举手等待/通话中都不熄屏(离开页面在 dispose 里恢复)
     WakelockPlus.enable();
     // 边到边: 视频画面铺到状态栏/导航栏区域(否则顶部电量栏那一条是系统底色, 看着像没铺满)
@@ -108,6 +112,12 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     }
   }
 
+  /// 连麦码输入变化: 更新按钮置灰状态(空 -> 置灰不可点, 有值 -> 可点)
+  void _onCodeChanged() {
+    final bool filled = codeController.text.trim().isNotEmpty;
+    if (filled != codeFilled && mounted) setState(() => codeFilled = filled);
+  }
+
   @override
   void dispose() {
     // 离开连麦页恢复系统息屏策略
@@ -118,6 +128,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
       overlays: <SystemUiOverlay>[SystemUiOverlay.top, SystemUiOverlay.bottom],
     );
     callingCtrl.dispose();
+    codeController.removeListener(_onCodeChanged);
     codeController.dispose();
     socket?.close();
     // 离开页面必须停掉呼叫音, 否则它会一直响到进程结束
@@ -532,7 +543,10 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
             child: TextField(
               controller: codeController,
               textInputAction: TextInputAction.done,
-              onSubmitted: (_) => apply(),
+              onSubmitted: (_) {
+                // 未输入连麦码时不提交(按钮已置灰, 键盘完成键也保持一致)
+                if (codeFilled) apply();
+              },
               cursorColor: kLinkPrimary,
               style: const TextStyle(fontSize: 15.0, color: kLinkText),
               // 连麦码是纯数字: 弹数字键盘, 并用 formatter 过滤掉非数字(含粘贴进来的字母/符号)
@@ -549,16 +563,22 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
           ),
           const SizedBox(height: 16.0),
           GestureDetector(
-            onTap: apply,
+            // 未输入连麦码(或提交中): 置灰且不可点击
+            onTap: (codeFilled && !submitting) ? apply : null,
             child: Container(
               height: 48.0,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(24.0),
-                gradient: const LinearGradient(colors: <Color>[kLinkPrimary, kLinkPrimaryLight]),
-                // 白底上的投影: 主色 18% 的柔和投影, 按钮不至于"贴"在背景上
-                boxShadow: const <BoxShadow>[
-                  BoxShadow(color: Color(0x2EFF2C55), blurRadius: 12.0, offset: Offset(0.0, 6.0)),
-                ],
+                gradient: codeFilled
+                    ? const LinearGradient(colors: <Color>[kLinkPrimary, kLinkPrimaryLight])
+                    : null,
+                color: codeFilled ? null : Colors.grey.shade300,
+                // 白底上的投影: 主色 18% 的柔和投影, 按钮不至于"贴"在背景上(置灰时去掉)
+                boxShadow: codeFilled
+                    ? const <BoxShadow>[
+                        BoxShadow(color: Color(0x2EFF2C55), blurRadius: 12.0, offset: Offset(0.0, 6.0)),
+                      ]
+                    : null,
               ),
               child: Center(
                 child: submitting
@@ -567,9 +587,14 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                         height: 18.0,
                         child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
                       )
-                    : const Text(
+                    : Text(
                         '申请连麦',
-                        style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: 2.0),
+                        style: TextStyle(
+                          fontSize: 16.0,
+                          fontWeight: FontWeight.w600,
+                          color: codeFilled ? Colors.white : Colors.white70,
+                          letterSpacing: 2.0,
+                        ),
                       ),
               ),
             ),
