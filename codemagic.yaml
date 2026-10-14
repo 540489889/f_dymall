@@ -160,8 +160,16 @@ workflows:
             } > "$TMP"
             mv "$TMP" Podfile
           fi
-          # 4) 关键: 穿山甲/火山引擎 SDK 含静态二进制, use_frameworks! 需改为 static linkage
-          grep -q "use_frameworks! :linkage" Podfile || sed -i '' 's/^\( *\)use_frameworks!$/\1use_frameworks! :linkage => :static/' Podfile
+          # 4) 关键: 穿山甲/火山引擎 SDK 含静态二进制, use_frameworks! 必须是 static linkage。
+          #    坑: 之前只在改前 grep 一次就 sed, 既不校验结果也不管行尾空白/缩进,
+          #    一旦没命中就静默往下走, 直到 pod install 报 "transitive dependencies that
+          #    include statically linked binaries" 才暴露(且会被当成网络问题重试 6 次)。
+          #    现在: 宽容匹配 + 改完立刻校验, 没改成直接报错退出, 不再浪费 6 次重试。
+          if ! grep -q "use_frameworks! :linkage" Podfile; then
+            sed -i '' -E 's|^[[:space:]]*use_frameworks![[:space:]]*$|  use_frameworks! :linkage => :static|' Podfile
+          fi
+          grep -n "use_frameworks" Podfile || true
+          grep -q "use_frameworks! :linkage" Podfile || { echo "ERROR: 未能把 use_frameworks! 改成静态链接"; exit 1; }
           # 5) 关键: YYText 链式比较在 Xcode 15+/26 下是默认 error, 必须改源码。
           #    重要: CocoaPods 不支持多个 post_install 钩子(Flutter 模板自带的 Podfile 已有一个),
           #    因此必须把修复代码插入已有 post_install 内部, 绝不能再追加第二个 post_install。
@@ -224,6 +232,11 @@ workflows:
               if [ -f "$PBX" ]; then
                 sed -i '' "s|IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;|IPHONEOS_DEPLOYMENT_TARGET = $IOS_MIN;|g" "$PBX"
               fi
+              rm -f Podfile.lock
+              retry pod install --repo-update
+            elif grep -q "statically linked binaries" /tmp/pod_install.log; then
+              echo "动态链接与静态二进制冲突, 强制改成静态链接重试"
+              sed -i '' -E 's|^[[:space:]]*use_frameworks!.*$|  use_frameworks! :linkage => :static|' Podfile
               rm -f Podfile.lock
               retry pod install --repo-update
             else
@@ -305,7 +318,9 @@ workflows:
             IOS_MIN=15.0
             if grep -q '^platform :ios, "17.0"' "$REPO_ROOT/ios/Podfile"; then IOS_MIN=17.0; fi
             sed -i '' -E "s|^[[:space:]]*#?[[:space:]]*platform[[:space:]]*:ios.*|platform :ios, \"$IOS_MIN\"|" "$REPO_ROOT/ios/Podfile"
-            grep -n "platform :ios" "$REPO_ROOT/ios/Podfile" || true
+            # 同理: 静态链接也要补回来(模板默认 use_frameworks! 动态链接, 会撞静态二进制)
+            sed -i '' -E 's|^[[:space:]]*use_frameworks!.*$|  use_frameworks! :linkage => :static|' "$REPO_ROOT/ios/Podfile"
+            grep -n -E "platform :ios|use_frameworks" "$REPO_ROOT/ios/Podfile" || true
           fi
           if [ "$IPA_SIGNING" = "none" ]; then
             # 免签: 只编译出未签名的 Runner.app, 下一步手动打成 ipa(真机需本地重签名)

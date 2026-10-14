@@ -33,9 +33,10 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  use_frameworks!
-  # 阿里云一键登录 / 穿山甲(GroMore) 这类带静态库的插件, 动态链接报"符号找不到"时改这一行:
-  # use_frameworks! :linkage => :static
+  # 必须静态链接: 穿山甲/火山引擎 SDK(RangersAPM / RangersAppLog / OneKit / TTSDKFramework)
+  # 是静态二进制, 动态链接下 pod install 直接失败:
+  # "target has transitive dependencies that include statically linked binaries"
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do
