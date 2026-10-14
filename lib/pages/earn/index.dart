@@ -2,6 +2,10 @@
 /// * 界面参考用户提供的 UI 图
 library;
 
+import 'dart:async';
+import 'dart:convert';
+
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -10,10 +14,15 @@ import '../../api/member.dart';
 import '../../api/member_account.dart';
 import '../../api/member_point.dart';
 import '../../api/member_signin.dart';
+import '../../api/member_task.dart';
 import '../../api/member_withdraw.dart';
 import '../../controller/auth_store.dart';
 import '../../utils/ads.dart';
 import '../../utils/ads_config.dart';
+
+/// 底部导航切到赚钱 tab 的刷新信号(含重复点当前 tab)
+/// * 赚钱页被 KeepAliveWrapper 保活, 不主动刷新的话任务列表一直停在首次进 tab 时的数据
+final ValueNotifier<int> earnTabRefreshTick = ValueNotifier<int>(0);
 
 class EarnPage extends StatefulWidget {
   const EarnPage({super.key});
@@ -67,54 +76,8 @@ class _EarnPageState extends State<EarnPage> {
   // 立即提现
   final double todayWithdraw = 0.30;
 
-  // 热门任务
-  final List<Map<String, dynamic>> tasks = const <Map<String, dynamic>>[
-    {
-      'icon': 'assets/images/make/money_task_redpacket.png',
-      'title': '签到领红包',
-      'desc': '连续签到7天，最高可得10元红包',
-      'reward': '+1.00 ~ 10.00 元',
-      'btn': '去完成',
-      'done': false,
-      'adType': 'interstitial',
-    },
-    {
-      'icon': 'assets/images/make/money_task_invite.png',
-      'title': '邀请好友得佣金',
-      'desc': '好友首次下载并注册，双方都得奖励',
-      'reward': '+3.00 ~ 20.00 元',
-      'btn': '去完成',
-      'done': false,
-      'adType': 'interstitial',
-    },
-    {
-      'icon': 'assets/images/make/money_task_browse.png',
-      'title': '浏览商品赚金币',
-      'desc': '浏览商品30秒，轻松赚金币',
-      'reward': '+50 ~ 200 金币',
-      'btn': '去完成',
-      'done': false,
-      'adType': 'interstitial',
-    },
-    {
-      'icon': 'assets/images/make/money_task_share.png',
-      'title': '分享直播间',
-      'desc': '分享直播间到社交平台，获得奖励',
-      'reward': '+0.50 ~ 5.00 元',
-      'btn': '去完成',
-      'done': false,
-      'adType': 'interstitial',
-    },
-    {
-      'icon': 'assets/images/make/money_task_order.png',
-      'title': '完成订单返积分',
-      'desc': '下单并确认收货，获得积分奖励',
-      'reward': '+100 ~ 500 积分',
-      'btn': '去完成',
-      'done': false,
-      'adType': 'interstitial',
-    },
-  ];
+  // 热门任务(接口: /membertask/api/task/lists, 字段由 loadTasks 映射)
+  List<Map<String, dynamic>> tasks = <Map<String, dynamic>>[];
 
   @override
   void initState() {
@@ -122,6 +85,54 @@ class _EarnPageState extends State<EarnPage> {
     load();
     loadSignin();
     loadWithdrawAccount();
+    loadTasks();
+    earnTabRefreshTick.addListener(_onTabRefreshTick);
+  }
+
+  /// 任务中心列表(/membertask/api/task/lists)
+  /// * 映射成界面要的字段: title=name / desc=num_text·cycle_text / reward=reward_text
+  /// * type 1 是激励视频(看视频领乐豆), 走激励视频广告; 其余走插屏
+  Future<void> loadTasks() async {
+    try {
+      final List<Map<String, dynamic>> list = await MemberTaskApi.lists();
+      if (!mounted) return;
+      setState(() {
+        tasks = list.map((Map<String, dynamic> e) {
+          final String numText = '${e['num_text'] ?? ''}';
+          final String cycleText = '${e['cycle_text'] ?? ''}';
+          final String desc = cycleText.isEmpty ? numText : '$numText·$cycleText';
+          return <String, dynamic>{
+            'task_id': e['task_id'],
+            'type': e['type'],
+            'type_name': '${e['type_name'] ?? ''}',
+            'icon': '${e['icon'] ?? ''}',
+            'title': '${e['name'] ?? ''}',
+            'desc': desc,
+            'reward': '${e['reward_text'] ?? ''}',
+            'btn': '去完成',
+            'done': false,
+            'adType': '${e['type']}' == '1' ? 'reward' : 'interstitial',
+          };
+        }).toList();
+      });
+      if (kDebugMode) {
+        debugPrint('[赚钱]任务列表(/membertask/api/task/lists): ${tasks.length} 条 ${jsonEncode(list)}');
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[赚钱]任务列表加载失败: $e');
+    }
+  }
+
+  /// 切到赚钱 tab(含重复点当前 tab): 重新拉任务列表
+  void _onTabRefreshTick() {
+    if (!mounted) return;
+    unawaited(loadTasks());
+  }
+
+  @override
+  void dispose() {
+    earnTabRefreshTick.removeListener(_onTabRefreshTick);
+    super.dispose();
   }
 
   /// 现金余额 + 积分(并发拉取;失败静默,顶部保持 0,不影响其它板块)
@@ -714,6 +725,8 @@ class _EarnPageState extends State<EarnPage> {
 
   // 热门任务
   Widget _buildHotTasks() {
+    // 任务还没拉到时先不渲染(加载中/失败/为空), 比显示一张空卡片好
+    if (tasks.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 0.0),
       decoration: BoxDecoration(
@@ -753,11 +766,16 @@ class _EarnPageState extends State<EarnPage> {
                                 borderRadius: BorderRadius.circular(28.0),
                               ),
                               child: Center(
-                                child: Image.asset(
-                                  '${task['icon']}',
+                                child: CachedNetworkImage(
+                                  imageUrl: '${task['icon']}',
                                   width: 44.0,
                                   height: 44.0,
                                   fit: BoxFit.contain,
+                                  fadeInDuration: Duration.zero,
+                                  placeholder: (BuildContext c, String u) =>
+                                      const SizedBox(width: 44.0, height: 44.0),
+                                  errorWidget: (BuildContext c, String u, Object e) =>
+                                      const Icon(Icons.card_giftcard, color: primary, size: 24.0),
                                 ),
                               ),
                             ),

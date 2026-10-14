@@ -200,6 +200,10 @@ class _LayoutState extends State<Layout> {
     if (index < _pageTypes.length && _pageTypes[index] == 'live') {
       liveTabRefreshTick.value++;
     }
+    // 同理: 每次切到赚钱 tab(含重复点当前 tab)都重新拉任务列表
+    if (index < _pageTypes.length && _pageTypes[index] == 'earn') {
+      earnTabRefreshTick.value++;
+    }
   }
 
   @override
