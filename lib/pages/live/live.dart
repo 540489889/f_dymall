@@ -2736,7 +2736,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     Wrap(
                                         spacing: 7.0,
                                     children: [
-                                    InkWell(
+                                    // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
                                       child: Container(
                                           alignment: Alignment.center,
                                           height: 38.0,
@@ -2776,9 +2778,11 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           }
                                         ),
                                         // 点赞: 从按钮位置飘心并上行
-                                        InkWell(
-                                      onTap: _onLikeButtonTap,
-                                      child: Container(
+                                        // * GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                        GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: _onLikeButtonTap,
+                                          child: Container(
                                         alignment: Alignment.center,
                                         height: 38.0,
                                         width: 38.0,
@@ -2823,7 +2827,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     }
                                   ),
                                   */
-                                  InkWell(
+                                  // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
                                     child: Container(
                                     alignment: Alignment.center,
                                     height: 38.0,
