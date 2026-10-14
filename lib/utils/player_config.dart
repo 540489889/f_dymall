@@ -122,6 +122,17 @@ Future<void> presetLiveSurfaceSize(Player player, VideoController controller,
   if (!isAndroidPlatform) return;
   final int w = width ?? lastLiveVideoWidth ?? 1920;
   final int h = height ?? lastLiveVideoHeight ?? 1080;
+  // 尺寸已经对上就不用跑探测了
+  // * 进房时 media_kit 已按页面布局把 Surface 建好(横屏就是 1920x1080), 而下面这个探测
+  //   每轮都要一次 channel 调用 + 100ms 等待, 起播还在等它(见 live.dart 的 await presetFuture)
+  //   —— 白等的这一段就是"进房画面出来得慢"的一部分
+  // * rect 有值说明 Java 侧的 Surface 已经建好挂上了, 这时直接跳过是安全的
+  final Rect? currentRect = controller.rect.value;
+  if ((currentRect?.width.toInt() ?? 0) == w &&
+      (currentRect?.height.toInt() ?? 0) == h) {
+    debugPrint('[live]预设 Surface 尺寸已就位: ${w}x$h(跳过探测)');
+    return;
+  }
   try {
     final int handle = await player.handle;
     for (int i = 0; i < maxTries; i++) {
