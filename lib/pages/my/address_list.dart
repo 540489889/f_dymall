@@ -12,6 +12,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/address.dart';
 import 'address_edit.dart';
+import '../../components/dialog_confirm.dart';
 import '../../styles/index.dart';
 
 class AddressListPage extends StatefulWidget {
@@ -128,19 +129,16 @@ class _AddressListPageState extends State<AddressListPage> {
   Future<void> deleteAddress(Map<String, dynamic> item) async {
     final int id = int.tryParse('${item['id'] ?? ''}') ?? 0;
     if (id <= 0) return;
-    final bool? confirm = await Get.dialog<bool>(
-      AlertDialog(
-        backgroundColor: Colors.white,
-        surfaceTintColor: Colors.white,
-        title: const Text('操作提示', style: TextStyle(fontSize: 16.0)),
-        content: const Text('确定要删除该地址吗?', style: TextStyle(fontSize: 14.0, color: Colors.black54)),
-        actions: <Widget>[
-          TextButton(onPressed: () => Get.back(result: false), child: const Text('取消', style: TextStyle(color: Colors.grey))),
-          TextButton(onPressed: () => Get.back(result: true), child: const Text('确定', style: TextStyle(color: primary))),
-        ],
-      ),
+    // 用项目自定义确认弹窗(白卡圆角 + 缩放入场 + 危险红主题), 替代系统 AlertDialog
+    final bool confirm = await showConfirmDialog(
+      title: '操作提示',
+      message: '确定要删除该地址吗?',
+      confirmText: '确定',
+      cancelText: '取消',
+      icon: Icons.delete_outline,
+      brandColor: const Color(0xFFFF4D5F),
     );
-    if (confirm != true) return;
+    if (!confirm) return;
     // 与 H5 一致: 默认地址不能删除
     if ('${item['is_default'] ?? ''}' == '1') {
       MyDialog.toast('默认地址,不能删除');
