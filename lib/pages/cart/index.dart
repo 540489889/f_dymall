@@ -13,6 +13,7 @@ import '../../api/coupon.dart';
 import '../../api/goods.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
+import '../../components/dialog_confirm.dart';
 import '../../styles/index.dart';
 
 /// 购物车条目
@@ -345,26 +346,30 @@ class _CartPageState extends State<CartPage> {
     }
   }
 
-  /// 删除确认
-  Future<bool?> _confirm(String message) {
-    return showDialog<bool>(
-      context: context,
-      builder: (BuildContext context) => AlertDialog(
-        title: const Text('提示', style: TextStyle(fontSize: 16.0)),
-        content: Text(message, style: const TextStyle(fontSize: 14.0)),
-        actionsPadding: const EdgeInsets.only(right: 10.0, bottom: 6.0),
-        actions: <Widget>[
-          TextButton(onPressed: () => Navigator.of(context).pop(false), child: const Text('取消', style: TextStyle(color: Colors.grey))),
-          TextButton(onPressed: () => Navigator.of(context).pop(true), child: const Text('确定', style: TextStyle(color: primary))),
-        ],
-      ),
+  /// 删除确认(自定义弹窗, 见 components/dialog_confirm.dart)
+  Future<bool> _confirm(
+    String message, {
+    String title = '提示',
+    String confirmText = '确定',
+    IconData? icon,
+  }) {
+    return showConfirmDialog(
+      title: title,
+      message: message,
+      confirmText: confirmText,
+      icon: icon,
     );
   }
 
   /// 删除单条
   Future<void> _deleteItem(CartItem item) async {
-    final bool? ok = await _confirm('确定要删除「${item.goodsName}」吗？');
-    if (ok != true) return;
+    final bool ok = await _confirm(
+      '确定要删除「${item.goodsName}」吗？',
+      title: '删除商品',
+      confirmText: '删除',
+      icon: Icons.delete_outline,
+    );
+    if (!ok) return;
     await _deleteIds(<int>[item.cartId]);
   }
 
@@ -374,8 +379,13 @@ class _CartPageState extends State<CartPage> {
       MyDialog.toast('请先选择商品');
       return;
     }
-    final bool? ok = await _confirm('确定删除选中的${selectedIds.length}件商品吗？');
-    if (ok != true) return;
+    final bool ok = await _confirm(
+      '确定删除选中的${selectedIds.length}件商品吗？',
+      title: '删除商品',
+      confirmText: '删除',
+      icon: Icons.delete_outline,
+    );
+    if (!ok) return;
     await _deleteIds(selectedIds.toList());
   }
 
@@ -700,8 +710,13 @@ class _CartPageState extends State<CartPage> {
 
   /// 清空失效商品
   Future<void> _clearInvalid() async {
-    final bool? ok = await _confirm('确定要清空失效商品吗？');
-    if (ok != true) return;
+    final bool ok = await _confirm(
+      '确定要清空失效商品吗？',
+      title: '清空失效',
+      confirmText: '清空',
+      icon: Icons.delete_sweep_outlined,
+    );
+    if (!ok) return;
     final List<int> ids = invalidItems.map((CartItem e) => e.cartId).toList();
     setState(() => invalidItems = <CartItem>[]);
     try {
