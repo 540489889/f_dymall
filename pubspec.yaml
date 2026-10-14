@@ -71,6 +71,12 @@ dependencies:
   # 生日: 成熟滚轮日期选择器(自带中文,不依赖 MaterialLocalizations)
   flutter_datetime_picker_plus: ^2.1.0
 
+# 微信 SDK(fluwx): app_id 只是配置, 真正注册在代码里调 fluwx.registerApi
+# * debug_logging 打开后能看到微信返回的错误码, 排「分享失败」用(仅 Android 生效)
+fluwx:
+  app_id: wx1ea2d457d5bba58a
+  debug_logging: true
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

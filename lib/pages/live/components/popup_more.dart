@@ -27,9 +27,10 @@ State<PopupMore> createState() => _PopupMoreState();
 }
 
 class _PopupMoreState extends State<PopupMore> {
-// 只保留"分享"和"举报"(同一排展示), 其余功能暂未实现先隐藏
+// 只保留"举报"和"字体大小"(同一排展示), 其余功能暂未实现先隐藏
+// * "分享"已停用(待微信 share 调通后恢复): 恢复时把下面这行放回来, 外层 PopupMore 的 onShare 还留着
 List circleList = [
-  {'icon': const Icon(Icons.share), 'label': '分享'},
+  // {'icon': const Icon(Icons.share), 'label': '分享'},
   {'icon': const Icon(Icons.merge_rounded), 'label': '举报'},
   {'icon': const Icon(Icons.text_fields), 'label': '字体大小'},
 ];

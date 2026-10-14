@@ -6,10 +6,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter/services.dart';
+import 'package:fluwx/fluwx.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
+import 'config/index.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
 import 'controller/app_config.dart';
@@ -48,6 +50,16 @@ void main() async {
     Get.put(AppConfig()); // 进入 App 即拉取 /api/config/init 全局配置
   } catch (e) {
     debugPrint('[main] Get.put 异常: $e');
+  }
+
+  // 微信 SDK: 尽早注册(微信登录/分享都依赖它, 晚了会报 Unassigned WxApi)
+  // * 不 await: 不阻塞启动; 分享前还会再兜一次(重复注册无副作用)
+  try {
+    unawaited(
+      Fluwx().registerApi(appId: Config.wxAppId, universalLink: Config.wxUniversalLink),
+    );
+  } catch (e) {
+    debugPrint('[main] 微信注册异常: $e');
   }
 
   // 全局错误兜底: 即使后续 UI 构建抛错也能在日志看到, 而不是纯白屏

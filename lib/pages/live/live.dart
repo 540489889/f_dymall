@@ -33,6 +33,7 @@ import './components/popup_luckybag.dart';
 import './components/popup_sign_stamp.dart';
 // import './components/popup_gift.dart'; // 礼物弹窗: 随底部礼物入口一起停用, 恢复入口时一并放开
 import './components/popup_more.dart';
+import './components/popup_share.dart';
 // import './components/popup_recharge.dart'; // 充值弹窗: 只被礼物弹窗调用, 随礼物入口一起停用
 import './components/popup_redpacket.dart';
 
@@ -739,17 +740,21 @@ void _scheduleVideoShow(String from) {
   //   那时新房间的帧还没上屏 —— 露出来的就是残留画面(观感: 第一帧是上一个房间)
   if (!mounted || session != liveSession) return;
   _videoStableTimer?.cancel();
-  if (kDebugMode) debugPrint('[live]画面出现($from), 稳住 700ms 再显示');
-  _videoStableTimer = Timer(const Duration(milliseconds: 700), () {
+  // 稳定时长 400ms(原 700ms): Surface 预设命中后不会再重建, 画面不会被 seek 打断,
+  // 不需要留原来的余量; 省下的 300ms 直接体现在"进房多久出画面"上
+  if (kDebugMode) debugPrint('[live]画面出现($from), 稳住 400ms 再显示');
+  _videoStableTimer = Timer(const Duration(milliseconds: 400), () {
     _videoStableTimer = null;
-    // 同上: 排队这 700ms 期间可能已经进了新房间, 这时不能再改全局首帧信号
+    // 同上: 排队这 400ms 期间可能已经进了新房间, 这时不能再改全局首帧信号
     if (!mounted || session != liveSession) return;
     if ((player.state.width ?? 0) <= 0) return;
-    // 新流的进度还没走起来: 这会儿纹理里还是上一个房间的最后一帧, 再等一轮
-    // * 兜底: 最多等 6 轮(约 4s), 超了就按现状显示, 免得一直停在封面
-    if (!streamTicking && videoShowWaits < 6) {
+    // 还在缓冲就再等一轮: 缓冲中画面随时会空掉, 这时候显示就是"画面一闪又黑回去"
+    // 新流的进度还没走起来同理: 这会儿纹理里还是上一个房间的最后一帧
+    // * 兜底: 最多等 6 轮(约 2.4s), 超了就按现状显示, 免得一直停在封面
+    if ((player.state.buffering || !streamTicking) && videoShowWaits < 6) {
       videoShowWaits++;
-      if (kDebugMode) debugPrint('[live]画面待显示($from): 新流进度未走, 第 $videoShowWaits 轮继续等');
+      final String why = player.state.buffering ? '仍在缓冲' : '新流进度未走';
+      if (kDebugMode) debugPrint('[live]画面待显示($from): $why, 第 $videoShowWaits 轮继续等');
       _scheduleVideoShow(from);
       return;
     }
@@ -2832,7 +2837,22 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 onTap: () {
                                       navigator?.push(FadeRoute(
                                         effect: 'bottom',
-                                        child: PopupMore(roomId: roomSn),
+                                        child: PopupMore(
+                                          roomId: roomSn,
+                                          // 点「分享」: 收起更多框后打开分享弹窗
+                                          // * 分享内容用当前房间的标题 + share_href
+                                          onShare: () {
+                                            navigator?.push(FadeRoute(
+                                              effect: 'bottom',
+                                              child: PopupShare(
+                                                roomId: roomSn,
+                                                title: '${roomInfo?['name'] ?? ''}'.trim(),
+                                                shareUrl: '${roomInfo?['share_href'] ?? ''}'.trim(),
+                                                coverUrl: LiveApi.imageOf(roomInfo?['feeds_img']),
+                                              ),
+                                            ));
+                                          },
+                                        ),
                                       ));
                                     }
                                   ),
