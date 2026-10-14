@@ -456,6 +456,8 @@ Future<void> loadLiveRoom() async {
   setState(() {
     liveRoom = room;
   });
+  // 排查用: 封面取的是 feeds_img(见 liveCover), 打出来看它有没有被拼错/被丢弃
+  if(kDebugMode) debugPrint('[live]首页直播封面: 原始=${room?['feeds_img']} 使用=$liveCover');
   final String sn = room == null ? '' : '${room['sn'] ?? ''}';
   final String pushLink = room == null ? '' : '${room['push_link'] ?? ''}';
   if(kDebugMode) debugPrint('[live]首页直播间字段: ${room == null ? 'null' : room.keys.toList()}');
@@ -665,9 +667,16 @@ void _startLiveDiag() {
 }
 
 // 直播预览播放状态: 卡片滚出视口自动暂停,滚回视口恢复播放
+// * 进了直播间(livePreviewSuspended)一律不播: 那时候直播间那一路才是主角, 解码器留给它
 void syncLivePlayState() {
   final Player? player = livePlayer;
   if(player == null) return;
+  if(livePreviewSuspended.value && player.state.playing) {
+    debugPrint('[index]已在直播间,暂停首页预览');
+    player.pause();
+    return;
+  }
+  if(livePreviewSuspended.value) return;
   final BuildContext? cardContext = liveCardKey.currentContext;
   if(cardContext == null) return;
   final RenderObject? cardObject = cardContext.findRenderObject();
@@ -687,6 +696,12 @@ void syncLivePlayState() {
     debugPrint('[index]直播卡片离开视口,暂停预览');
     player.pause();
   }
+}
+
+// 进出直播间信号: 进直播间暂停预览, 回来按卡片可见性恢复(见 syncLivePlayState)
+void _onLivePreviewSuspended() {
+  if(!mounted) return;
+  syncLivePlayState();
 }
 
 // 直播间字段取值(真实字段名待确认: 按候选键依次取,取不到用默认文案)
@@ -726,14 +741,22 @@ Widget liveBg() {
       colors: [Color(0xFF7A1418), Color(0xFF3A0708)],
     ),
   );
-  if (liveCover.isEmpty) return Container(decoration: decoration);
+  if (liveCover.isEmpty) {
+    // 排查用: 接口没给封面就只能是渐变兜底(看到"一片背景色"时先看这行)
+    if(kDebugMode) debugPrint('[index]直播封面为空(用渐变兜底): liveRoom=$liveRoom');
+    return Container(decoration: decoration);
+  }
   return CachedNetworkImage(
     imageUrl: liveCover,
     // 限制解码尺寸(卡片宽约 200 逻辑像素,高清屏按 3x 折算)
     memCacheWidth: 720,
     fit: BoxFit.cover,
     placeholder: (BuildContext context, String url) => Container(decoration: decoration),
-    errorWidget: (BuildContext context, String url, Object error) => Container(decoration: decoration),
+    errorWidget: (BuildContext context, String url, Object error) {
+      // 排查用: 地址拼错 / 防盗链(403) / 证书问题都会走到这里, 表现就是只剩背景色
+      if(kDebugMode) debugPrint('[index]直播封面加载失败: $url -> $error');
+      return Container(decoration: decoration);
+    },
   );
 }
 
@@ -763,6 +786,9 @@ void initState() {
 
   // 监听 App 生命周期: iOS 首次网络授权后 resumed 触发首页重试
   WidgetsBinding.instance.addObserver(this);
+
+  // 进出直播间: 进直播间暂停首页预览(把硬解码器让给直播间), 离开直播间再按可见性恢复
+  livePreviewSuspended.addListener(_onLivePreviewSuspended);
 
   // 监听网络可用性: 网络从无到有时重刷首页(监听授权后网络真正可用)
   try {
@@ -1206,6 +1232,7 @@ void initState() {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    livePreviewSuspended.removeListener(_onLivePreviewSuspended);
     _resumeRetryTimer?.cancel();
     _connectivitySub?.cancel();
     scrollController.dispose();
@@ -1602,15 +1629,6 @@ void initState() {
                             width: double.infinity,
                             child: Stack(
                               children: [
-                                // 背景: 有封面用封面,无封面用渐变;已出帧则隐藏,避免封面盖住画面
-                                ValueListenableBuilder<bool>(
-                                  valueListenable: liveFirstFrame,
-                                  builder: (BuildContext context, bool hasFrame, Widget? child) {
-                                    // 出帧后不能再返回非定位的 SizedBox.shrink(): 它是 Stack 里唯一的非定位子元素,
-                                    // 0x0 会把 Stack 尺寸带塌(见上方 width: double.infinity 的说明)
-                                    return hasFrame ? const SizedBox.expand() : Positioned.fill(child: liveBg());
-                                  },
-                                ),
                                 // 直播画面(首页静音预览)
                                 if (liveVideoController != null)
                                   Positioned.fill(
@@ -1623,6 +1641,15 @@ void initState() {
                                       fill: const Color(0xFF2A0A0B),
                                     ),
                                   ),
+                                // 背景: 有封面用封面,无封面用渐变;已出帧则隐藏,避免封面盖住画面
+                                // * 必须排在 Video 之后: Stack 后面的子元素才画在上层,
+                                //   放在 Video 之前会被它不透明的 fill 完全盖住, 封面永远看不见
+                                ValueListenableBuilder<bool>(
+                                  valueListenable: liveFirstFrame,
+                                  builder: (BuildContext context, bool hasFrame, Widget? child) {
+                                    return hasFrame ? const SizedBox.expand() : Positioned.fill(child: liveBg());
+                                  },
+                                ),
                                 // 观看人数 + 直播中标签
                                 Positioned(
                                   top: 10.0,

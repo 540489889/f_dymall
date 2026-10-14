@@ -18,16 +18,16 @@ import 'package:media_kit/media_kit.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
-import 'package:tencent_rtc_sdk/trtc_cloud.dart';
-import 'package:tencent_rtc_sdk/trtc_cloud_def.dart';
-import 'package:tencent_rtc_sdk/trtc_cloud_listener.dart';
-import 'package:tencent_rtc_sdk/trtc_cloud_video_view.dart';
 
 import '../../api/live.dart';
 import '../../config/index.dart';
 import '../../styles/index.dart';
 import '../../utils/live_socket.dart';
 import '../../utils/request.dart';
+// 连麦音视频: 接口 + 平台实现(条件导入, Web 端不引 TRTC SDK —— 它走 dart:ffi, H5 上不存在)
+// * 不要在这里直接 import package:tencent_rtc_sdk/*, 否则 H5 整包编译不过
+import 'trtc/link_mic_engine.dart';
+import 'trtc/link_mic_trtc.dart';
 
 /// 连麦状态
 /// * input 输入连麦码 / waiting 等待主播同意 / linking 连麦中
@@ -52,17 +52,6 @@ const Color kCallBgBottom = Color(0xFF191C23);
 const List<Shadow> kCallTextShadows = <Shadow>[
   Shadow(color: Color(0x99000000), blurRadius: 6.0, offset: Offset(0.0, 1.0)),
 ];
-
-/// 连麦默认美颜参数(基础美颜, 全部 0-9, 0 = 关闭)
-/// * nature 自然风格: 保留面部细节, 比 smooth(光滑) 更适合普通连麦; 秀场想要更"磨皮"可换成 smooth
-/// * 这里只给一个观感适中的默认值, 想调直接改这四个常量即可
-const TRTCBeautyStyle kBeautyStyle = TRTCBeautyStyle.nature;
-/// 磨皮(美颜)级别
-const int kBeautyLevel = 5;
-/// 美白级别
-const int kWhitenessLevel = 4;
-/// 红润级别
-const int kRuddinessLevel = 3;
 
 class LinkMicPage extends StatefulWidget {
   const LinkMicPage({super.key});
@@ -89,8 +78,9 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   Map<String, dynamic>? roomInfo;
   LiveSocket? socket;
 
-  TRTCCloud? trtc;
-  TRTCCloudListener? listener;
+  /// 连麦音视频引擎(平台实现: 移动端 TRTC / Web 空实现)
+  /// * 页面只调用接口, 不直接碰 TRTC SDK, 这样 H5 才编译得过
+  final LinkMicEngine engine = createLinkMicEngine();
   /// 本地预览视图 id(等待主播同意时就起预览, 所以视图在 waiting 阶段就已创建)
   int? localViewId;
   /// 远端连麦者(连麦中渲染成右侧小窗)
@@ -139,6 +129,11 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   /// 申请连麦: 拿到房间号后连接 WebSocket 进房, 等主播同意
   Future<void> apply() async {
     if (submitting) return;
+    // Web 端没有音视频能力(Flutter Web 不支持 dart:ffi): 别进等待态, 不然只有一块黑屏
+    if (!engine.supported) {
+      MyDialog.toast('当前平台不支持连麦，请使用手机 App');
+      return;
+    }
     final String code = codeController.text.trim();
     if (code.isEmpty) {
       // 提示与直播间一致: 居中 toast(不用顶部 snackbar)
@@ -267,6 +262,11 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
 
   /// 进 TRTC 房间(参数由服务端下发, 客户端不持有密钥)
   Future<void> _enterRoom(dynamic data) async {
+    // Web 端没有音视频能力: 兜一层(申请入口已经拦过, 这里是带参数直接进房的路径)
+    if (!engine.supported) {
+      MyDialog.toast('当前平台不支持连麦，请使用手机 App');
+      return;
+    }
     // 主播已同意: 停掉呼叫音, 接下来说话走 TRTC
     await _stopRing();
     final Map<String, dynamic> params = LiveApi.trtcParamsOf(data);
@@ -294,44 +294,22 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
       });
       return;
     }
-    final TRTCCloud cloud = await TRTCCloud.sharedInstance();
-    trtc = cloud;
-    final TRTCCloudListener value = TRTCCloudListener(
-      onError: (int errCode, String errMsg) => debugPrint('[link]TRTC 错误: $errCode $errMsg'),
-      onEnterRoom: (int result) => debugPrint('[link]TRTC 进房: $result'),
-      onExitRoom: (int reason) => debugPrint('[link]TRTC 退房: $reason'),
-      onRemoteUserEnterRoom: (String userId) {
-        if (!remoteUsers.contains(userId)) {
-          setState(() {
-            remoteUsers.add(userId);
-          });
-        }
+    // 进房 + 监听远端进出都由引擎完成(TRTC 只在 native 实现里)
+    await engine.enterRoom(
+      params,
+      micMuted: micMuted,
+      onRemoteEnter: (String userId) {
+        if (!mounted || remoteUsers.contains(userId)) return;
+        setState(() {
+          remoteUsers.add(userId);
+        });
       },
-      onRemoteUserLeaveRoom: (String userId, int reason) {
+      onRemoteLeave: (String userId) {
+        if (!mounted) return;
         setState(() {
           remoteUsers.remove(userId);
         });
       },
-    );
-    listener = value;
-    cloud.registerListener(value);
-    _applyBeauty(cloud);
-    // 等待期间就静音过的话, 进房后沿用: 不在这里又把麦克风打开
-    if (micMuted) {
-      cloud.stopLocalAudio();
-    } else {
-      cloud.startLocalAudio(TRTCAudioQuality.defaultMode);
-    }
-    cloud.enterRoom(
-      TRTCParams(
-        sdkAppId: params['sdkAppId'] as int,
-        userId: '${params['userId']}',
-        userSig: '${params['userSig']}',
-        roomId: (params['roomId'] as int?) ?? 0,
-        strRoomId: '${params['strRoomId'] ?? ''}',
-        role: params['role'] == 21 ? TRTCRoleType.audience : TRTCRoleType.anchor,
-      ),
-      TRTCAppScene.live,
     );
     if (!mounted) return;
     setState(() {
@@ -339,34 +317,20 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     });
   }
 
-  /// 应用默认美颜: 进房前设一次, 本地预览起播后再设一次(预览视图重建时仍保持)
-  /// * 只对本地采集生效: 连麦者自己看到的预览和推给主播的画面都会带上
-  /// * 全部为 0 即关闭美颜; 直播期间退出房间不会残留
-  void _applyBeauty(TRTCCloud cloud) {
-    cloud.setBeautyStyle(kBeautyStyle, kBeautyLevel, kWhitenessLevel, kRuddinessLevel);
-    if (kDebugMode) {
-      debugPrint('[link]默认美颜: ${kBeautyStyle.name} 磨皮$kBeautyLevel 美白$kWhitenessLevel 红润$kRuddinessLevel');
-    }
-  }
-
   /// 起本地预览(自己的画面): 主播同意前也要展示(仿微信视频通话的等待页)
   /// * TRTC 允许进房前先 startLocalPreview; 主播同意后进房, 预览不中断直接开始推流
+  /// * 默认美颜由引擎在取实例时一并设好(进房/预览重建都会重设一次)
   Future<void> _preparePreview() async {
-    final TRTCCloud cloud = await TRTCCloud.sharedInstance();
-    trtc = cloud;
-    _applyBeauty(cloud);
+    await engine.prepare();
     // 视图可能已经先创建好了(比如从连麦中退回再申请): 补一次起播
     _startPreviewIfReady();
   }
 
-  /// 本地预览起播: viewId 和 TRTC 实例都就绪才调(两者创建顺序不定, 所以各自就绪时都试一次)
+  /// 本地预览起播: viewId 就绪就调(视图创建与实例准备顺序不定, 所以各自就绪时都试一次)
   void _startPreviewIfReady() {
     final int? viewId = localViewId;
-    final TRTCCloud? cloud = trtc;
-    if (viewId == null || cloud == null) return;
-    cloud.startLocalPreview(frontCamera, viewId);
-    // 预览视图重建后补一次(美颜绑定在采集侧, 保险起见重设)
-    _applyBeauty(cloud);
+    if (viewId == null) return;
+    engine.startPreview(frontCamera, viewId);
   }
 
   /// 申请相机 + 麦克风权限
@@ -393,17 +357,9 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
 
   /// 结束连麦(主动挂断 / 主播结束 / 页面销毁)
   Future<void> _exitTrtc() async {
-    final TRTCCloud? cloud = trtc;
-    final TRTCCloudListener? value = listener;
-    trtc = null;
-    listener = null;
     // 预览停了, 视图也跟着销毁: 清掉 viewId, 下次申请重新起
     localViewId = null;
-    if (cloud == null) return;
-    if (value != null) cloud.unRegisterListener(value);
-    cloud.stopLocalPreview();
-    cloud.stopLocalAudio();
-    cloud.exitRoom();
+    await engine.exit();
     if (!mounted) return;
     setState(() {
       remoteUsers.clear();
@@ -463,7 +419,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
         children: <Widget>[
           // 本地预览(自己): 等待主播同意/连麦中都铺满当底图
           Positioned.fill(
-            child: TRTCCloudVideoView(
+            child: LinkMicVideoView(
               onViewCreated: (int viewId) {
                 localViewId = viewId;
                 _startPreviewIfReady();
@@ -486,9 +442,9 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                       color: Colors.black26,
                       borderRadius: BorderRadius.circular(8.0),
                     ),
-                    child: TRTCCloudVideoView(
+                    child: LinkMicVideoView(
                       onViewCreated: (int viewId) {
-                        trtc?.startRemoteView(userId, TRTCVideoStreamType.big, viewId);
+                        engine.startRemoteView(userId, viewId);
                       },
                     ),
                   ),
@@ -703,11 +659,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                       active: micMuted,
                       onTap: () {
                         micMuted = !micMuted;
-                        if (micMuted) {
-                          trtc?.stopLocalAudio();
-                        } else {
-                          trtc?.startLocalAudio(TRTCAudioQuality.defaultMode);
-                        }
+                        engine.setMicMuted(micMuted);
                         setState(() {});
                       },
                     ),
@@ -724,7 +676,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                       label: '摄像头切换',
                       onTap: () {
                         frontCamera = !frontCamera;
-                        trtc?.getDeviceManager().switchCamera(frontCamera);
+                        engine.switchCamera(frontCamera);
                         setState(() {});
                       },
                     ),
@@ -885,11 +837,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                 active: micMuted,
                 onTap: () {
                   micMuted = !micMuted;
-                  if (micMuted) {
-                    trtc?.stopLocalAudio();
-                  } else {
-                    trtc?.startLocalAudio(TRTCAudioQuality.defaultMode);
-                  }
+                  engine.setMicMuted(micMuted);
                   setState(() {});
                 },
               ),
@@ -898,7 +846,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                 icon: Icons.cameraswitch_rounded,
                 onTap: () {
                   frontCamera = !frontCamera;
-                  trtc?.getDeviceManager().switchCamera(frontCamera);
+                  engine.switchCamera(frontCamera);
                   setState(() {});
                 },
               ),

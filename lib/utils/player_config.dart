@@ -73,6 +73,30 @@ const VideoControllerConfiguration androidLiveVideoConfig = VideoControllerConfi
 int? lastLiveVideoWidth;
 int? lastLiveVideoHeight;
 
+/// 横屏 / 竖屏各自最近一次的实测输出尺寸
+/// * 分开记的原因: 换到横竖屏不同的房间时, "上一条流的尺寸"必然对不上,
+///   出帧那次 SetSurfaceSize 会重建 Surface -> seek 打断 RTMP -> 白白重连一次
+///   (实测: 从竖屏 540x960 的房间切到横屏 1920x1080 的房间, 进房要黑 4~5 秒才出画面)
+/// * 按宽高比归档(w >= h 记横屏), 起播前按目标房间的横竖屏各取各的
+int? lastLandscapeVideoWidth;
+int? lastLandscapeVideoHeight;
+int? lastPortraitVideoWidth;
+int? lastPortraitVideoHeight;
+
+/// 按横竖屏取上次实测的输出尺寸(没实测过时用常规比例兜底: 横屏 16:9 / 竖屏 9:16)
+/// * [landscape] true 取横屏那条, false 取竖屏那条
+int presetWidthOf(bool landscape) =>
+    landscape ? (lastLandscapeVideoWidth ?? 1920) : (lastPortraitVideoWidth ?? 540);
+int presetHeightOf(bool landscape) =>
+    landscape ? (lastLandscapeVideoHeight ?? 1080) : (lastPortraitVideoHeight ?? 960);
+
+/// 首页直播预览是否被挂起(进入直播间时为 true, 离开直播间恢复 false)
+///
+/// * 首页预览与直播间是两台播放器(两路硬解), 同时开第二路在部分机型上直接开不出来
+///   (见 androidLiveVideoConfig 里海思 OMX 的说明), 结果就是直播间那一路没有视频轨、只剩封面
+/// * 所以进直播间先把首页预览停掉, 空出解码器; 离开直播间再按"卡片是否可见"恢复
+final ValueNotifier<bool> livePreviewSuspended = ValueNotifier<bool>(false);
+
 /// media_kit_video 的底层 channel(与插件内 AndroidVideoController 用的是同一个)
 /// * Android 的 VideoController.setSize 直接抛 UnsupportedError,
 ///   但 Java 侧 `VideoOutputManager.SetSurfaceSize` 是通的, 只能绕过 Dart API 调它
@@ -90,29 +114,33 @@ const MethodChannel liveVideoChannel = MethodChannel('com.alexmercerind/media_ki
 /// 这里提前把 Surface 建好并挂上, 让"收到分辨率"那次直接命中短路。
 /// * 尺寸猜错了没有副作用: 只是跟原来一样重建一次(由 LiveReconnector 重连兜底)
 /// * 优先用上次实测的尺寸(同一个主播的流分辨率一般不变), 首次用 1080p 兜底
-Future<void> presetLiveSurfaceSize(Player player, VideoController controller) async {
+/// * [maxTries] 探测次数(每次间隔 100ms): 尺寸猜对时一两次就命中; 猜错会跑满才放弃,
+///   切房这种不能白等的场景传小一点(见 LivePage 的 _presetSurfaceOnce)
+/// [width] / [height] 给了就用它, 没给才回落到"上次实测的尺寸"(见 presetWidthOf)
+Future<void> presetLiveSurfaceSize(Player player, VideoController controller,
+    {int maxTries = 10, int? width, int? height}) async {
   if (!isAndroidPlatform) return;
-  final int width = lastLiveVideoWidth ?? 1920;
-  final int height = lastLiveVideoHeight ?? 1080;
+  final int w = width ?? lastLiveVideoWidth ?? 1920;
+  final int h = height ?? lastLiveVideoHeight ?? 1080;
   try {
     final int handle = await player.handle;
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < maxTries; i++) {
       await liveVideoChannel.invokeMethod(
         'VideoOutputManager.SetSurfaceSize',
         <String, Object>{
           'handle': handle.toString(),
-          'width': width.toString(),
-          'height': height.toString(),
+          'width': w.toString(),
+          'height': h.toString(),
         },
       );
       await Future<void>.delayed(const Duration(milliseconds: 100));
       // rect 被更新说明 Java 侧真的建好了 Surface: VideoOutput 还没 Create 时这次调用会被静默忽略
-      if ((controller.rect.value?.width.toInt() ?? 0) == width) {
-        debugPrint('[live]预设 Surface 尺寸: ${width}x$height');
+      if ((controller.rect.value?.width.toInt() ?? 0) == w) {
+        debugPrint('[live]预设 Surface 尺寸: ${w}x$h');
         return;
       }
     }
-    debugPrint('[live]预设 Surface 尺寸未生效(忽略): 目标 ${width}x$height');
+    debugPrint('[live]预设 Surface 尺寸未生效(忽略): 目标 ${w}x$h');
   } catch (e) {
     debugPrint('[live]预设 Surface 尺寸失败(忽略): $e');
   }
@@ -125,8 +153,18 @@ void recordLiveVideoSize(VideoParams params) {
   if (dw == null || dh == null || dw <= 0 || dh <= 0) return;
   // 90/270 度旋转时输出宽高是交换过的, 与 media_kit 里 SetSize 用的尺寸保持一致
   final bool swap = params.rotate == 90 || params.rotate == 270;
-  lastLiveVideoWidth = swap ? dh : dw;
-  lastLiveVideoHeight = swap ? dw : dh;
+  final int w = swap ? dh : dw;
+  final int h = swap ? dw : dh;
+  lastLiveVideoWidth = w;
+  lastLiveVideoHeight = h;
+  // 按宽高比归档到横屏/竖屏: 下次起播按目标房间的横竖屏各取各的, 不会互相污染
+  if (w >= h) {
+    lastLandscapeVideoWidth = w;
+    lastLandscapeVideoHeight = h;
+  } else {
+    lastPortraitVideoWidth = w;
+    lastPortraitVideoHeight = h;
+  }
 }
 
 /// 悬浮小窗的视频输出配置: 走软解(hwdec=no),不跟直播间抢硬解码码器

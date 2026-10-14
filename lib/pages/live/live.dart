@@ -36,6 +36,27 @@ import './components/popup_more.dart';
 // import './components/popup_recharge.dart'; // 充值弹窗: 只被礼物弹窗调用, 随礼物入口一起停用
 import './components/popup_redpacket.dart';
 
+// 直播间播放器: 进程内单例, 页面销毁时不释放(只停流, 见 _LiveState.dispose)
+//
+// 为什么不能跟页面一起 dispose:
+// * player.dispose() 是异步的。关闭直播间后退栈, 旧播放器还在异步收尾; 这时再从列表点进
+//   另一个直播间, 新的 State 立刻 createLivePlayer() 建了第二个播放器 —— 两台同时抢硬解码器,
+//   海思这类芯片在 1080p 上开不出第二路, 新那路没有视频轨, 表现就是"只有封面, 没有画面"。
+// * 上下滑动切房不重建播放器, 所以那条路径一直是好的(也就只有"关闭后再进"会复现)。
+// * 复用同一个播放器还有两个顺带的好处: 不用重新建 Surface, 起播更快。
+late Player livePlayer = createLivePlayer();
+// waitUntilFirstFrameRendered 是否已经完成过(播放器/输出都是全局单例, 它只会完成一次)
+// * 见 _LiveState.initState 里的说明: 完成过之后不再拿它当"新房间首帧"的信号
+bool liveFirstFrameRenderedOnce = false;
+// 直播间画面输出(Surface/纹理): 跟着上面的播放器一起复用
+late VideoController liveController = VideoController(
+  livePlayer,
+  // Android 配置见 androidLiveVideoConfig(mediacodec-copy)
+  configuration: isAndroidPlatform
+    ? androidLiveVideoConfig
+    : const VideoControllerConfiguration(),
+);
+
 class Live extends StatefulWidget {
   const Live({super.key});
 
@@ -46,19 +67,22 @@ class Live extends StatefulWidget {
 class _LiveState extends State<Live> {
   // 接收参数
 dynamic arguments = Get.arguments;
+// 本页面的进房会话号: dispose 时用它判断播放器是否已经归新房间用了(见 dispose 里的停流)
+int session = 0;
+// 换流基准进度 / 新流是否已出帧: 播放器是复用的, 换流瞬间纹理里还是上一个房间的最后一帧,
+// 只凭"视频轨就绪(width)"就显示画面, 第一帧会露出上一个房间 —— 要等新流的进度真的走起来
+Duration streamBasePos = Duration.zero;
+bool streamTicking = false;
+// 因"进度还没走"而继续等的轮数(兜底上限, 见 _scheduleVideoShow)
+int videoShowWaits = 0;
 // 垂直滑动页面controller
 late PageController pageVerticalController;
 // 水平滑动controller
 late PageController pageHorizontalController;
 
-late Player player = createLivePlayer();
-late VideoController liveVideoController = VideoController(
-  player,
-  // Android 配置见 androidLiveVideoConfig(mediacodec-copy)
-  configuration: isAndroidPlatform
-    ? androidLiveVideoConfig
-    : const VideoControllerConfiguration(),
-);
+// 播放器: 复用文件顶部的单例(不随页面重建, 见 livePlayer 的说明)
+Player get player => livePlayer;
+VideoController get liveVideoController => liveController;
 
 // 当前索引
 final ValueNotifier<int> liveIndexNotifier = ValueNotifier(0);
@@ -68,8 +92,16 @@ final ValueNotifier<Duration> positionNotifier = ValueNotifier(Duration.zero);
 final ValueNotifier<bool> firstFrameNotifier = ValueNotifier(false);
 // 画面稳定计时器: 出帧后再稳一会儿才显示(见 _scheduleVideoShow), 避免"画面一闪 -> 黑屏"
 Timer? _videoStableTimer;
+// 播放器流订阅(进度 / 画面尺寸): 页面销毁时显式取消, 不留挂着全局 notifier 的回调
+StreamSubscription<Duration>? _positionSubscription;
+StreamSubscription<int?>? _widthSubscription;
 // 起播前预置 Surface 尺寸的 Future(同一个 Player 只需一次, 切房沿用同一个 Surface)
 Future<void>? _presetFuture;
+// 上次预设用的尺寸: 与最新实测尺寸(lastLiveVideo*)不一致时重设一次
+// * 只跑一次是不够的: 切到分辨率不同的房间时, 出帧那次 SetSurfaceSize 必然不匹配,
+//   Surface 重建 -> seek -> RTMP 被打断 -> 又要重连一次(观感: 画面出来黑一下再出来)
+int? _presetWidth;
+int? _presetHeight;
 // 直播流自动重连(Surface 重建触发的 seek 会打断 RTMP)
 late LiveReconnector liveReconnector;
 bool goodsTalkVisible = true;
@@ -79,6 +111,9 @@ List<Map<String, dynamic>> onlineGoods = <Map<String, dynamic>>[];
 // 讲解中商品: socket goods 消息下发(与H5 livepull.nvue: msgGoods = msg.data 一致)
 // * 已归一化(见 LiveApi.goodsItem), 未下发为 null(讲解卡回落本地房间数据)
 Map<String, dynamic>? msgGoods;
+// 排障用(仅 debug): 进房起播链路的诊断订阅与巡检定时器, 页面销毁时统一取消
+final List<StreamSubscription<dynamic>> _diagSubs = <StreamSubscription<dynamic>>[];
+Timer? _diagTimer;
 // 进入时的房间下标(该房间优先使用接口数据)
 int entryIndex = 0;
 // 上下滑动的直播间列表: /live/api/shop/roomPage 接口数据(已用 _roomFromApi 归一化)
@@ -91,6 +126,19 @@ int roomListPage = 1;
 bool roomListHasMore = true;
 // 直播间信息: 进入直播间时用 /live/api/shop/getRoomInfo 查询(拿不到为 null)
 Map<String, dynamic>? roomInfo;
+// [临时] 上下滑动切房的开关: 调试期间先关掉, 只保留进入的那一间
+// * 关掉后: 竖向 PageView 不可手势滑动, onPageChanged 也不再触发 _switchRoom(不会换房/换流)
+//   —— 但 controller.jumpToPage(进房定位到当前房间)仍然可用, 那是定位不是切房
+// * 恢复: 把这里改回 true
+static const bool liveRoomSwipeEnabled = true;
+
+// 进房会话号: 每次进入直播间 +1
+// * 离开直播间时旧页面的 dispose 要等路由过渡动画结束才执行, 这期间旧页面挂着的异步接口
+//   (_loadRoomList / _loadRoomInfo / _loadRoomDetail) 会陆续返回, 而它们写的是上面这几个
+//   文件级变量 —— 新页面已经建好了, 旧回调再把上一个房间的数据/拉流地址写回来,
+//   于是新房间开屏第一帧渲染的是上一个房间(观感: 进 B 先闪一下 A 的封面, 甚至起播 A 的流)
+// * 每个异步流程出发时记下当时的会话号, 回来发现会话号变了就直接作废
+int liveSession = 0;
 // 直播间状态: 0 直播预告 / 1 直播中 / 2 直播暂停中 / 3 直播已结束
 // * 非直播中(0/2/3)不拉流, 用封面 + 状态提示兜底; 取不到该字段按直播中处理
 int liveStatus = 1;
@@ -163,6 +211,9 @@ final Set<String> endedActivityIds = <String>{};
   super.initState();
   // 看直播期间保持常亮: 长时间不操作也不熄屏(离开页面在 dispose 里恢复)
   WakelockPlus.enable();
+  // 停掉首页的直播预览: 那是另一路硬解, 两台同时开会抢解码器(部分机型第二路直接开不出来,
+  // 表现就是直播间没有视频轨、只剩封面)。离开直播间在 dispose 里恢复
+  livePreviewSuspended.value = true;
 
   // 没有传参(直接打开直播页)时用空参数, 房间数据全部来自 roomPage 接口
   arguments ??= <String, dynamic>{};
@@ -177,6 +228,29 @@ final Set<String> endedActivityIds = <String>{};
   liveIndexNotifier.value = 0;
   // 每次进入直播间重置首帧信号(全局 notifier 会保留上次的值)
   firstFrameNotifier.value = false;
+  // 进度同样复位: 上一个房间的播放进度会留在全局 notifier 里, 不清会带到新房间
+  positionNotifier.value = Duration.zero;
+  // 上一个房间的数据先清干净: roomList / roomInfo / 分页状态都是文件级变量, 退出房间不会自动
+  // 清空, 于是进新房间的头几帧会先按旧列表渲染(封面走缓存, 出得比接口还快) —— 观感就是
+  // "新画面出来前闪一下上一个房间的背景"
+  // * 列表清掉后 _roomItem 会走 _roomFromArguments 兜一条, 那条用的是首页入参, 正是本房间的数据
+  // 进房会话号 +1: 上一个房间还没返回的接口回调就此作废(见 liveSession 的说明)
+  liveSession++;
+  session = liveSession;
+  roomList.clear();
+  roomListPage = 1;
+  roomListHasMore = true;
+  roomListLoading = false;
+  roomListLoaded = false;
+  // 详情同理: 不清会先渲染上一个房间的状态/开播时间等, 接口回来再跳一次
+  roomInfo = null;
+  // 状态类同理(_switchRoom 里会清, 进房这条路径没清): 上一个房间是预告/结束时, liveStatus 会
+  // 残留成 0/3, 新房间首帧就按"非直播中"处理 —— 不挂载画面也不起播
+  // * 首页有传 status 就用它预判, 没传按直播中(1), getRoomInfo 回来后以接口为准
+  liveStatus = LiveApi.statusOf(arguments is Map ? arguments.cast<String, dynamic>() : null);
+  preVideo = '';
+  liveStartTime = null;
+  startChecked = false;
   pageVerticalController = PageController(initialPage: liveIndexNotifier.value, viewportFraction: 1.0);
   pageHorizontalController = PageController(initialPage: 1, viewportFraction: 1.0);
   // 走 LiveReconnector: 抵消 Surface 重建触发的 seek 对直播流的打断
@@ -189,13 +263,24 @@ final Set<String> endedActivityIds = <String>{};
   );
   player.setPlaylistMode(PlaylistMode.loop);
   // 监听视频播放进度
-  player.stream.position.listen((event) {
+  _positionSubscription = player.stream.position.listen((event) {
+    // 会话号变了 = 播放器已经归新房间: 这个进度是新房间的, 别再写全局进度(旧页面还没 dispose)
+    if (session != liveSession) return;
     positionNotifier.value = event;
+    // 新流是否真的在出帧: 换流后进度会回退(新流时间轴从头开始)或从 0 起步
+    // * 旧流的进度也在走, 所以只看"推进"不够, 要看它相对换流那一刻(基准)跳变
+    if (!streamTicking &&
+        (event < streamBasePos || (streamBasePos <= Duration.zero && event > Duration.zero))) {
+      streamTicking = true;
+    }
     });
   // 监听画面尺寸: 解码出首帧后 width 才有值, 用它控制 Video 的显示时机(未出画前保持封面)
   // * 不能直接置 true: 拿到尺寸时纹理可能还没渲染, 这时露出 Video 就是一片黑(它的 fill 是纯黑)
   // * 视频轨没了(被 seek 打断 / 重连中)就撤掉画面继续显示封面: 黑屏比"退回封面"难看得多
-  player.stream.width.listen((event) {
+  _widthSubscription = player.stream.width.listen((event) {
+    // 会话号变了 = 已经进了新房间: 这个尺寸事件属于新房间的流,
+    // 旧页面再拿它调度显示会在新房间的帧上屏前就把画面放出来(露出残留画面)
+    if (session != liveSession) return;
     if ((event ?? 0) > 0) {
       _scheduleVideoShow('视频轨就绪');
       return;
@@ -206,16 +291,25 @@ final Set<String> endedActivityIds = <String>{};
     });
   // 首帧真正渲染上屏(纹理已交给 Flutter)再显示画面
   // * 只回调一次: 重连后不会再触发, 所以上面那个 width 兜底必须保留
-  liveVideoController.waitUntilFirstFrameRendered.then((_) {
-    if (kDebugMode) debugPrint('[live]首帧已渲染');
-    _scheduleVideoShow('首帧已渲染');
-  });
+  // * 这个 Future 属于全局单例 VideoController, 只会完成一次: 第一次进房完成后,
+  //   以后每次进房再注册 .then 都会立刻回调(那是上一次的"首帧", 不是新房间的),
+  //   于是 700ms 后提前把封面藏了 -> 露出上一房间残留/黑屏(观感: 进房闪一下)
+  //   所以只认第一次, 之后一律靠 player.stream.width(视频轨就绪) 兜底
+  if (!liveFirstFrameRenderedOnce) {
+    liveVideoController.waitUntilFirstFrameRendered.then((_) {
+      liveFirstFrameRenderedOnce = true;
+      if (kDebugMode) debugPrint('[live]首帧已渲染');
+      _scheduleVideoShow('首帧已渲染');
+    });
+  }
   // 上下滑动的直播间列表: roomPage 接口(与房间信息并行加载)
   _loadRoomList();
   // 进入直播间: 先查房间信息(getRoomInfo)与拉流地址(getPullUrl),拿到后再起播
   _loadRoomInfo();
   // 进入直播间即连接 socket(与H5一致: 连上后发进房消息, 断线自动重连)
   _initSocket();
+  // 排障用(仅 debug): 进房后把起播链路的状态打出来(切房没画面时靠它定位)
+  if (kDebugMode) _startEntryDiag();
   }
 
 // 上下滑动的直播间列表(/live/api/shop/roomPage): 首屏加载 + 滑到底加载下一页
@@ -226,8 +320,11 @@ Future<void> _loadRoomList({bool loadMore = false}) async {
   if (loadMore && !roomListHasMore) return;
   roomListLoading = true;
   final int page = loadMore ? roomListPage + 1 : 1;
+  final int session = liveSession;
   final Map<String, dynamic> res = await LiveApi.roomPage(page: page, pageSize: 10);
-  if (!mounted) return;
+  // 会话号变了 = 这期间又进了新房间: 结果作废, 不能再写回共享的房间列表
+  // * 否则新房间开屏先渲染上一个房间的封面, 等自己的列表回来才换过来(观感: 闪一下上个房间)
+  if (!mounted || session != liveSession) return;
   final dynamic rawList = res['list'];
   final List<Map<String, dynamic>> list = rawList is List
       ? rawList.whereType<Map<String, dynamic>>().map(_roomFromApi).toList()
@@ -254,14 +351,24 @@ Future<void> _loadRoomList({bool loadMore = false}) async {
     } else {
       entryIndex = hit < 0 ? 0 : hit;
     }
+    // 上下滑动切房关掉后(liveRoomSwipeEnabled), onPageChanged 不再触发 _switchRoom, 页码就
+    // 不会跟着 jumpToPage 变 —— 这里直接同步成进入的房间, 否则 Video 按 liveIndex 挂载,
+    // 进入的房间不在第 0 页时会一直不挂载(只有封面没画面)
+    liveIndexNotifier.value = entryIndex;
     // 房间详情可能比列表先回来: 补一次合并, 进入的房间才不会退回列表里的简略字段
     if (roomInfo != null && entryIndex < roomList.length) {
       roomList[entryIndex] = _mergeRoomDetail(roomList[entryIndex], roomInfo!);
     }
   });
   // 列表是异步回来的(PageController 创建时还在第 0 页), 拿到后再跳到进入的房间
-  if (!loadMore && pageVerticalController.hasClients && entryIndex > 0) {
-    pageVerticalController.jumpToPage(entryIndex);
+  // * 列表刚到位时 PageView 可能还没建起来(此前列表为空不建), 这会儿 hasClients 还是 false,
+  //   直接 jumpToPage 会静默失效 -> 停在列表第一个房间: 播的是进来的房间, 界面/数据却是另一个
+  // * 推到下一帧再跳: 那时 PageView 已建好, hasClients 才为 true
+  if (!loadMore && entryIndex > 0) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !pageVerticalController.hasClients) return;
+      pageVerticalController.jumpToPage(entryIndex);
+    });
   }
 }
 
@@ -365,6 +472,7 @@ Future<void> _loadRoomInfo() async {
   final String sn = '${arguments['sn'] ?? ''}'.trim();
   if (sn.isEmpty) return;
   final Stopwatch cost = Stopwatch()..start();
+  final int session = liveSession;
   // 起播只等拉流地址: 房间详情与带货商品并行发出, 回来后自己刷新, 不参与等待
   final Future<String> urlFuture = LiveApi.pullUrl(sn);
   unawaited(_loadRoomDetail(sn, index: entryIndex));
@@ -376,14 +484,15 @@ Future<void> _loadRoomInfo() async {
   final String entrySrc = '${arguments['src'] ?? ''}'.trim();
   final bool started = entrySrc.isNotEmpty && shouldOpenStream(entryIndex);
   // 预置 Surface 与 getPullUrl 并行: 不额外占一个接口往返的时间
-  final Future<void> presetFuture = _presetSurfaceOnce();
+  final Future<void> presetFuture = _presetSurfaceFor(entryIndex);
   if (started) {
     await presetFuture;
-    if (!mounted) return;
-    unawaited(liveReconnector.open(entrySrc));
+    // 会话号变了(已离开/又进了新房间): 这个地址是上一个房间的, 不能再起播
+    if (!mounted || session != liveSession) return;
+    unawaited(_openStream(entrySrc));
   }
   final String url = (await urlFuture).trim();
-  if (!mounted) return;
+  if (!mounted || session != liveSession) return;
   if (kDebugMode) debugPrint('[live]详情页 getPullUrl: sn=$sn url=$url 入口src=$entrySrc');
   setState(() {
     pullUrl = url;
@@ -392,6 +501,8 @@ Future<void> _loadRoomInfo() async {
       roomList[entryIndex]['src'] = url;
     }
   });
+  // 会话号变了: 下面的起播属于上一个房间, 直接收住
+  if (session != liveSession) return;
   // 非直播中(0 预告 / 2 暂停 / 3 已结束)不拉流, 由封面 + 状态提示兜底
   if (!shouldOpenStream(entryIndex)) return;
   // 入口已有地址时上面就起播了, 这里不要再起一次
@@ -402,8 +513,11 @@ Future<void> _loadRoomInfo() async {
 // 房间详情(getRoomInfo): 单独请求, 回来后刷新界面, 不阻塞起播
 // * [updateStatus] 只有进入的那个房间才更新 roomInfo/liveStatus(头部状态提示用), 滑到的房间只补列表
 Future<void> _loadRoomDetail(String sn, {int? index, bool updateStatus = true}) async {
+  final int session = liveSession;
   final Map<String, dynamic>? room = await LiveApi.roomInfo(sn);
-  if (!mounted || room == null) return;
+  // 同上: 会话号变了说明这是上一个房间的详情, 不能写进共享的 roomInfo / liveStatus
+  if (!mounted || session != liveSession) return;
+  if (room == null) return;
   final int i = index ?? liveIndexNotifier.value;
   setState(() {
     if (updateStatus) {
@@ -503,7 +617,7 @@ DateTime? _parseStartTime(Map<String, dynamic>? room) {
 Future<void> _openPreviewVideo() async {
   if (preVideo.isEmpty) return;
   await player.setVolume(0.0);
-  await liveReconnector.open(preVideo);
+  await _openStream(preVideo);
 }
 
 // 开播倒计时: 每秒刷新, 归零后再查一次房间状态(已开播就起播)
@@ -572,10 +686,20 @@ Future<void> _onSubscribeTap([String? sn]) async {
 // 带货商品(onlineGoods, 底部购物弹窗用): 单独请求, 不阻塞起播; 拿不到则保持空列表, 弹窗回落本地演示数据
 Future<void> _loadOnlineGoods(String sn) async {
   final List<Map<String, dynamic>> goods = await LiveApi.onlineGoods(sn);
-  if (!mounted || goods.isEmpty) return;
+  // 同上: 会话号变了说明这是上一个房间的商品, 不能带进新房间的购物弹窗
+  if (!mounted || session != liveSession || goods.isEmpty) return;
   setState(() {
     onlineGoods = goods;
   });
+}
+
+// 换流统一走这里: 记下换流前的进度, 之后进度回退/起步才算新流在出帧(见 streamTicking)
+// * 播放器是复用的, 换过去之后不会立刻换纹理, 不等新流出帧就显示会露出上一个房间的画面
+Future<void> _openStream(String src) async {
+  streamBasePos = player.state.position;
+  streamTicking = false;
+  videoShowWaits = 0;
+  await liveReconnector.open(src);
 }
 
 // 起播当前房间: 进入的房间用 getPullUrl 拿到的地址, 其余用列表里同步好的 push_link
@@ -589,10 +713,10 @@ Future<void> _openEntryStream() async {
   if (liveSrc.isEmpty) return;
   // 预告片是静音播的, 起直播流时恢复音量
   await player.setVolume(100.0);
-  // 起播前预置 Surface 尺寸(只需一次): 避免出帧后重建 Surface 打断 RTMP 触发重连
-  await _presetSurfaceOnce();
+  // 起播前预置 Surface 尺寸(按当前房间的横竖屏): 避免出帧后重建 Surface 打断 RTMP 触发重连
+  await _presetSurfaceFor(index);
   if (!mounted) return;
-  await liveReconnector.open(liveSrc);
+  await _openStream(liveSrc);
 }
 
 // 重连时回调: 接下来画面会空一段时间, 把封面露出来(否则这几秒就是一整片黑屏)
@@ -610,23 +734,110 @@ void _onReconnecting() {
 // * 这 700ms 里画面又没了(被打断/重连)就不显示, 等下一轮重新计时
 // * 代价: 出画面比"一有帧就显示"晚 0.7s, 换来的是中间不闪
 void _scheduleVideoShow(String from) {
-  if (!mounted) return;
+  // 会话号变了 = 已经进了新房间: 这个定时器属于上一个房间, 不能再碰全局的首帧信号
+  // * 旧页面的 dispose 要等路由动画结束, 这期间它收到新房间的 width 事件会把画面提前放出来,
+  //   那时新房间的帧还没上屏 —— 露出来的就是残留画面(观感: 第一帧是上一个房间)
+  if (!mounted || session != liveSession) return;
   _videoStableTimer?.cancel();
   if (kDebugMode) debugPrint('[live]画面出现($from), 稳住 700ms 再显示');
   _videoStableTimer = Timer(const Duration(milliseconds: 700), () {
     _videoStableTimer = null;
-    if (!mounted) return;
+    // 同上: 排队这 700ms 期间可能已经进了新房间, 这时不能再改全局首帧信号
+    if (!mounted || session != liveSession) return;
     if ((player.state.width ?? 0) <= 0) return;
+    // 新流的进度还没走起来: 这会儿纹理里还是上一个房间的最后一帧, 再等一轮
+    // * 兜底: 最多等 6 轮(约 4s), 超了就按现状显示, 免得一直停在封面
+    if (!streamTicking && videoShowWaits < 6) {
+      videoShowWaits++;
+      if (kDebugMode) debugPrint('[live]画面待显示($from): 新流进度未走, 第 $videoShowWaits 轮继续等');
+      _scheduleVideoShow(from);
+      return;
+    }
     if (!firstFrameNotifier.value) firstFrameNotifier.value = true;
   });
 }
 
-// 起播前把 Surface 尺寸设成视频实际尺寸(只需一次)
+// 排障用(仅 debug): 进房后的起播诊断, 区分"没起播 / 起了没解码 / 解码了没渲染"
+// * 播放器层: playing / buffering / 视频尺寸(有没有解码出画面) / 播放错误
+// * 输出层:   textureId / rect(纹理有没有交给 Flutter)
+// * UI 层:    当前房间/状态/应不该起播/画面有没有显示出来
+// * 打印 8 次(约 16s)后自动停, 覆盖一次起播 + 一次自动重连的完整过程
+void _startEntryDiag() {
+  _diagSubs.add(player.stream.error.listen((String error) => debugPrint('[live]播放错误: $error')));
+  _diagSubs.add(player.stream.playing.listen((bool playing) => debugPrint('[live]playing=$playing')));
+  _diagSubs.add(player.stream.buffering.listen((bool buffering) => debugPrint('[live]buffering=$buffering')));
+  _diagSubs.add(player.stream.width.listen((int? width) =>
+      debugPrint('[live]视频尺寸: ${width ?? 0}x${player.state.height ?? 0}')));
+  _diagSubs.add(player.stream.videoParams.listen((VideoParams params) =>
+      debugPrint('[live]videoParams: ${params.dw}x${params.dh} rotate=${params.rotate}')));
+  _diagSubs.add(player.stream.log.listen((PlayerLog log) {
+    final String line = '${log.prefix}: ${log.text}';
+    final String lower = line.toLowerCase();
+    if (lower.contains('error') || lower.contains('fail') || lower.contains('rtmp') ||
+        lower.contains('vo:') || lower.contains('gpu')) {
+      debugPrint('[live][mpv] $line');
+    }
+  }));
+  _diagTimer?.cancel();
+  int tick = 0;
+  _diagTimer = Timer.periodic(const Duration(seconds: 2), (Timer timer) {
+    tick += 1;
+    if (!mounted) {
+      timer.cancel();
+      return;
+    }
+    final int index = liveIndexNotifier.value;
+    debugPrint('[live]进房巡检$tick'
+        ' sn=$roomSn index=$index/$entryIndex 状态=${index < roomList.length ? '${roomList[index]['status']}' : '-'}'
+        ' 应起播=${shouldOpenStream(index)}'
+        ' | 播放器: playing=${player.state.playing} buffering=${player.state.buffering}'
+        ' 尺寸=${player.state.width}x${player.state.height}'
+        ' | 输出: textureId=${liveVideoController.id.value} rect=${liveVideoController.rect.value}'
+        ' | UI: 显示画面=${firstFrameNotifier.value}');
+    if (tick >= 8) {
+      timer.cancel();
+      _diagTimer = null;
+    }
+  });
+}
+
+// 起播前把 Surface 尺寸设成视频实际尺寸
 // * 命中时出帧后那次 SetSurfaceSize 会被跳过: Surface 不重建 -> 不触发 seek -> RTMP 不断 -> 不用重连
 //   也就没有"画面出来又被打断"那一段黑屏(见 presetLiveSurfaceSize)
-Future<void> _presetSurfaceOnce() {
-  // 复用同一个 Future: 进房那条链路与 _openEntryStream 可能都要等它, 只真跑一次
-  return _presetFuture ??= presetLiveSurfaceSize(player, liveVideoController);
+// * 不是"只跑一次": 目标是"尺寸对得上"。首次(还没实测过)用 1080p 兜底试; 之后每出现一个
+//   新的实测尺寸就重设一次(切到分辨率不同的房间), 尺寸没变则复用已完成的 Future(不耗时)
+// * [maxTries] 探测上限: 尺寸猜错时会跑满才放弃, 切房不能白等, 传小一点
+Future<void> _presetSurfaceOnce({int maxTries = 10, int? width, int? height}) {
+  final int w = width ?? lastLiveVideoWidth ?? 1920;
+  final int h = height ?? lastLiveVideoHeight ?? 1080;
+  final Future<void>? cached = _presetFuture;
+  if (cached != null && _presetWidth == w && _presetHeight == h) return cached;
+  _presetWidth = w;
+  _presetHeight = h;
+  return _presetFuture =
+      presetLiveSurfaceSize(player, liveVideoController, maxTries: maxTries, width: w, height: h);
+}
+
+// 该房间是不是横屏(列表里的 type 优先, 列表还没回来时用进房预判的 isHorizontal)
+bool _isHorizontalRoomAt(int index) {
+  if (index >= 0 && index < roomList.length) {
+    final String type = '${roomList[index]['type'] ?? ''}'.trim();
+    if (type.isNotEmpty) return type == 'horizontal';
+  }
+  return isHorizontal;
+}
+
+// 按当前房间的横竖屏预设 Surface 尺寸(起播前调用)
+// * 尺寸取"同横竖屏上次实测的值", 没实测过才用常规比例兜底(见 presetWidthOf)
+// * 不能沿用"上一条流的实测尺寸": 换到横竖屏不同的房间时它必然对不上,
+//   出帧那次 SetSurfaceSize 会重建 Surface -> seek 打断 RTMP -> 白重连一次(进房黑 4~5 秒)
+Future<void> _presetSurfaceFor(int index, {int maxTries = 10}) {
+  final bool landscape = _isHorizontalRoomAt(index);
+  return _presetSurfaceOnce(
+    maxTries: maxTries,
+    width: presetWidthOf(landscape),
+    height: presetHeightOf(landscape),
+  );
 }
 
 // 重连前重新获取拉流地址: m3u8 带 auth_key 时效, 过期后必须换新地址才连得上
@@ -645,6 +856,20 @@ Future<String> _refreshPullUrl() async {
 
 // 上下滑动切房: 换房间号 -> 清掉上一个房间的实时数据 -> 取该房间详情/拉流地址/带货商品 -> 起播并重进 socket
 Future<void> _switchRoom(int index) async {
+  // 跳页但房间没变(进房后列表回来再 jumpToPage 到进入的房间就是这种): 画面/数据都不用重置
+  // * 原来先 setState 把 firstFrameNotifier 置 false 再 return, 已经播出来的画面会被封面
+  //   重新盖住, 等下一轮才再露出来 —— 观感就是"画面刚出来又闪一下"
+  if (index >= 0 && index < roomList.length) {
+    final String pageSn = '${_roomItem(index)['sn'] ?? ''}'.trim();
+    if (pageSn.isEmpty || pageSn == currentSn) {
+      if (liveIndexNotifier.value != index) {
+        setState(() {
+          liveIndexNotifier.value = index;
+        });
+      }
+      return;
+    }
+  }
   setState(() {
     liveIndexNotifier.value = index;
     positionNotifier.value = Duration.zero;
@@ -695,7 +920,18 @@ Future<void> _switchRoom(int index) async {
   // 列表里已带 push_link 时先用它起播(与进房同理, 不等 getPullUrl 往返)
   final String listSrc = '${_roomItem(index)['src'] ?? ''}'.trim();
   final bool started = listSrc.isNotEmpty && shouldOpenStream(index);
-  if (started) unawaited(liveReconnector.open(listSrc));
+  if (started) {
+    // 起播前把 Surface 设成上一个房间实测的尺寸: 尺寸对得上时出帧那次 SetSurfaceSize 会被跳过,
+    // Surface 不重建 -> 不触发 seek -> RTMP 不断 -> 不用重连(切房每次都重连一次就是缺了这一步)
+    // * 先清重连地址: 改 Surface 会打断上一个房间还在播的流, 不清会被当成断流去重连旧房间
+    // * 尺寸没变时预设立刻返回(复用已完成的 Future, 0 耗时); 变了才真跑, 上限 3 次(300ms),
+    //   猜错就尽早起播, 交给 LiveReconnector 兜底, 别把 1s 压在起播前面
+    liveReconnector.src = '';
+    unawaited(_presetSurfaceFor(index, maxTries: 3).then((_) {
+      if (!mounted) return;
+      unawaited(_openStream(listSrc));
+    }));
+  }
   final String url = (await urlFuture).trim();
   if (!mounted) return;
   if (kDebugMode) debugPrint('[live]切房 getPullUrl: sn=$sn url=$url 列表src=$listSrc');
@@ -714,7 +950,11 @@ Future<void> _switchRoom(int index) async {
   String src = url;
   if (src.isEmpty) src = listSrc;
   if (src.isEmpty) return;
-  await liveReconnector.open(src);
+  // 列表没带地址的慢路径同样要预置: 走到这里说明上面的预设没跑过
+  liveReconnector.src = '';
+  await _presetSurfaceFor(index, maxTries: 3);
+  if (!mounted) return;
+  await _openStream(src);
 }
 
 // 进入直播间连接 socket(地址与H5 Config.socketUrl 一致)
@@ -1328,16 +1568,40 @@ Future<void> _setLiveState(int status, {bool refresh = false}) async {
     await player.pause();
     return;
   }
+  // 直播已结束: 先清掉重连地址再停流
+  // * 否则 LiveReconnector 会把这次 stop 当成"流断了", 对已经结束的房间反复重连(最多 3 次)
+  liveReconnector.src = '';
   await player.stop();
   _joinWatchdog?.cancel();
   await liveSocket.close();
 }
 
+// 离开直播间: 停流 + 断 socket + 停所有定时器(右上关闭 / 被踢 / 页面销毁 都走这里)
+// * 顺序很关键: 必须先把重连地址清掉再 stop —— LiveReconnector 靠 src 判断是否要重连,
+//   直接 stop 会被当成断流, 退出后还会再起播一次(对已停的流/已销毁的 player 调 open)
+// * 定时器先撤: 进房看门狗 / 活动倒计时 / 开播倒计时 / 首帧稳定计时, 否则退栈后仍会回调
+Future<void> _leaveRoom() async {
+  _joinWatchdog?.cancel();
+  activityTimer?.cancel();
+  countdownTimer?.cancel();
+  _videoStableTimer?.cancel();
+  _videoStableTimer = null;
+  liveReconnector.src = '';
+  await player.stop();
+  await liveSocket.close();
+}
+
+// 右上角关闭: 停干净再退栈(清理由 _leaveRoom 完成, dispose 再跑一遍是幂等的)
+Future<void> _onCloseTap() async {
+  await _leaveRoom();
+  if (!mounted) return;
+  Get.back();
+}
+
 // 被踢出房间: 关闭连接并退出直播间
 Future<void> _onForbidden() async {
   _toast('你已被踢出房间');
-  _joinWatchdog?.cancel();
-  await liveSocket.close();
+  await _leaveRoom();
   if (!mounted) return;
   // 只有当前还停留在直播间时才退栈(避免误退其它页面)
   if (Get.currentRoute == '/live') Get.back();
@@ -1499,6 +1763,8 @@ bool _isDemoRoom(int index) => false;
   void dispose() {
   // 离开直播间恢复系统息屏策略(不还原的话回到其它页面也一直亮着, 白耗电)
   WakelockPlus.disable();
+  // 解除首页直播预览的挂起: 回首页后按卡片可见性自动恢复播放
+  livePreviewSuspended.value = false;
   // 离开直播间断开 socket(与H5 onUnload/onBackPress 一致)
   _joinWatchdog?.cancel();
   // 活动倒计时: 离开直播间一并停掉
@@ -1507,6 +1773,14 @@ bool _isDemoRoom(int index) => false;
   countdownTimer?.cancel();
   _videoStableTimer?.cancel();
   _videoStableTimer = null;
+  // 播放器流订阅: 显式取消(进度回调还挂着全局 notifier, 只靠 player.dispose 关流不够干净)
+  _positionSubscription?.cancel();
+  _positionSubscription = null;
+  _widthSubscription?.cancel();
+  _widthSubscription = null;
+  // 清掉重连地址: 物理返回键/侧滑返回不经过右上关闭, 也要防住"退出后还重连一次"
+  // * 重连回调是 async, 取消订阅拦不住已经在 await 中的那一次, 只能靠 src 为空拦
+  liveReconnector.src = '';
   liveSocket.close();
   likeHearts.dispose();
   danmuMessages.dispose();
@@ -1514,7 +1788,18 @@ bool _isDemoRoom(int index) => false;
   activityList.dispose();
   endedActivityIds.clear();
   liveReconnector.dispose();
-  player.dispose();
+  // 播放器不随页面销毁: 复用文件顶部的单例(见 livePlayer 的说明), 这里只停流
+  // * 以前是 player.dispose(): 异步释放没走完, 新页面已经又建了一个播放器, 两台抢硬解码器,
+  //   新那路起不来 -> 关闭后再从列表进直播间只有封面没有画面
+  // * 会话号变了 = 期间又进了新房间(B), 播放器已经归 B 用了: 再 stop 会把 B 刚起的流停掉
+  if (liveSession == session) unawaited(player.stop());
+  // 排障订阅/巡检: 随页面一起取消(否则多次进房会重复监听, 日志翻倍)
+  for (final StreamSubscription<dynamic> sub in _diagSubs) {
+    sub.cancel();
+  }
+  _diagSubs.clear();
+  _diagTimer?.cancel();
+  _diagTimer = null;
   pageVerticalController.dispose();
   pageHorizontalController.dispose();
   super.dispose();
@@ -1747,10 +2032,15 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
             scrollBehavior: CustomScrollBehavior().copyWith(scrollbars: false),
             scrollDirection: Axis.vertical,
             controller: pageVerticalController,
-            onPageChanged: (index) async {
-              // 切房: 换房间号并重新取该房间的详情/拉流地址/带货商品, 再起播重进 socket
-              await _switchRoom(index);
-            },
+            // [临时] 上下滑动切房已关闭(见 liveRoomSwipeEnabled): 关掉时禁掉手势滑动
+            physics: liveRoomSwipeEnabled ? null : const NeverScrollableScrollPhysics(),
+            // [临时] 同上: 关掉时不回调 _switchRoom, 不会换房间/换流
+            onPageChanged: liveRoomSwipeEnabled
+                ? (index) async {
+                    // 切房: 换房间号并重新取该房间的详情/拉流地址/带货商品, 再起播重进 socket
+                    await _switchRoom(index);
+                  }
+                : null,
             // 列表还没回来时先用首页入参渲染进入的这一间(_roomItem 已兜底), 不再显示加载占位
             itemCount: roomList.isEmpty ? 1 : roomList.length,
             itemBuilder: (context, index) {
@@ -1988,7 +2278,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                                 icon: const Icon(Icons.close, color: Colors.white70, size: 20.0),
                                                 style: ButtonStyle(backgroundColor: WidgetStateProperty.all(Colors.black12)),
                                                 padding: EdgeInsets.zero,
-                                                onPressed: () {Get.back();},
+                                                // 先停干净再退栈: 只 Get.back() 的话退栈动画这几帧还在播,
+                                                // 而且退出瞬间可能触发一次重连(见 _leaveRoom)
+                                                onPressed: _onCloseTap,
                                               ),
                                             )
                                           ],
