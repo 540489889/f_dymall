@@ -364,6 +364,8 @@ class LiveApi {
         data: <String, dynamic>{'code': linkCode},
       );
       final bool ok = '${res['code']}' == '0';
+      // 排查字段用: 打印原始返回(各端下发字段不统一, 想看 applyLink 给了什么就搜这条日志)
+      if (kDebugMode) debugPrint('[live]申请连麦($linkCode)原始返回: $res');
       String message = '${res['message'] ?? ''}'.trim();
       final dynamic data = res['data'];
       if (data is String && data.trim().isNotEmpty) message = data.trim();
@@ -374,6 +376,9 @@ class LiveApi {
         'message': message,
         // 房间号: 各端字段名不统一, 逐个候选取第一个非空值
         'sn': _pick(data is Map ? data : res, const <String>['sn', 'room_sn', 'roomSn', 'room_id', 'roomId', 'roomid', 'no']),
+        // 直播间信息(等待主播同意时展示): 该接口本身已返回 sn/name/feeds_img/anchor_img/anchor_name
+        // * 页面直接拿它渲染卡片, 不必再查一次 getRoomInfo
+        'room': data is Map ? data.cast<String, dynamic>() : null,
       };
     } catch (e) {
       debugPrint('[live]申请连麦失败: $e');
