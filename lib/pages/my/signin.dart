@@ -167,6 +167,8 @@ class _SigninPageState extends State<SigninPage> {
         signDaysSeries += 1;
         submitting = false;
       });
+      // 通知赚钱页(被保活)刷新签到板块,避免切回时数据不更新
+      signinRefreshTick.value++;
       await showRewardDialog(tip);
       // 刷新累计积分 / 成长值
       final List<dynamic> res = await Future.wait<dynamic>(<Future<dynamic>>[

@@ -8,8 +8,13 @@
 library;
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import '../utils/request.dart';
+
+/// 全局签到刷新信号: 在「每日签到」页(或其他入口)完成签到后触发,
+/// 赚钱页(被 KeepAlive 保活)监听此信号刷新自己的签到板块,避免切回时数据不更新
+final ValueNotifier<int> signinRefreshTick = ValueNotifier<int>(0);
 
 class MemberSigninApi {
   /// 签到开关(/api/membersignin/getSignStatus),1 开启

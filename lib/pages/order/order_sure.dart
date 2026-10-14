@@ -581,7 +581,8 @@ class _OrderSureState extends State<OrderSure> {
     }
     if (isStore) {
       if (storeId <= 0) {
-        MyDialog.toast('没有可提货的门店,请选择其他配送方式');
+        MyDialog.toast('请先绑定门店');
+        Get.toNamed('/bind_store');
         return false;
       }
       final String mobile = mobileCtrl.text.trim();
@@ -961,12 +962,23 @@ class _OrderSureState extends State<OrderSure> {
             children: <Widget>[
               Icon(Icons.storefront_outlined, size: 18.0, color: primary),
               Expanded(
-                child: Text(
-                  store == null ? '当前无自提门店,请选择其它配送方式' : '${store['store_name'] ?? ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700),
-                ),
+                child: store == null
+                    ? GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => Get.toNamed('/bind_store'),
+                        child: const Text(
+                          '请先绑定门店',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700, color: primary),
+                        ),
+                      )
+                    : Text(
+                        '${store['store_name'] ?? ''}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700),
+                      ),
               ),
               // 切换门店功能暂时隐藏(后续开放时去掉注释即可)
               // if (storeList.length > 1)

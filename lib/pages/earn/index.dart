@@ -87,6 +87,7 @@ class _EarnPageState extends State<EarnPage> {
     loadWithdrawAccount();
     loadTasks();
     earnTabRefreshTick.addListener(_onTabRefreshTick);
+    signinRefreshTick.addListener(_onSigninRefreshTick);
   }
 
   /// 任务中心列表(/membertask/api/task/lists)
@@ -123,15 +124,26 @@ class _EarnPageState extends State<EarnPage> {
     }
   }
 
-  /// 切到赚钱 tab(含重复点当前 tab): 重新拉任务列表
+  /// 切到赚钱 tab(含重复点当前 tab): 重新拉任务列表 + 签到状态 + 余额/积分 + 提现账户授权
   void _onTabRefreshTick() {
     if (!mounted) return;
     unawaited(loadTasks());
+    unawaited(loadSignin());
+    unawaited(load());
+    unawaited(loadWithdrawAccount());
+  }
+
+  /// 在「每日签到」页(或其他入口)完成签到后触发: 刷新赚钱页自己的签到板块 + 余额积分
+  void _onSigninRefreshTick() {
+    if (!mounted) return;
+    unawaited(loadSignin());
+    unawaited(load());
   }
 
   @override
   void dispose() {
     earnTabRefreshTick.removeListener(_onTabRefreshTick);
+    signinRefreshTick.removeListener(_onSigninRefreshTick);
     super.dispose();
   }
 

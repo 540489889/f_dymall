@@ -1329,10 +1329,10 @@ void initState() {
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      // 顶部奶油黄 -> 中间过渡 -> 页面底色: 落差拉大后才看得出渐变,
-                      // 最后仍收到底色,滚动时和下方内容同色衔接
-                      colors: <Color>[Color(0xFFFFE4B8), Color(0xFFFDF3E2), Color(0xFFFCF7EE)],
-                      stops: <double>[0.0, 0.6, 1.0],
+                      // 顶部暖橙黄 -> 中间过渡 -> 页面底色: 顶部加深、浓色占比更大,
+                      // 渐变更明显; 最后仍收到底色,滚动时和下方内容同色衔接
+                      colors: <Color>[Color(0xFFF3B35E), Color(0xFFFBE3BE), Color(0xFFFCF7EE)],
+                      stops: <double>[0.0, 0.5, 1.0],
                     ),
                   ),
                 ),
