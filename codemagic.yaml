@@ -13,7 +13,10 @@
 # iOS 13.0, 但 Flutter pod 要求更高的 min deployment target, 报
 # "could not find compatible versions for pod Flutter ... required a higher
 # minimum deployment target"。因此在 pod install 前用 sed 显式声明
-# `platform :ios, "15.0"`(若仍报 higher, 改为 "17.0")。
+# `platform :ios, "15.0"`, 并同步 Xcode 工程的 IPHONEOS_DEPLOYMENT_TARGET
+# (否则 Runner 仍按 13.0 编, 链接 15.0 的 pod 会失败); 仍报 higher 会自动抬到 17.0 重试。
+# 注意 sed 必须同时匹配"被注释的行"和"已写死低版本的行"(如本仓库的 platform :ios, '13.0'),
+# 只匹配前者时会静默失效 -> pod install 一直按 13.0 解析 -> 反复报上述错误。
 #
 # 关键修复4: pangrowth_content(穿山甲内容/短剧 SDK) 依赖的 `Pangrowth/media` pod
 # 不在 CocoaPods 公共 trunk, 而托管在 Volcengine 私有 spec 仓库:
@@ -125,9 +128,24 @@ workflows:
           cd ios
           # 确保 Podfile 存在(Flutter 首次 build 时生成; 缺失则补生成)
           [ -f Podfile ] || flutter create --platforms=ios .
-          # 1) 取消 Flutter 模板里被注释的 platform 行, 并提高最低版本到 15.0
-          sed -i '' 's/^# *platform :ios.*/platform :ios, "15.0"/' Podfile
-          grep -q "^platform :ios" Podfile || printf 'platform :ios, "15.0"\n%s\n' "$(cat Podfile)" > Podfile
+          # 1) 显式声明 platform 并提高最低版本(Flutter pod 要求比模板默认 13.0 更高的
+          #    min deployment target)。
+          #    坑: 之前只写 `s/^# *platform :ios.*/.../', 仅能命中"被注释掉"的行; 本仓库
+          #    Podfile 里是实打实写着的 `platform :ios, '13.0'`(未注释), 于是 sed 匹配不到,
+          #    下面的 grep 又看到已有 platform 行而不注入 -> pod install 仍按 13.0 解析 ->
+          #    一直报 "required a higher minimum deployment target"。
+          #    现在两种写法(# platform :ios / platform :ios, '13.0')都能命中。
+          IOS_MIN=15.0
+          sed -i '' -E "s|^[[:space:]]*#?[[:space:]]*platform[[:space:]]*:ios.*|platform :ios, \"$IOS_MIN\"|" Podfile
+          grep -q "^platform :ios" Podfile || printf 'platform :ios, \"%s\"\n%s\n' "$IOS_MIN" "$(cat Podfile)" > Podfile
+          # 1.1) Xcode 工程的部署目标必须与 Podfile 对齐: 否则 Runner 还按 iOS 13.0 编译,
+          #      链接 min OS 15.0 的 pod 时直接失败("module compiled for a higher minimum OS")
+          PBX="../Runner.xcodeproj/project.pbxproj"
+          if [ -f "$PBX" ]; then
+            sed -i '' "s|IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;|IPHONEOS_DEPLOYMENT_TARGET = $IOS_MIN;|g" "$PBX"
+          fi
+          grep -n "platform :ios" Podfile || true
+          grep -o "IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;" "$PBX" | sort -u || true
           # 2) 注册穿山甲内容 SDK 必需的 Volcengine 私有 spec 源(幂等, 带重试)
           if ! pod repo list | grep -q volcengine; then
             retry pod repo add volcengine https://github.com/volcengine/volcengine-specs.git
@@ -193,7 +211,27 @@ workflows:
           # 6) 增量刷新 specs: ~/.cocoapods/repos 已通过 cache_paths 持久化(不再 rm 全量重建),
           #    增量 pod repo update 远快于全量克隆且保持 specs 新鲜; 所有网络操作均带重试。
           retry pod repo update
-          retry pod install --repo-update
+          # 6+) pod install: 先跑一次看结果
+          #     * 报 "higher minimum deployment target" = 部署目标还是低了(Flutter stable 又升了),
+          #       自动再把 platform + 工程部署目标抬到 17.0 重试一次
+          #     * 其它失败(基本都是网络)走原来的重试封装
+          if ! pod install --repo-update > /tmp/pod_install.log 2>&1; then
+            cat /tmp/pod_install.log
+            if grep -q "higher minimum deployment target" /tmp/pod_install.log; then
+              IOS_MIN=17.0
+              echo "部署目标过低, 抬高到 $IOS_MIN 重试"
+              sed -i '' -E "s|^[[:space:]]*#?[[:space:]]*platform[[:space:]]*:ios.*|platform :ios, \"$IOS_MIN\"|" Podfile
+              if [ -f "$PBX" ]; then
+                sed -i '' "s|IPHONEOS_DEPLOYMENT_TARGET = [0-9.]*;|IPHONEOS_DEPLOYMENT_TARGET = $IOS_MIN;|g" "$PBX"
+              fi
+              rm -f Podfile.lock
+              retry pod install --repo-update
+            else
+              retry pod install --repo-update
+            fi
+          else
+            cat /tmp/pod_install.log
+          fi
           # 7) 兜底: pod install 之后再直接改写 YYText 源码一次。
           #    原因: 下一步 `flutter build ios` 会打印 "Upgrading Podfile" 重新生成 Podfile,
           #    可能把上面注入的 post_install 钩子冲掉, 此时只有源码已被改写才安全。
@@ -260,6 +298,15 @@ workflows:
             echo "WARN: 未找到 $YYTEXT, 跳过源码兜底修补"
           fi
           cd "$REPO_ROOT"
+          # 再同步一次部署目标: flutter build ios 可能打印 "Upgrading Podfile" 重新生成
+          # Podfile(把上一步改好的 platform 重置回模板默认的 13.0), 而它内部还会再跑一次
+          # pod install —— 这里补一刀, 保证 build 阶段用的仍是上一步定下的版本
+          if [ -f "$REPO_ROOT/ios/Podfile" ]; then
+            IOS_MIN=15.0
+            if grep -q '^platform :ios, "17.0"' "$REPO_ROOT/ios/Podfile"; then IOS_MIN=17.0; fi
+            sed -i '' -E "s|^[[:space:]]*#?[[:space:]]*platform[[:space:]]*:ios.*|platform :ios, \"$IOS_MIN\"|" "$REPO_ROOT/ios/Podfile"
+            grep -n "platform :ios" "$REPO_ROOT/ios/Podfile" || true
+          fi
           if [ "$IPA_SIGNING" = "none" ]; then
             # 免签: 只编译出未签名的 Runner.app, 下一步手动打成 ipa(真机需本地重签名)
             flutter build ios --release --no-codesign
