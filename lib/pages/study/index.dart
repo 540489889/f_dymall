@@ -236,9 +236,6 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
                   ],
                 ),
                 const SizedBox(height: 12),
-                const Text('海量课程 · 边学边赚',
-                    style: TextStyle(color: Colors.white70, fontSize: 13)),
-                const SizedBox(height: 14),
                 _searchBox(),
                 const SizedBox(height: 14),
                 _categoryBar(),
@@ -250,7 +247,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
                 ? const Center(child: CircularProgressIndicator())
                 : ListView(
                     controller: _scrollController,
-                    padding: const EdgeInsets.all(14),
+                    padding: const EdgeInsets.all(12),
                     children: <Widget>[
                       if (currentCategoryId == 0) ...<Widget>[
                         if (videoList.isNotEmpty) ...<Widget>[
@@ -401,26 +398,15 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
     );
   }
 
-  /// 白色圆角卡片容器(分组区块)
+  /// 分组区块容器: 不再包白色卡片, 直接铺满(减少左右留白, 让列表图片更大)
   Widget _sectionCard(Widget header, Widget content) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-              color: Color(0x0D000000), blurRadius: 10, offset: Offset(0, 2)),
-        ],
-      ),
-      padding: const EdgeInsets.all(14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          header,
-          const SizedBox(height: 12),
-          content,
-        ],
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: <Widget>[
+        header,
+        const SizedBox(height: 12),
+        content,
+      ],
     );
   }
 
@@ -436,82 +422,81 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
 
   Widget _videoGrid() {
     if (videoList.isEmpty) {
-      return const SizedBox(
-          height: 40,
-          child: Center(
-              child: const CommonEmpty(text: '暂无视频')));
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: CommonEmpty(text: '暂无视频')));
     }
     final double screenW = MediaQuery.of(context).size.width;
-    final double cardW = (screenW - 68) / 2; // ListView(14*2)+sectionCard(14*2)+列间距12
+    final double cardW = (screenW - 36) / 2; // ListView(12*2)+列间距12(已去掉白卡内边距)
     return Wrap(
       spacing: 12,
       runSpacing: 16,
       children: videoList.map((Map<String, dynamic> item) {
         return GestureDetector(
           onTap: () => _goVideo(item),
-          child: SizedBox(
+          child: Container(
             width: cardW,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                    color: Color(0x0D000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 2)),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                // 横向 16:10 封面 + 居中播放键 + 阴影
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: const <BoxShadow>[
-                      BoxShadow(
-                          color: Color(0x1A000000),
-                          blurRadius: 8,
-                          offset: Offset(0, 3)),
+                // 封面: 顶部/左右贴边(由卡片圆角裁切), 居中播放键
+                AspectRatio(
+                  aspectRatio: 1.2,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      _coverImg(item['cover'] as String),
+                      // 居中播放键: 半透明遮罩圆底 + 白色播放图标
+                      Center(
+                        child: Container(
+                          width: 46,
+                          height: 46,
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.32),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.play_arrow,
+                              color: Colors.white, size: 30),
+                        ),
+                      ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 1.6,
-                      child: Stack(
-                        fit: StackFit.expand,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(item['title'] as String,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              height: 1.35)),
+                      const SizedBox(height: 5),
+                      Row(
                         children: <Widget>[
-                          _coverImg(item['cover'] as String),
-                          Center(
-                            child: Container(
-                              width: 40,
-                              height: 40,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.92),
-                                shape: BoxShape.circle,
-                                boxShadow: const <BoxShadow>[
-                                  BoxShadow(
-                                      color: Colors.black26,
-                                      blurRadius: 4,
-                                      offset: Offset(0, 1)),
-                                ],
-                              ),
-                              child: const Icon(Icons.play_arrow,
-                                  color: primary, size: 24),
-                            ),
-                          ),
+                          const Icon(Icons.visibility, size: 13, color: Colors.grey),
+                          const SizedBox(width: 3),
+                          Text('${item['learnCount']}人观看',
+                              style: const TextStyle(fontSize: 11, color: Colors.grey)),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(item['title'] as String,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35)),
-                const SizedBox(height: 5),
-                Row(
-                  children: <Widget>[
-                    const Icon(Icons.visibility, size: 13, color: Colors.grey),
-                    const SizedBox(width: 3),
-                    Text('${item['learnCount']}人观看',
-                        style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                  ],
                 ),
               ],
             ),
@@ -523,24 +508,28 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
 
   Widget _articleList() {
     if (articleList.isEmpty) {
-      return const SizedBox(
-          height: 40,
-          child: Center(
-              child: const CommonEmpty(text: '暂无文章')));
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 16.0),
+              child: CommonEmpty(text: '暂无文章')));
     }
     return Column(
       children: List<Widget>.generate(articleList.length, (int i) {
         final Map<String, dynamic> item = articleList[i];
-        final bool last = i == articleList.length - 1;
         return GestureDetector(
           onTap: () => _goArticle(item),
           child: Container(
-            padding: EdgeInsets.only(top: i == 0 ? 0 : 12, bottom: 12),
+            margin: EdgeInsets.only(top: i == 0 ? 0 : 10),
+            padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              border: last
-                  ? null
-                  : const Border(
-                      bottom: BorderSide(color: Color(0xFFF0F0F0))),
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                    color: Color(0x0D000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 2)),
+              ],
             ),
             child: Row(
               children: <Widget>[
@@ -589,13 +578,13 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
 
   Widget _categoryList() {
     if (currentList.isEmpty) {
-      return const SizedBox(
-          height: 60,
-          child: Center(
-              child: const CommonEmpty(text: '暂无内容')));
+      return const Center(
+          child: Padding(
+              padding: EdgeInsets.symmetric(vertical: 24.0),
+              child: CommonEmpty(text: '暂无内容')));
     }
     final double screenW = MediaQuery.of(context).size.width;
-    final double cardW = (screenW - 68) / 2; // ListView(14*2)+sectionCard(14*2)+列间距12
+    final double cardW = (screenW - 36) / 2; // ListView(12*2)+列间距12(已去掉白卡内边距)
     return Wrap(
       spacing: 12,
       runSpacing: 16,
@@ -603,78 +592,81 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
         final bool isVideo = item['type'] == '视频';
         return GestureDetector(
           onTap: () => _goCategoryItem(item),
-          child: SizedBox(
+          child: Container(
             width: cardW,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: const <BoxShadow>[
+                BoxShadow(
+                    color: Color(0x0D000000),
+                    blurRadius: 10,
+                    offset: Offset(0, 2)),
+              ],
+            ),
+            clipBehavior: Clip.antiAlias,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                // 封面 + 阴影 + 类型标签
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: const <BoxShadow>[
-                      BoxShadow(
-                          color: Color(0x1A000000),
-                          blurRadius: 8,
-                          offset: Offset(0, 3)),
+                // 封面: 顶部/左右贴边(由卡片圆角裁切), 左下角类型标签
+                AspectRatio(
+                  aspectRatio: 1.3,
+                  child: Stack(
+                    fit: StackFit.expand,
+                    children: <Widget>[
+                      _coverImg(item['cover'] as String),
+                      Positioned(
+                        left: 0,
+                        bottom: 0,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 3),
+                          decoration: BoxDecoration(
+                            color: (isVideo
+                                    ? Colors.orange
+                                    : Colors.green)
+                                .withOpacity(0.9),
+                            borderRadius: const BorderRadius.only(
+                                topRight: Radius.circular(8)),
+                          ),
+                          child: Text(item['type'] as String,
+                              style: const TextStyle(
+                                  color: Colors.white, fontSize: 10)),
+                        ),
+                      ),
                     ],
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: AspectRatio(
-                      aspectRatio: 1.3,
-                      child: Stack(
-                        fit: StackFit.expand,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      Text(item['title'] as String,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              height: 1.35)),
+                      const SizedBox(height: 5),
+                      Row(
                         children: <Widget>[
-                          _coverImg(item['cover'] as String),
-                          // 左下角类型标签(视频橙/图文绿, 半透明)
-                          Positioned(
-                            left: 0,
-                            bottom: 0,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: (isVideo
-                                        ? Colors.orange
-                                        : Colors.green)
-                                    .withOpacity(0.9),
-                                borderRadius: const BorderRadius.only(
-                                    topRight: Radius.circular(8)),
-                              ),
-                              child: Text(item['type'] as String,
-                                  style: const TextStyle(
-                                      color: Colors.white, fontSize: 10)),
-                            ),
-                          ),
+                          Icon(
+                              isVideo
+                                  ? Icons.play_circle_outline
+                                  : Icons.article_outlined,
+                              size: 13,
+                              color: Colors.grey),
+                          const SizedBox(width: 3),
+                          Text(
+                              '${item['watchCount']}${isVideo ? '人观看' : '人阅读'}',
+                              style: const TextStyle(
+                                  fontSize: 11, color: Colors.grey)),
                         ],
                       ),
-                    ),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 8),
-                Text(item['title'] as String,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        height: 1.35)),
-                const SizedBox(height: 5),
-                Row(
-                  children: <Widget>[
-                    Icon(
-                        isVideo
-                            ? Icons.play_circle_outline
-                            : Icons.article_outlined,
-                        size: 13,
-                        color: Colors.grey),
-                    const SizedBox(width: 3),
-                    Text(
-                        '${item['watchCount']}${isVideo ? '人观看' : '人阅读'}',
-                        style: const TextStyle(
-                            fontSize: 11, color: Colors.grey)),
-                  ],
                 ),
               ],
             ),

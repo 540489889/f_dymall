@@ -734,7 +734,7 @@ class _CartPageState extends State<CartPage> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          Icon(Icons.shopping_cart_outlined, size: 70.0, color: Colors.grey.shade300),
+          Image.asset('assets/images/common-empty.png', width: 140.0, height: 140.0),
           const SizedBox(height: 12.0),
           const Text('购物车还是空的', style: TextStyle(color: Colors.grey, fontSize: 14.0)),
           const SizedBox(height: 16.0),

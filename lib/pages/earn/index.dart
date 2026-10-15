@@ -322,21 +322,27 @@ class _EarnPageState extends State<EarnPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFFCF7EE),
-      body: CustomScrollView(
-        slivers: <Widget>[
-          SliverToBoxAdapter(child: _buildHeader()),
-          SliverToBoxAdapter(child: _buildSignIn()),
-          // 立即提现: 暂时隐藏(板块代码仍在 _buildWithdraw, 要恢复就注掉下面这行前面的注释)
-          // SliverToBoxAdapter(child: _buildWithdraw()),
-          SliverToBoxAdapter(child: _buildHotTasks()),
-          // Banner 广告位(未配置广告位时不展示)
-          if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
-            SliverToBoxAdapter(child: _buildBanner()),
-          const SliverToBoxAdapter(child: SizedBox(height: 24.0)),
-        ],
-      ),
+    return Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: Scaffold(
+            backgroundColor: const Color(0xFFFCF7EE),
+            body: CustomScrollView(
+              slivers: <Widget>[
+                SliverToBoxAdapter(child: _buildHeader()),
+                SliverToBoxAdapter(child: _buildSignIn()),
+                // 立即提现: 暂时隐藏(板块代码仍在 _buildWithdraw, 要恢复就注掉下面这行前面的注释)
+                // SliverToBoxAdapter(child: _buildWithdraw()),
+                SliverToBoxAdapter(child: _buildHotTasks()),
+                // Banner 广告位(未配置广告位时不展示)
+                if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
+                  SliverToBoxAdapter(child: _buildBanner()),
+                const SliverToBoxAdapter(child: SizedBox(height: 24.0)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -573,21 +579,12 @@ class _EarnPageState extends State<EarnPage> {
           // 标题行
           Row(
             children: <Widget>[
-              Container(
-                width: 26.0,
-                height: 26.0,
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: <Color>[Color(0xFFFF9A70), primary],
-                  ),
-                  borderRadius: BorderRadius.circular(8.0),
-                  boxShadow: <BoxShadow>[
-                    BoxShadow(color: primary.withAlpha(40), blurRadius: 4.0, offset: const Offset(0, 2)),
-                  ],
-                ),
-                child: const Icon(Icons.calendar_today, color: Colors.white, size: 16.0),
+              Image.asset(
+                'assets/images/sing-1.png',
+                width: 22.0,
+                height: 22.0,
+                color: primary,
+                colorBlendMode: BlendMode.srcIn,
               ),
               const SizedBox(width: 8.0),
               const Text('签到领 ', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
@@ -653,14 +650,42 @@ class _EarnPageState extends State<EarnPage> {
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 12.0),
               decoration: BoxDecoration(
-                gradient: hasSign == 1 ? null : const LinearGradient(colors: <Color>[Color(0xFFFF9A70), primary]),
-                color: hasSign == 1 ? Colors.grey.shade300 : null,
+                gradient: hasSign == 1
+                    ? null
+                    : LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        stops: const <double>[0.0, 0.55, 1.0],
+                        colors: <Color>[
+                          Color.alphaBlend(Colors.white.withAlpha(90), primary),
+                          primary,
+                          Color.alphaBlend(Colors.black.withAlpha(30), primary),
+                        ],
+                      ),
+                color: hasSign == 1 ? const Color(0xFFD0D0D0) : null,
                 borderRadius: BorderRadius.circular(24.0),
+                boxShadow: hasSign == 1
+                    ? null
+                    : <BoxShadow>[
+                        BoxShadow(
+                          color: primary.withAlpha(60),
+                          blurRadius: 12.0,
+                          offset: const Offset(0, 6),
+                        ),
+                      ],
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
-                  Icon(hasSign == 1 ? Icons.check_circle_outline : Icons.calendar_today, color: Colors.white, size: 16.0),
+                  hasSign == 1
+                      ? const Icon(Icons.check_circle_outline, color: Colors.white, size: 16.0)
+                      : Image.asset(
+                          'assets/images/sing-1.png',
+                          width: 18.0,
+                          height: 18.0,
+                          color: Colors.white,
+                          colorBlendMode: BlendMode.srcIn,
+                        ),
                   const SizedBox(width: 4.0),
                   Text(
                     hasSign == 1 ? '今日已签到' : '签到领$signPointTomorrow积分',
@@ -778,10 +803,11 @@ class _EarnPageState extends State<EarnPage> {
                   ),
                   const SizedBox(height: 4.0),
                   Column(
-                    children: tasks.map((Map<String, dynamic> task) {
+                    children: tasks.asMap().entries.expand<Widget>((MapEntry<int, Map<String, dynamic>> e) sync* {
+                      final Map<String, dynamic> task = e.value;
                       final bool done = task['done'] == true;
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 10.0),
+                      yield Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12.0),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: <Widget>[
@@ -865,6 +891,9 @@ class _EarnPageState extends State<EarnPage> {
                           ],
                         ),
                       );
+                      if (e.key != tasks.length - 1) {
+                        yield Divider(height: 1.0, thickness: 0.5, color: Colors.grey.shade100);
+                      }
                     }).toList(),
                   ),
                 ],
@@ -996,3 +1025,5 @@ class HeaderPatternPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
+
+

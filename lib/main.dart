@@ -189,10 +189,14 @@ class MyApp extends StatelessWidget {
                 // 点击页面空白处收起软键盘: iOS 没有系统返回键(Android 点返回键能收), 只能靠点空白
                 // * 子 widget 自带手势(按钮/列表项)时会在手势竞技场里赢, 这里的 onTap 不会触发, 不影响正常点击
                 // * 滚动时收起另见各页面 ScrollView 的 keyboardDismissBehavior
+                // 全局禁用 Tooltip: 避免顶部返回图标(AppBar 默认 BackButton 等)长按弹出"返回"提示
                 builder: (BuildContext context, Widget? child) => GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                  child: child,
+                  child: TooltipVisibility(
+                    visible: false,
+                    child: child ?? const SizedBox.shrink(),
+                  ),
                 ),
                 navigatorKey: MyDialog.navigatorKey,
               ),

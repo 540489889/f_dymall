@@ -204,6 +204,10 @@ class _LayoutState extends State<Layout> {
     if (index < _pageTypes.length && _pageTypes[index] == 'earn') {
       earnTabRefreshTick.value++;
     }
+    // 切换「我的」tab(含重复点当前 tab): 刷新 memberPageConfig
+    if (index < _pageTypes.length && _pageTypes[index] == 'mine') {
+      mineTabRefreshTick.value++;
+    }
   }
 
   @override

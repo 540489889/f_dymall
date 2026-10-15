@@ -214,6 +214,24 @@ class MemberApi {
     );
   }
 
+  /// 付款码(旧): 拉取用户付款二维码内容(/api/member/paymentqrcode)
+  /// * 注: 现付款码页已改用 payAuthCode()(对齐 H5 /api/pay/memberpaycode), 该方法保留兼容
+  static Future<dynamic> paymentQrcode() {
+    return Request().post('/api/member/paymentqrcode');
+  }
+
+  /// 付款码(对齐 H5 /api/pay/memberpaycode)
+  /// * 返回 data: { barcode(条形码图片), qrcode(二维码图片), auth_code(授权码), dynamic_code(动态码) }
+  static Future<dynamic> payAuthCode() {
+    return Request().post('/api/pay/memberpaycode');
+  }
+
+  /// 我的页配置(/api/member/memberPageConfig)
+  /// * 用 postRaw 返回完整 {code,message,data}, 便于打印/排查后台配置
+  static Future<Map<String, dynamic>> memberPageConfig() {
+    return Request().postRaw('/api/member/memberPageConfig');
+  }
+
   // ===== 验证码(改手机 / 改密码) =====
 
   /// 图形验证码(/api/captcha/captcha)

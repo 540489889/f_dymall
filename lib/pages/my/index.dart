@@ -7,12 +7,19 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
 import 'package:get/get.dart';
+import '../../api/member.dart';
 import '../../api/order.dart';
 import '../../components/adv_banner.dart';
 import '../../controller/auth_store.dart';
+import '../../styles/index.dart';
 import '../../controller/app_config.dart';
 import '../../controller/my_preload.dart';
+
+/// 底部导航切到「我的」tab 的刷新信号(由 lib/layouts/index.dart 的 onNavTap 自增)
+/// * 我的页被 PageView 保活, 不主动刷新的话 memberPageConfig 会停在首次进 tab 时的数据
+final ValueNotifier<int> mineTabRefreshTick = ValueNotifier<int>(0);
 
 class MyPage extends StatefulWidget {
   const MyPage({super.key});
@@ -27,6 +34,8 @@ class _MyPageState extends State<MyPage> {
   /// * 数据本身走 MyPreload(启动时预拉 + 页面刷新共用一份缓存)
   bool advLoaded = false;
   bool serviceLoaded = false;
+  // 是否显示「门店支付」板块: 由 /api/member/memberPageConfig 的 is_pay_code == '1' 决定
+  bool payCodeEnabled = false;
 
   // 我的服务: /api/Member/serviceNav 的配置项(为空则不展示「我的服务」卡片)
   final List<Map<String, dynamic>> serviceList = <Map<String, dynamic>>[];
@@ -61,6 +70,39 @@ class _MyPageState extends State<MyPage> {
       authStore.loadCouponNum();
       // 订单角标数量: 需要登录态, 未登录不请求
       loadOrderNum();
+    }
+    // 切到「我的」tab 时刷新 memberPageConfig(含重复点当前 tab)
+    mineTabRefreshTick.addListener(_onTabRefreshTick);
+    loadMemberPageConfig();
+  }
+
+  @override
+  void dispose() {
+    mineTabRefreshTick.removeListener(_onTabRefreshTick);
+    super.dispose();
+  }
+
+  /// 切 tab 刷新回调
+  void _onTabRefreshTick() {
+    loadMemberPageConfig();
+  }
+
+  /// 我的页配置(/api/member/memberPageConfig)
+  /// * is_pay_code == '1' 时显示「门店支付」板块
+  Future<void> loadMemberPageConfig() async {
+    try {
+      final Map<String, dynamic> res = await MemberApi.memberPageConfig();
+      if (kDebugMode) {
+        debugPrint('[memberPageConfig] code=${res['code']} message=${res['message']}');
+        debugPrint('[memberPageConfig] data=${res['data']}');
+      }
+      final dynamic data = res['data'];
+      final bool showPay = data is Map && '${data['is_pay_code'] ?? ''}' == '1';
+      if (mounted && showPay != payCodeEnabled) {
+        setState(() => payCodeEnabled = showPay);
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[memberPageConfig] 请求失败: $e');
     }
   }
 
@@ -150,6 +192,157 @@ class _MyPageState extends State<MyPage> {
       radius: 16.0,
       margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
     );
+  }
+
+  /// 门店支付板块(参考 H5 diy-payment-qrcode): 付款码 / 扫码付 入口, 放在广告位上方
+  Widget _buildPaymentQrcode() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
+      padding: const EdgeInsets.all(14.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14.0),
+        boxShadow: const <BoxShadow>[
+          BoxShadow(color: Color(0x0D000000), blurRadius: 10.0, offset: Offset(0.0, 2.0)),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: <Widget>[
+          Row(
+            children: <Widget>[
+              Icon(Icons.storefront_rounded, color: FStyle.primaryColor, size: 22.0),
+              const SizedBox(width: 8.0),
+              const Text('门店支付',
+                  style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
+              const Spacer(),
+              const Text('付款码 / 扫码付',
+                  style: TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
+            ],
+          ),
+          const SizedBox(height: 8.0),
+          const Text('门店消费时使用，支付时点击下方展示付款码',
+              style: TextStyle(fontSize: 13.0, color: Color(0xFF999999))),
+          const SizedBox(height: 14.0),
+          Row(
+            children: <Widget>[
+              Expanded(
+                child: _payActionBtn('付款码', FStyle.primaryColor,
+                    const Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 18.0), _goPaymentQrcode),
+              ),
+              const SizedBox(width: 12.0),
+              Expanded(
+                child: _payActionBtn(
+                    '扫码付',
+                    const Color(0xFF999999),
+                    Image.asset('assets/images/icon_sm.png',
+                        width: 18.0, height: 18.0, fit: BoxFit.contain,
+                        color: Colors.white, colorBlendMode: BlendMode.srcIn),
+                    _scanPay),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 付款码 / 扫码付 按钮
+  /// * [icon] 直接传 Widget: 付款码用内置图标, 扫码付用与首页搜索框一致的 icon_sm.png
+  Widget _payActionBtn(String label, Color color, Widget icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 44.0,
+        decoration: BoxDecoration(
+          color: color,
+          borderRadius: BorderRadius.circular(22.0),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: <Widget>[
+            icon,
+            const SizedBox(width: 6.0),
+            Text(label, style: const TextStyle(color: Colors.white, fontSize: 15.0)),
+          ],
+        ),
+      ),
+    );
+  }
+
+
+
+  /// 付款码: 跳转付款码页(需登录)
+  void _goPaymentQrcode() {
+    if (!authStore.isLogin) {
+      Get.toNamed('/login');
+      return;
+    }
+    Get.toNamed('/my/payment_qrcode');
+  }
+
+  /// 扫码付: 调起全屏扫码(复用项目 ai_barcode_scanner 能力)
+  Future<void> _scanPay() async {
+    if (!authStore.isLogin) {
+      Get.toNamed('/login');
+      return;
+    }
+    final BarcodeCapture? capture = await showAiBarcodeScanner(
+      context,
+      labels: const ScannerLabels(
+        galleryButton: '从相册选择',
+        galleryTooltip: '从图片中识别二维码',
+        torchOnTooltip: '关闭闪光灯',
+        torchOffTooltip: '打开闪光灯',
+        torchAutoTooltip: '闪光灯为自动模式',
+        switchCameraTooltip: '切换摄像头',
+        switchLensTooltip: '切换镜头',
+        closeTooltip: '关闭',
+        zoomTooltip: '缩放',
+        resetZoomTooltip: '重置缩放',
+        scanHint: '将收款二维码放入框内,即可自动扫描',
+        scanHintIdle: '保持稳定,稍微靠近一些',
+        doneButton: '完成',
+        retryButton: '重试',
+        openSettingsButton: '去设置',
+        cameraErrorTitle: '相机启动失败',
+        cameraErrorMessage: '请检查相机权限或稍后重试',
+        permissionDeniedTitle: '未获取相机权限',
+        permissionDeniedMessage: '请在系统设置中开启相机权限后重试',
+        cameraUnsupportedTitle: '无法使用扫码功能',
+        cameraUnsupportedMessage: '当前设备没有可用的摄像头',
+        startingCamera: '正在启动相机…',
+        noBarcodeFoundInImage: '该图片中未找到二维码',
+        galleryUnsupported: '当前平台不支持从相册识别',
+        invalidBarcode: '该二维码无法识别',
+        copiedConfirmation: '已复制',
+      ),
+      validator: (BarcodeCapture capture) => _firstRawValue(capture).isNotEmpty,
+    );
+    final String code = _firstRawValue(capture);
+    if (code.isEmpty) return;
+    if (!mounted) return;
+    // 门店扫码付: 暂仅展示扫码结果, 实际支付对接后端
+    await showDialog<void>(
+      context: context,
+      builder: (BuildContext ctx) => AlertDialog(
+        title: const Text('扫码结果'),
+        content: SelectableText(code, style: const TextStyle(fontSize: 14.0)),
+        actions: <Widget>[
+          TextButton(onPressed: () => Get.back<void>(), child: const Text('确定')),
+        ],
+      ),
+    );
+  }
+
+  /// 取扫码结果里第一个非空原始值
+  static String _firstRawValue(BarcodeCapture? capture) {
+    if (capture == null) return '';
+    for (final Barcode barcode in capture.barcodes) {
+      final String raw = (barcode.rawValue ?? '').trim();
+      if (raw.isNotEmpty) return raw;
+    }
+    return '';
   }
 
   String get _maskedMobile {
@@ -352,6 +545,14 @@ class _MyPageState extends State<MyPage> {
           break;
         case 'ABOUT':
           Get.toNamed('/about');
+          break;
+        // 学习课程(游客可见, 页面自带分类选择): 后台配 {"name":"STUDY"}
+        case 'STUDY':
+          Get.toNamed('/study');
+          break;
+        // 付款码(门店支付, 需登录): 后台配 {"name":"PAYCODE"}
+        case 'PAYCODE':
+          Get.toNamed('/my/payment_qrcode');
           break;
         // 内容详情页(关于我们详情 / 各类协议): nav_url 里带 type(后台 aggrement 的类型) 和可选 title
         // * 后台配: {"name":"AGREEMENT","type":"ABOUT","title":"关于我们"}
@@ -785,6 +986,8 @@ class _MyPageState extends State<MyPage> {
             padding: EdgeInsets.zero,
             children: [
               _buildTopArea(statusTop),
+              // 门店支付(付款码 / 扫码付): 由 memberPageConfig.is_pay_code 控制是否显示
+              if (payCodeEnabled) _buildPaymentQrcode(),
               // 广告位(MEMBER_M): 在「我的订单」上方
               _buildAdvBanner(),
               _buildOrderCard(),

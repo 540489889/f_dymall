@@ -71,6 +71,7 @@ import '../pages/study/index.dart';
 import '../pages/study/detail.dart';
 import '../pages/study/article.dart';
 import '../pages/study/more.dart';
+import '../pages/my/payment_qrcode.dart';
 // 看播集章
 import '../pages/stamp/index.dart';
 import '../pages/stamp/detail.dart';
@@ -206,6 +207,8 @@ GetPage(name: '/register', page: () => const Register()),
   GetPage(name: '/study/detail', page: () => const StudyDetailPage()),
   GetPage(name: '/study/article', page: () => const StudyArticlePage()),
   GetPage(name: '/study/more', page: () => const StudyMorePage()),
+  // 付款码(会员可见, 需登录)
+  GetPage(name: '/my/payment_qrcode', page: () => const PaymentQrcodePage(), middlewares: [RouteMiddleware()]),
   // 看播集章(游客可见,不进 authRoutes)
   GetPage(name: '/stamp', page: () => const StampIndexPage()),
   GetPage(name: '/stamp/detail', page: () => const StampDetailPage()),

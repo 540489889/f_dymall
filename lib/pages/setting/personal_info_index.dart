@@ -17,6 +17,7 @@ import '../../api/member.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
 import 'edit_nickname.dart';
+import 'edit_account.dart';
 
 class PersonalInfoIndexPage extends StatefulWidget {
   const PersonalInfoIndexPage({super.key});
@@ -96,7 +97,7 @@ class _PersonalInfoIndexPageState extends State<PersonalInfoIndexPage> {
                     _divider(),
                     // 账号: is_edit_username == 1 才可改,否则只读
                     auth.canEditUsername
-                        ? _editableItem('账号', auth.username, () => _editUsername())
+                        ? _editableItem('账号', auth.username, () => Get.to(() => EditAccountPage(initial: auth.username)))
                         : _readonlyItem('账号', auth.username),
                     _divider(),
                     _editableItem(
@@ -294,41 +295,7 @@ class _PersonalInfoIndexPageState extends State<PersonalInfoIndexPage> {
     }
   }
 
-  /// 输入弹窗(昵称 / 账号)
-  Future<void> _showInputDialog(
-      String label, String value, String hint, ValueChanged<String> onSaved) async {
-    final TextEditingController controller = TextEditingController(text: value);
-    final String? result = await Get.dialog<String>(
-      AlertDialog(
-        title: Text('修改$label'),
-        content: TextField(
-          controller: controller,
-          decoration: InputDecoration(hintText: hint),
-          autofocus: true,
-        ),
-        actions: [
-          TextButton(onPressed: () => Get.back<String>(), child: const Text('取消')),
-          TextButton(
-              onPressed: () => Get.back<String>(result: controller.text.trim()), child: const Text('保存')),
-        ],
-      ),
-    );
-    if (result != null) onSaved(result);
-  }
 
-  Future<void> _editUsername() async {
-    await _showInputDialog('账号', auth.username, '请输入账号', (String v) {
-      if (v.isEmpty) {
-        MyDialog.toast('账号不能为空');
-        return;
-      }
-      if (v == auth.username) {
-        MyDialog.toast('与原账号一致');
-        return;
-      }
-      _run(() => MemberApi.modifyUsername(v), ok: '账号修改成功');
-    });
-  }
 
 
   /// 性别: 未知 / 男 / 女 -> 0 / 1 / 2
