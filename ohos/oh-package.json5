@@ -1,0 +1,14 @@
+{
+  "modelVersion": "5.1.0",
+  "name": "flutter3_dymall",
+  "version": "1.0.0",
+  "useNormalizedOHMUrl": true,
+  "description": "Please describe the basic information.",
+  "main": "",
+  "author": "",
+  "license": "",
+  "dependencies": {},
+  "devDependencies": {
+    "@ohos/hypium": "1.0.6"
+  }
+}

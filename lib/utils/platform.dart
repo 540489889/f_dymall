@@ -4,7 +4,7 @@ library;
 import 'package:flutter/foundation.dart';
 
 class PlatformInfo {
-  /// android / ios / unknown(与H5枚举保持一致)
+  /// android / ios / harmony / unknown(与H5枚举保持一致)
   static String get osType {
     if (kIsWeb) return 'unknown';
     switch (defaultTargetPlatform) {
@@ -12,6 +12,8 @@ class PlatformInfo {
         return 'android';
       case TargetPlatform.iOS:
         return 'ios';
+      case TargetPlatform.ohos:
+        return 'harmony';
       case TargetPlatform.macOS:
       case TargetPlatform.windows:
       case TargetPlatform.linux:
@@ -20,7 +22,7 @@ class PlatformInfo {
     }
   }
 
-  /// 中文名: 安卓 / iOS / 未知设备
+  /// 中文名: 安卓 / iOS / 鸿蒙 / 未知设备
   static String get osName {
     if (kIsWeb) return '未知设备';
     switch (defaultTargetPlatform) {
@@ -28,6 +30,8 @@ class PlatformInfo {
         return '安卓';
       case TargetPlatform.iOS:
         return 'iOS';
+      case TargetPlatform.ohos:
+        return '鸿蒙';
       case TargetPlatform.macOS:
       case TargetPlatform.windows:
       case TargetPlatform.linux:
