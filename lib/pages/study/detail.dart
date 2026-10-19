@@ -90,7 +90,8 @@ class _StudyDetailPageState extends State<StudyDetailPage> {
     _player!.stream.error.listen((dynamic e) {
       if (mounted) setState(() => _videoError = true);
     });
-    _player!.open(Media(videoUrl), play: false).catchError((dynamic e) {
+    // 进入详情即自动播放(play: true)
+    _player!.open(Media(videoUrl), play: true).catchError((dynamic e) {
       if (mounted) setState(() => _videoError = true);
     });
   }
@@ -154,9 +155,9 @@ class _StudyDetailPageState extends State<StudyDetailPage> {
     );
     if (!mounted) return;
     if (ok) {
+      // 发送成功不再弹提示: 评论会直接出现在列表里, 本身就是反馈
       _commentController.clear();
       _loadComments(true);
-      Get.snackbar('提示', '评论已发送');
     } else {
       Get.snackbar('提示', '发送失败，请重试');
     }
