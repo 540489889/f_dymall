@@ -450,27 +450,51 @@ class _RechargeState extends State<Recharge> {
     );
   }
 
-  /// 其他金额
+  /// 其他金额(点击输入自定义金额)
+  /// * 未输入: 白底 + 主色实线边框 + 编辑图标 + "点击输入",
+  ///   与灰底套餐卡明显区分,让用户一眼看出这里可以自己输入金额
+  /// * 已输入: 与选中套餐一致的主色渐变实心,并提示"点击修改"
   Widget _buildCustomItem() {
+    final bool active = amount.isNotEmpty;
+    final num custom = num.tryParse(amount) ?? 0;
     return GestureDetector(
       onTap: openCustomAmount,
       child: Container(
         decoration: BoxDecoration(
-          color: amount.isNotEmpty ? null : const Color(0xFFF7F7FB),
-          gradient: amount.isNotEmpty
+          color: active ? null : Colors.white,
+          gradient: active
               ? const LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: <Color>[Color(0xFFFE7849), Color(0xFFFF1959)],
                 )
               : null,
+          border: active ? null : Border.all(color: primary, width: 1.2),
           borderRadius: BorderRadius.circular(8.0),
         ),
         alignment: Alignment.center,
-        child: Text(
-          amount.isNotEmpty ? '自定义 $amount 元' : '其他金额',
-          style: TextStyle(fontSize: 15.0, color: amount.isNotEmpty ? Colors.white : const Color(0xFF666666)),
-          textAlign: TextAlign.center,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            if (!active) ...<Widget>[
+              const Icon(Icons.edit_outlined, size: 16.0, color: primary),
+              const SizedBox(height: 4.0),
+            ],
+            Text(
+              active ? '自定义 ${custom.toStringAsFixed(2)} 元' : '其他金额',
+              style: TextStyle(
+                fontSize: 14.0,
+                fontWeight: FontWeight.w600,
+                color: active ? Colors.white : primary,
+              ),
+            ),
+            const SizedBox(height: 2.0),
+            Text(
+              active ? '点击修改' : '点击输入',
+              style: TextStyle(fontSize: 11.0, color: active ? Colors.white70 : const Color(0xFF999999)),
+            ),
+          ],
         ),
       ),
     );

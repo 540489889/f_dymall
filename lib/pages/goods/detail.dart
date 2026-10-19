@@ -28,6 +28,28 @@ import './sku_sheet.dart';
 import './delivery_sheet.dart';
 import './evaluate.dart';
 
+/// 轮播页码角标(1/2 形式)
+class _NumberPaginationBuilder extends SwiperPlugin {
+  const _NumberPaginationBuilder();
+
+  @override
+  Widget build(BuildContext context, SwiperPluginConfig config) {
+    final int active = config.activeIndex;
+    final int total = config.itemCount;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      child: Text(
+        '${active + 1}/$total',
+        style: const TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+}
+
 /// 通用底部弹窗骨架(标题 + 关闭 + 可滚动内容)
 class _PromoSheet extends StatelessWidget {
   const _PromoSheet({ required this.title, required this.child, this.footer });
@@ -665,18 +687,22 @@ Widget _buildMedia() {
             child: const Center(child: Text('视频加载失败', style: TextStyle(color: Colors.white, fontSize: 13.0))),
           ),
         ),
-      // 视频/图片切换标签(右上, 在购物车按钮下方)
+      // 视频/图片切换标签(底部居中)
       if (hasVideo)
         Positioned(
-          top: MediaQuery.paddingOf(context).top + 54.0,
-          right: 12.0,
-          child: Container(
-            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(14.0)),
-            child: Row(
-              children: <Widget>[
-                _mediaTag('视频', _showVideo),
-                _mediaTag('图片', !_showVideo),
-              ],
+          bottom: 14.0,
+          left: 0.0,
+          right: 0.0,
+          child: Center(
+            child: Container(
+              decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(14.0)),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: <Widget>[
+                  _mediaTag('视频', _showVideo),
+                  _mediaTag('图片', !_showVideo),
+                ],
+              ),
             ),
           ),
         ),
@@ -722,14 +748,10 @@ Widget _buildSwiper() {
   return Swiper.children(
     pagination: SwiperPagination(
       alignment: .bottomRight,
-      // 指示点上移,避开被价格块压住的那一截
+      // 页码角标上移,避开被价格块压住的那一截
       margin: EdgeInsets.only(right: 12.0, bottom: 10.0 + _kPriceOverlap),
-      builder: DotSwiperPaginationBuilder(
-        color: Colors.white70,
-        activeColor: Colors.white,
-        )
-      ),
-      indicatorLayout: PageIndicatorLayout.SCALE,
+      builder: const _NumberPaginationBuilder(),
+    ),
     children: list.map((String url) => CachedNetworkImage(
       imageUrl: url,
       // 切图时不要淡入淡出(默认 500ms 的淡入会跟着轮播切换闪一下)
@@ -1273,7 +1295,7 @@ Widget _buildInfoRow({required String label, required Widget content, VoidCallba
     onTap: onTap,
     behavior: HitTestBehavior.opaque,
     child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 11.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
@@ -1295,7 +1317,7 @@ Widget _buildPromoRow({required String tag, required Widget content, required Vo
     onTap: onTap,
     behavior: HitTestBehavior.opaque,
     child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      padding: const EdgeInsets.symmetric(vertical: 11.0),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: <Widget>[

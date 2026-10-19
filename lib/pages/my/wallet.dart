@@ -257,49 +257,74 @@ class _WalletState extends State<Wallet> {
   }
 
   /// 底部充值 / 提现(H5 action)
+  /// * 两个入口都开: 左充值(主色实心) + 右提现(灰色描边),各占一半
+  /// * 只开一个入口时不再用 Expanded 拉满整行(孤零零一个大按钮很难看),
+  ///   改为居中 + 固定宽度 + 主色实心,视觉重点更明确
   Widget _buildActions() {
     final double bottom = MediaQuery.of(context).padding.bottom;
+    final bool solo = rechargeOpen != withdrawOpen;
     return Container(
-      color: Colors.white,
-      padding: EdgeInsets.fromLTRB(15.0, 10.0, 15.0, 10.0 + bottom),
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        // 轻微顶部分隔阴影,底部操作区与上方内容分层
+        boxShadow: <BoxShadow>[
+          BoxShadow(color: Color(0x0D000000), blurRadius: 8.0, offset: Offset(0.0, -2.0)),
+        ],
+      ),
+      padding: EdgeInsets.fromLTRB(15.0, 12.0, 15.0, 12.0 + bottom),
       child: Row(
+        mainAxisAlignment: solo ? MainAxisAlignment.center : MainAxisAlignment.start,
         children: <Widget>[
           if (rechargeOpen)
-            Expanded(
-              child: FilledButton(
-                style: ButtonStyle(
-                  backgroundColor: WidgetStateProperty.all(primary),
-                  minimumSize: WidgetStateProperty.all(const Size(double.infinity, 42.0)),
-                  shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(21.0))),
-                ),
-                onPressed: () async {
-                  // 充值完成后返回刷新余额
-                  await Get.toNamed('/my/recharge');
-                  load();
-                },
-                child: const Text('充值', style: TextStyle(fontSize: 15.0)),
-              ),
-            ),
+            _buildActionButton('充值', solid: true, expand: !solo, onTap: _goRecharge),
           if (rechargeOpen && withdrawOpen) const SizedBox(width: 12.0),
           if (withdrawOpen)
-            Expanded(
-              child: OutlinedButton(
-                style: ButtonStyle(
-                  foregroundColor: WidgetStateProperty.all(const Color(0xFF333333)),
-                  side: WidgetStateProperty.all(const BorderSide(color: Color(0xFFDDDDDD))),
-                  minimumSize: WidgetStateProperty.all(const Size(double.infinity, 42.0)),
-                  shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(21.0))),
-                ),
-                onPressed: () async {
-                  // 提现完成后返回刷新余额
-                  await Get.toNamed('/my/withdraw');
-                  load();
-                },
-                child: const Text('提现', style: TextStyle(fontSize: 15.0)),
-              ),
-            ),
+            _buildActionButton('提现', solid: solo, expand: !solo, onTap: _goWithdraw),
         ],
       ),
     );
+  }
+
+  /// 底部操作按钮(充值 / 提现)
+  /// * [solid] 主色实心(true) / 灰色描边(false)
+  /// * [expand] 两个入口时各占一半; 单入口时居中固定宽度
+  Widget _buildActionButton(
+    String text, {
+    required bool solid,
+    required bool expand,
+    required Future<void> Function() onTap,
+  }) {
+    final ButtonStyle style = ButtonStyle(
+      backgroundColor: WidgetStateProperty.all(solid ? primary : Colors.transparent),
+      foregroundColor: WidgetStateProperty.all(solid ? Colors.white : const Color(0xFF333333)),
+      side: WidgetStateProperty.all(BorderSide(color: solid ? Colors.transparent : const Color(0xFFDDDDDD))),
+      minimumSize: WidgetStateProperty.all(const Size(double.infinity, 44.0)),
+      shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(22.0))),
+      elevation: WidgetStateProperty.all(0),
+    );
+    final Widget button = solid
+        ? FilledButton(
+            style: style,
+            onPressed: onTap,
+            child: Text(text, style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
+          )
+        : OutlinedButton(
+            style: style,
+            onPressed: onTap,
+            child: Text(text, style: const TextStyle(fontSize: 15.0)),
+          );
+    return expand ? Expanded(child: button) : SizedBox(width: 200.0, child: button);
+  }
+
+  /// 去充值(返回后刷新余额)
+  Future<void> _goRecharge() async {
+    await Get.toNamed('/my/recharge');
+    load();
+  }
+
+  /// 去提现(返回后刷新余额)
+  Future<void> _goWithdraw() async {
+    await Get.toNamed('/my/withdraw');
+    load();
   }
 }

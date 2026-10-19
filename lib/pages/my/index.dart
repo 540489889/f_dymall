@@ -36,7 +36,18 @@ class _MyPageState extends State<MyPage> {
   bool advLoaded = false;
   bool serviceLoaded = false;
   // 是否显示「门店支付」板块: 由 /api/member/memberPageConfig 的 is_pay_code == '1' 决定
-  bool payCodeEnabled = false;
+  // * null = 还没拿到结果(首帧不渲染), 拿到后才是确定值
+  bool? payCodeEnabled;
+  // 是否已成功拿到过配置: 拿到后即使后续请求失败/返回空也保留上次结果, 不再把板块撤掉(避免切 tab 闪一下)
+  bool payCodeLoaded = false;
+  // 上次成功拿到配置的时间(切 tab 很频繁, 做节流避免反复重建)
+  DateTime? _payCodeAt;
+  // 请求进行中: 防止快速切 tab 时并发请求多次 -> 重复 setState
+  bool _payCodeLoading = false;
+  // 登录态变化监听(页面保活后不会重新 initState, 登录/退出要自己刷新一遍)
+  Worker? _authWorker;
+  // 节流窗口: 这段时间内已拿到过结果就不再重复请求
+  static const int _payCodeThrottleSec = 30;
 
   // 我的服务: /api/Member/serviceNav 的配置项(为空则不展示「我的服务」卡片)
   final List<Map<String, dynamic>> serviceList = <Map<String, dynamic>>[];
@@ -75,22 +86,45 @@ class _MyPageState extends State<MyPage> {
     // 切到「我的」tab 时刷新 memberPageConfig(含重复点当前 tab)
     mineTabRefreshTick.addListener(_onTabRefreshTick);
     loadMemberPageConfig();
+    // 登录/退出: 页面已保活不会重新 initState, 这里主动刷新需要登录态的数据
+    _authWorker = ever<String>(authStore.authorization, (String token) {
+      if (token.isEmpty) {
+        if (mounted) setState(() => orderNum = const <String, dynamic>{});
+        return;
+      }
+      authStore.loadCouponNum();
+      loadOrderNum();
+      loadMemberPageConfig(force: true);
+    });
   }
 
   @override
   void dispose() {
     mineTabRefreshTick.removeListener(_onTabRefreshTick);
+    _authWorker?.dispose();
     super.dispose();
   }
 
   /// 切 tab 刷新回调
+  /// * 页面已保活, 这里只刷新「会变的数据」; 门店支付配置内部有节流 + 值不变不 setState, 不会闪
   void _onTabRefreshTick() {
     loadMemberPageConfig();
+    if (!authStore.isLogin) return;
+    authStore.loadCouponNum();
+    loadOrderNum();
   }
 
   /// 我的页配置(/api/member/memberPageConfig)
   /// * is_pay_code == '1' 时显示「门店支付」板块
-  Future<void> loadMemberPageConfig() async {
+  /// * 数据没变化就不 setState: 值相同还重建会把整块重刷一遍(看起来就是闪一下)
+  /// * 拿到过结果后, 失败 / 空响应当作"没有新信息", 保留上次的值, 不再把板块撤掉
+  Future<void> loadMemberPageConfig({bool force = false}) async {
+    if (_payCodeLoading) return;
+    if (!force && payCodeLoaded && _payCodeAt != null) {
+      final int sec = DateTime.now().difference(_payCodeAt!).inSeconds;
+      if (sec < _payCodeThrottleSec) return;
+    }
+    _payCodeLoading = true;
     try {
       final Map<String, dynamic> res = await MemberApi.memberPageConfig();
       if (kDebugMode) {
@@ -98,12 +132,33 @@ class _MyPageState extends State<MyPage> {
         debugPrint('[memberPageConfig] data=${res['data']}');
       }
       final dynamic data = res['data'];
-      final bool showPay = data is Map && '${data['is_pay_code'] ?? ''}' == '1';
-      if (mounted && showPay != payCodeEnabled) {
+      // 空 / 非 Map 响应: 没有新信息, 保留上次结果
+      if (data is! Map) {
+        if (mounted && !payCodeLoaded) {
+          setState(() {
+            payCodeLoaded = true;
+            payCodeEnabled ??= false;
+          });
+        }
+        return;
+      }
+      final bool showPay = '${data['is_pay_code'] ?? ''}' == '1';
+      if (!mounted) return;
+      payCodeLoaded = true;
+      _payCodeAt = DateTime.now();
+      if (showPay != payCodeEnabled) {
         setState(() => payCodeEnabled = showPay);
       }
     } catch (e) {
       if (kDebugMode) debugPrint('[memberPageConfig] 请求失败: $e');
+      if (mounted && !payCodeLoaded) {
+        setState(() {
+          payCodeLoaded = true;
+          payCodeEnabled ??= false;
+        });
+      }
+    } finally {
+      _payCodeLoading = false;
     }
   }
 
@@ -150,12 +205,23 @@ class _MyPageState extends State<MyPage> {
   }
 
   /// 订单各状态数量(/api/order/num): 失败/未登录时为空, 角标不显示
+  /// * 数量没变就不 setState: 每次切 tab 都重建一遍会把整页重刷(看起来就是闪一下)
   Future<void> loadOrderNum() async {
     final Map<String, dynamic> data = await OrderApi.orderNum();
     if (!mounted || data.isEmpty) return;
+    if (_sameOrderNum(data)) return;
     setState(() {
       orderNum = data;
     });
+  }
+
+  /// 订单角标数量是否与当前完全一致
+  bool _sameOrderNum(Map<String, dynamic> data) {
+    if (data.length != orderNum.length) return false;
+    for (final MapEntry<String, dynamic> entry in data.entries) {
+      if ('${orderNum[entry.key] ?? ''}' != '${entry.value ?? ''}') return false;
+    }
+    return true;
   }
 
   /// 取某个状态的订单数量(取不到按 0: 不显示角标)
@@ -994,7 +1060,8 @@ class _MyPageState extends State<MyPage> {
             children: [
               _buildTopArea(statusTop),
               // 门店支付(付款码 / 扫码付): 由 memberPageConfig.is_pay_code 控制是否显示
-              if (payCodeEnabled) _buildPaymentQrcode(),
+              // * 结果没拿到(null)时不渲染, 避免先不显示再突然冒出来
+              if (payCodeEnabled == true) _buildPaymentQrcode(),
               // 广告位(MEMBER_M): 在「我的订单」上方
               _buildAdvBanner(),
               _buildOrderCard(),

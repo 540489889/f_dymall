@@ -48,7 +48,9 @@ class _LayoutState extends State<Layout> {
       case 'earn':
         return const KeepAliveWrapper(child: EarnPage());
       case 'mine':
-        return const MyPage();
+        // 与其它 tab 一致保活: 否则每次切回「我的」都会重建,
+        // 门店支付等板块要重新请求一次配置才会出现(看起来就是闪一下)
+        return const KeepAliveWrapper(child: MyPage());
       default:
         return const KeepAliveWrapper(child: IndexPage());
     }
@@ -78,7 +80,7 @@ class _LayoutState extends State<Layout> {
         VideoPage(),
         KeepAliveWrapper(child: LivePage()),
         KeepAliveWrapper(child: EarnPage()),
-        MyPage(),
+        KeepAliveWrapper(child: MyPage()),
       ];
     }
     return _diyList.map<Widget>((dynamic e) {
