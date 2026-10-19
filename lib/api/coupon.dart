@@ -52,9 +52,38 @@ class CouponApi {
     return <String, dynamic>{};
   }
 
-  /// 列表项(兼容接口直接返回数组的情况)
+  /// 领券中心列表(/coupon/api/coupon/typepagelists)
+  /// * [sort] 1 全部 2 满减 3 折扣 4 无门槛; [type] reward/discount/no_threshold(全部时为空)
+  /// * 返回 { list: [...] }, 券字段同 memberpage, 另含 count/lead_count/max_fetch/member_coupon_num
+  ///   wait_coupon_num/lose_coupon_num/use_coupon_num, 由前端计算领取/使用状态(见 coupon_center)
+  static Future<Map<String, dynamic>> typePageLists({
+    int page = 1,
+    int pageSize = 10,
+    int sort = 1,
+    String type = '',
+  }) async {
+    final dynamic res = await Request().get(
+      '/coupon/api/coupon/typepagelists',
+      queryParameters: <String, dynamic>{
+        'page': page,
+        'page_size': pageSize,
+        'sort': sort,
+        'type': type,
+      },
+    );
+    if (res is Map) return res.cast<String, dynamic>();
+    return <String, dynamic>{};
+  }
+
+  /// 列表项(兼容: 接口已剥离 data 的 {list:[...]} / 完整 {data:{list:[...]}} / 直接数组)
   static List<Map<String, dynamic>> listOf(dynamic res) {
-    final dynamic list = res is Map ? res['list'] : res;
+    dynamic list;
+    if (res is Map) {
+      list = res['list'];
+      if (list == null && res['data'] is Map) list = res['data']['list'];
+    } else {
+      list = res;
+    }
     if (list is List) {
       return list.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList();
     }

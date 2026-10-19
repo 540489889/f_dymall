@@ -14,6 +14,7 @@ import '../../api/order.dart';
 import '../../components/adv_banner.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../controller/app_config.dart';
 import '../../controller/my_preload.dart';
 
@@ -439,8 +440,10 @@ class _MyPageState extends State<MyPage> {
             placeholder: (BuildContext c, String u) => const SizedBox(width: 32.0, height: 32.0),
             errorWidget: (BuildContext c, String u, Object e) => const SizedBox(width: 32.0, height: 32.0),
           )
-        : Image.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain,
-            errorBuilder: (_, __, ___) => const SizedBox(width: 32.0, height: 32.0));
+        : image.endsWith('.svg')
+            ? SvgPicture.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain)
+            : Image.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => const SizedBox(width: 32.0, height: 32.0));
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -539,6 +542,10 @@ class _MyPageState extends State<MyPage> {
           break;
         case 'STAMP':
           Get.toNamed('/stamp');
+          break;
+        // 领券中心(参考 H5 goods/coupon.vue): 后台配 {"name":"COUPON"}
+        case 'COUPON':
+          Get.toNamed('/my/coupon_center');
           break;
         case 'CHAT':
           Get.toNamed('/chat');

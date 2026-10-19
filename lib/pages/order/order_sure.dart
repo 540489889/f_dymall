@@ -811,6 +811,8 @@ class _OrderSureState extends State<OrderSure> {
         if (isStore) _buildPickupFormCard(),
         // 商品信息
         _buildGoodsCard(),
+        // 促销活动(满减优惠)
+        _buildPromotionCard(),
         // 优惠券
         if (couponList.isNotEmpty) _buildCouponCard(),
         // 买家留言
@@ -1290,13 +1292,49 @@ class _OrderSureState extends State<OrderSure> {
     );
   }
 
-  /// 优惠券
+  /// 促销活动(满减优惠, 取自计算结果 promotion_money)
+  Widget _buildPromotionCard() {
+    if (promotionMoney <= 0) return const SizedBox.shrink();
+    return Container(
+      margin: EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 0),
+      padding: EdgeInsets.all(10.0),
+      width: double.infinity,
+      decoration: cardDecoration,
+      child: InkWell(
+        onTap: showMoneyDetail,
+        child: Row(
+          children: <Widget>[
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+              margin: const EdgeInsets.only(right: 8.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF2C55),
+                borderRadius: BorderRadius.circular(4.0),
+              ),
+              child: const Text('促', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
+            ),
+            const Text('促销活动', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text('已减 ¥${promotionMoney.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 4.0),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 12.0),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 优惠券(醒目: 左侧红色"券"标签, 右侧红色加粗金额/可用数, 引导点击)
   Widget _buildCouponCard() {
     final int couponId = _intOf((orderCreateData['coupon'] as Map?)?['coupon_id']);
     final Map<String, dynamic> used = couponList.firstWhere(
       (Map<String, dynamic> e) => _intOf(e['coupon_id']) == couponId,
       orElse: () => <String, dynamic>{},
     );
+    final bool selected = used.isNotEmpty;
+    final String right = selected
+        ? '已减 ¥${couponMoney.toStringAsFixed(2)}'
+        : '${couponList.length}张可用';
     return Container(
       margin: EdgeInsets.fromLTRB(10.0, 10.0, 10.0, 0),
       padding: EdgeInsets.all(10.0),
@@ -1306,13 +1344,20 @@ class _OrderSureState extends State<OrderSure> {
         onTap: showCouponSheet,
         child: Row(
           children: <Widget>[
-            Text('优惠券', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.w700)),
-            Spacer(),
-            Text(
-              used.isEmpty ? '${couponList.length}张可用' : '${used['coupon_name'] ?? '优惠券'}',
-              style: TextStyle(fontSize: 12.0),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+              margin: const EdgeInsets.only(right: 8.0),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFF2C55),
+                borderRadius: BorderRadius.circular(4.0),
+              ),
+              child: const Text('券', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
             ),
-            Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 12.0),
+            const Text('优惠券', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700)),
+            const Spacer(),
+            Text(right, style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0, fontWeight: FontWeight.w600)),
+            const SizedBox(width: 4.0),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 12.0),
           ],
         ),
       ),

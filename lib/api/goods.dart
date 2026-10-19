@@ -13,9 +13,9 @@ class GoodsApi {
   /// * [page] 页码,从1开始
   /// * [pageSize] 每页条数
   /// 返回 {page_count: 总页数, count: 总条数, list: 商品列表}
-  static Future<Map<String, dynamic>> pageComponents({int page = 1, int pageSize = 12}) async {
+  static Future<Map<String, dynamic>> goodsList({int page = 1, int pageSize = 12}) async {
     final dynamic res = await Request().post(
-      '/api/goodssku/pageComponents',
+      '/api/index/goodsList',
       data: {'page': page, 'page_size': pageSize},
     );
     if (res is Map) {
@@ -186,6 +186,8 @@ class GoodsApi {
       'marketPrice': _toNum(detail['market_price']),
       'showMarketPrice': detail['market_price_show'] == 1,
       'images': imgList.where((String e) => e.trim().isNotEmpty).map(_fixImage).toList(),
+      // 商品视频(H5: goodsSkuDetail.video_url, poster 复用首图 sku_image)
+      'videoUrl': _fixImage('${detail['video_url'] ?? ''}'),
       // 富文本详情(HTML)
       'content': '${detail['goods_content'] ?? ''}',
       'saleNum': _toNum(detail['sale_num']),
@@ -206,6 +208,9 @@ class GoodsApi {
       'goodsPromotion': (detail['goods_promotion'] ?? const []) as List,
       'bundlingList': (detail['bundling_list'] ?? const []) as List,
       'manjian': detail['manjian'],
+      // 限时折扣: promotion_type==1 表示进行中折扣, end_time 为折扣结束的秒级时间戳
+      'promotionType': _toNum(detail['promotion_type']).toInt(),
+      'discountEndTime': _toNum(detail['end_time']).toInt(),
       'expressType': detail['express_type'] ?? const {},
       'maxBuy': _toNum(detail['max_buy']),
       'minBuy': _toNum(detail['min_buy']),

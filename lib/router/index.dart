@@ -38,6 +38,7 @@ import '../pages/my/point.dart';
 import '../pages/my/point_detail.dart';
 import '../pages/my/signin.dart';
 import '../pages/my/coupon.dart';
+import '../pages/my/coupon_center.dart';
 import '../pages/my/recharge.dart';
 import '../pages/my/balance_detail.dart';
 import '../pages/my/recharge_order.dart';
@@ -117,6 +118,7 @@ final Map<String, Widget> routes = {
 '/my/point_detail': const PointDetailPage(),
 '/my/signin': const SigninPage(),
 '/my/coupon': const MyCouponPage(),
+'/my/coupon_center': const CouponCenterPage(),
 // 看播记录(我的服务入口,个人看播数据,需登录)
 '/my/watching_record': const WatchingRecordPage(),
 '/my/watching_record/detail': const WatchingRecordDetailPage(),

@@ -15,6 +15,7 @@ import '../../api/member_account.dart';
 import '../../api/member_point.dart';
 import '../../api/member_signin.dart';
 import '../../api/member_task.dart';
+import '../../controller/earn_preload.dart';
 import '../../api/member_withdraw.dart';
 import '../../controller/auth_store.dart';
 import '../../utils/ads.dart';
@@ -83,9 +84,21 @@ class _EarnPageState extends State<EarnPage> {
   void initState() {
     super.initState();
     load();
-    loadSignin();
     loadWithdrawAccount();
-    loadTasks();
+    // 先同步填充启动预拉的缓存(进页面首帧即为真实内容, 不闪现)
+    if (EarnPreload.signinLoaded) {
+      signState = EarnPreload.signState;
+      hasSign = EarnPreload.hasSign;
+      signDaysSeries = EarnPreload.signDaysSeries;
+      cycle = EarnPreload.cycle;
+      signRule = EarnPreload.signRule;
+    }
+    if (EarnPreload.tasksLoaded) {
+      tasks = EarnPreload.tasks;
+    }
+    // 预拉未就绪时(极少见: 用户极快进赚钱页)再兜底拉一次, 已就绪则跳过避免重复请求
+    if (!EarnPreload.signinLoaded) loadSignin();
+    if (!EarnPreload.tasksLoaded) loadTasks();
     earnTabRefreshTick.addListener(_onTabRefreshTick);
     signinRefreshTick.addListener(_onSigninRefreshTick);
   }
@@ -115,6 +128,9 @@ class _EarnPageState extends State<EarnPage> {
             'adType': '${e['type']}' == '1' ? 'reward' : 'interstitial',
           };
         }).toList();
+        // 写回启动预拉缓存(保持新鲜, 下次进页面直接读)
+        EarnPreload.tasks = tasks;
+        EarnPreload.tasksLoaded = true;
       });
       if (kDebugMode) {
         debugPrint('[赚钱]任务列表(/membertask/api/task/lists): ${tasks.length} 条 ${jsonEncode(list)}');
@@ -253,6 +269,13 @@ class _EarnPageState extends State<EarnPage> {
         signRule = reward is List
             ? reward.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList()
             : <Map<String, dynamic>>[];
+        // 写回启动预拉缓存(保持新鲜, 下次进页面直接读)
+        EarnPreload.signState = signState;
+        EarnPreload.hasSign = hasSign;
+        EarnPreload.signDaysSeries = signDaysSeries;
+        EarnPreload.cycle = cycle;
+        EarnPreload.signRule = signRule;
+        EarnPreload.signinLoaded = true;
       });
       if (kDebugMode) {
         debugPrint('[earn]签到: state=$state cycle=$cycle 规则${signRule.length}条 连签=$signDaysSeries 今日已签=$hasSign 有会员信息=${info is Map}');
@@ -777,7 +800,6 @@ class _EarnPageState extends State<EarnPage> {
 
   // 热门任务
   Widget _buildHotTasks() {
-    // 任务还没拉到时先不渲染(加载中/失败/为空), 比显示一张空卡片好
     if (tasks.isEmpty) return const SizedBox.shrink();
     return Container(
       margin: const EdgeInsets.fromLTRB(12.0, 10.0, 12.0, 0.0),

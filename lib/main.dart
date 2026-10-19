@@ -16,6 +16,7 @@ import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
 import 'controller/app_config.dart';
 import 'controller/my_preload.dart';
+import 'controller/earn_preload.dart';
 // 开发调试: 暂时注释穿山甲相关 import(恢复广告时与本文件里的 Ads.init / Content.init 一起解开)
 // import 'utils/ads.dart';
 // import 'utils/content.dart';
@@ -91,6 +92,8 @@ void main() async {
 
   // 预拉「我的」页首屏数据(广告 + 我的服务): 进「我的」时首帧就有内容, 不再从无到有闪一下
   MyPreload.start();
+  // 预拉赚钱页首屏数据(签到 + 热门任务): 进赚钱页首帧即为真实内容, 不闪现
+  EarnPreload.start();
 }
 
 /// 后台初始化原生 SDK(广告/内容/媒体), 不在启动关键路径上

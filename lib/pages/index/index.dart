@@ -29,6 +29,7 @@ import '../../pages/live/index.dart';
 import '../../api/seckill.dart';
 import '../../api/cart.dart';
 import '../../controller/auth_store.dart';
+import '../../controller/app_config.dart';
 import '../../controller/my_preload.dart';
 import '../../api/index.dart';
 import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
@@ -128,13 +129,17 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   bool isRefreshing = false;
   // 商品列表是否横向单列布局(默认横向单列)
   bool isHorizontalList = true;
+  // goods_format 是否已应用为默认排版(仅首次, 之后以用户手动切换为准)
+  bool _goodsFormatApplied = false;
+  // 监听 /api/config/init 的 worker(页面销毁时取消, 避免泄漏)
+  Worker? _goodsFormatWorker;
   // 当前页码
   int page = 1;
   // 每页条数
   final int pageSize = 12;
   // 是否还有更多数据
   bool hasMore = true;
-  // 当前选中的分类id(0 = 推荐, 走 /api/goodssku/pageComponents)
+  // 当前选中的分类id(0 = 推荐, 走 /api/index/goodsList)
   int currentCategoryId = 0;
   // 吸顶 tab 板块缓存: SliverLayoutBuilder 滚动中每帧回调,缓存后不再每帧重建 TabBar 子树
   Widget? _stickyTabsHeader;
@@ -240,10 +245,10 @@ Future<void> loadMoreData({bool refresh = false}) async {
   // 记录请求序号: 请求返回时若已切换分类, 该响应直接丢弃
   final int seq = requestSeq;
   try {
-    // 推荐(0)走首页推荐接口, 其余分类走 /api/goodssku/page?category_id=
+    // 推荐(0)走首页推荐接口 /api/index/goodsList, 其余分类走 /api/goodssku/page?category_id=
     final Map<String, dynamic> res = currentCategoryId > 0
       ? await GoodsApi.pageList(page: page, pageSize: pageSize, categoryId: currentCategoryId)
-      : await GoodsApi.pageComponents(page: page, pageSize: pageSize);
+      : await GoodsApi.goodsList(page: page, pageSize: pageSize);
     final List list = res['list'] as List;
     final int pageCount = (res['page_count'] ?? 1) as int;
     final List<Map<String, dynamic>> cardList = GoodsApi.toCardList(list);
@@ -763,6 +768,12 @@ Widget liveBg() {
 @override
 void initState() {
   super.initState();
+  // 首页商品列表默认排版跟随 /api/config/init 的 goods_format:
+  // "1"=单排一个商品(横向单列, 默认); 其余取值(如 "2")=双列瀑布流
+  // * config 可能在首屏渲染后才返回, 故用 ever 监听而非一次性读取
+  // * 仅首次应用, 之后以用户手动切换布局为准
+  _applyGoodsFormat(AppConfig.to.config);
+  _goodsFormatWorker = ever(AppConfig.to.data, (_) => _applyGoodsFormat(AppConfig.to.config));
   scrollController.addListener(_onScroll);
 
   // 预拉「我的」页首屏数据(启动时已拉过就跳过, 幂等): 进「我的」时首帧就有内容
@@ -796,6 +807,24 @@ void initState() {
   } catch (e) {
     debugPrint('[index] 网络监听注册异常: $e');
   }
+  }
+
+  // 根据 /api/config/init 的 goods_format 设置首页商品列表默认排版(仅首次应用)
+  // "1"=单排一个商品(横向单列); 其余取值(如 "2")=双列瀑布流
+  // * 仅首次: 之后以用户在切换布局按钮上的手动选择为准
+  void _applyGoodsFormat(Map<String, dynamic> cfg) {
+    if (_goodsFormatApplied) return;
+    if (!cfg.containsKey('goods_format')) return; // 配置尚未拉到
+    _goodsFormatApplied = true;
+    if ('${cfg['goods_format']}' != '1') {
+      if (!mounted) return;
+      setState(() {
+        isHorizontalList = false;
+        // 布局变了: 作废吸顶 / 未吸顶两份 header 缓存(复用旧子树会让切换图标不更新)
+        _stickyTabsHeader = null;
+        _normalTabsHeader = null;
+      });
+    }
   }
 
   // 首页 tab 分类: 取一级分类树(/api/goodscategory/tree)
@@ -945,7 +974,17 @@ void initState() {
     try {
       final Map<String, dynamic> res = await SeckillApi.timeList();
       final List<SeckillTime> times = (res['list'] as List? ?? const []).cast<SeckillTime>();
-      if (times.isEmpty) return;
+      // 接口返回空场次(无进行中/即将开始的秒杀)时, 也要刷新 UI 并清空板块,
+      // 不再静默 return 保留上一轮(首屏)的旧数据, 否则会出现"下拉刷新但秒杀没更新"的错觉
+      if (times.isEmpty) {
+        if (mounted) {
+          setState(() {
+            seckillTime = null;
+            seckillGoods = const [];
+          });
+        }
+        return;
+      }
       final int timestamp = int.tryParse('${res['timestamp'] ?? 0}') ?? 0;
       final DateTime serverTime = timestamp > 0
           ? DateTime.fromMillisecondsSinceEpoch(timestamp * 1000)
@@ -1235,6 +1274,7 @@ void initState() {
     livePreviewSuspended.removeListener(_onLivePreviewSuspended);
     _resumeRetryTimer?.cancel();
     _connectivitySub?.cancel();
+    _goodsFormatWorker?.dispose();
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();

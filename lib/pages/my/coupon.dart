@@ -127,13 +127,9 @@ class _MyCouponPageState extends State<MyCouponPage> {
     return date.isEmpty ? '有效期：长期有效' : '有效期：$date';
   }
 
-  /// 适用范围: 商品类型 / 使用渠道 / 门店
+  /// 适用范围(门店 / 最大优惠) — 商品类型、使用渠道单独成行展示
   List<String> scopeTexts(Map<String, dynamic> item) {
     final List<String> parts = <String>[];
-    final String goodsType = '${item['goods_type_name'] ?? ''}'.trim();
-    if (goodsType.isNotEmpty) parts.add(goodsType);
-    final String channel = '${item['use_channel_name'] ?? ''}'.trim();
-    if (channel.isNotEmpty) parts.add(channel);
     final String channelKey = '${item['use_channel'] ?? ''}';
     if (channelKey != 'online') {
       final String store = '${item['use_store'] ?? ''}';
@@ -142,6 +138,23 @@ class _MyCouponPageState extends State<MyCouponPage> {
     final double limit = double.tryParse('${item['discount_limit'] ?? ''}') ?? 0;
     if (limit > 0) parts.add('最大优惠${_trim(limit)}元');
     return parts.where((String e) => e.isNotEmpty).toList();
+  }
+
+  /// 单条适用范围(单独一行: 标题 + 值, 无背景)
+  Widget _scopeRow(String title, String value, bool disabled) {
+    if (value.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6.0),
+      child: Text(
+        '$title：$value',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11.0,
+          color: disabled ? const Color(0xFF999999) : const Color(0xFF666666),
+        ),
+      ),
+    );
   }
 
   /// 去掉多余小数(10.0 -> 10)
@@ -267,12 +280,14 @@ class _MyCouponPageState extends State<MyCouponPage> {
   Widget _buildCouponCard(Map<String, dynamic> item) {
     final int itemState = int.tryParse('${item['state'] ?? CouponApi.stateUnused}') ?? CouponApi.stateUnused;
     final bool disabled = itemState != CouponApi.stateUnused;
-    final List<String> scopes = scopeTexts(item);
+    final String goodsType = '${item['goods_type_name'] ?? ''}'.trim();
+    final String channel = '${item['use_channel_name'] ?? ''}'.trim();
+    final List<String> extra = scopeTexts(item);
     return GestureDetector(
       onTap: disabled ? null : () => toUse(item),
       child: Container(
-        height: 104.0,
         margin: const EdgeInsets.only(bottom: 12.0),
+        constraints: const BoxConstraints(minHeight: 112.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(10.0),
@@ -281,103 +296,109 @@ class _MyCouponPageState extends State<MyCouponPage> {
           ],
         ),
         clipBehavior: Clip.antiAlias,
-        child: Row(
-          children: <Widget>[
-            // 左侧金额区(不可用置灰)
-            Container(
-              width: 104.0,
-              decoration: BoxDecoration(
-                gradient: disabled
-                    ? null
-                    : const LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: <Color>[Color(0xFFFF7A52), Color(0xFFFF4D5F)],
-                      ),
-                color: disabled ? const Color(0xFFE0E0E0) : null,
-              ),
-              alignment: Alignment.center,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: <Widget>[
-                  Text(
-                    amountText(item),
-                    style: TextStyle(
-                      fontSize: 24.0,
-                      fontWeight: FontWeight.bold,
-                      color: disabled ? Colors.white70 : Colors.white,
-                    ),
-                  ),
-                  const SizedBox(height: 6.0),
-                  Text(
-                    conditionText(item),
-                    style: TextStyle(fontSize: 11.0, color: disabled ? Colors.white70 : Colors.white),
-                  ),
-                ],
-              ),
-            ),
-            // 右侧信息区
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 12.0),
+        child: IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // 左侧金额区(不可用置灰)
+              Container(
+                width: 104.0,
+                padding: const EdgeInsets.symmetric(vertical: 22.0),
+                decoration: BoxDecoration(
+                  gradient: disabled
+                      ? null
+                      : const LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: <Color>[Color(0xFFFF7A52), Color(0xFFFF4D5F)],
+                        ),
+                  color: disabled ? const Color(0xFFE0E0E0) : null,
+                ),
+                alignment: Alignment.center,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   children: <Widget>[
                     Text(
-                      '${item['coupon_name'] ?? '优惠券'}',
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      amountText(item),
                       style: TextStyle(
-                        fontSize: 15.0,
-                        fontWeight: FontWeight.w600,
-                        color: disabled ? const Color(0xFF999999) : const Color(0xFF333333),
+                        fontSize: 24.0,
+                        fontWeight: FontWeight.bold,
+                        color: disabled ? Colors.white70 : Colors.white,
                       ),
                     ),
-                    if (scopes.isNotEmpty) ...<Widget>[
-                      const SizedBox(height: 5.0),
+                    const SizedBox(height: 6.0),
+                    Text(
+                      conditionText(item),
+                      style: TextStyle(fontSize: 11.0, color: disabled ? Colors.white70 : Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+              // 右侧信息区
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12.0, 12.0, 8.0, 12.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
                       Text(
-                        scopes.join(' · '),
+                        '${item['coupon_name'] ?? '优惠券'}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 15.0,
+                          fontWeight: FontWeight.w600,
+                          color: disabled ? const Color(0xFF999999) : const Color(0xFF333333),
+                        ),
+                      ),
+                      _scopeRow('适用商品', goodsType, disabled),
+                      _scopeRow('使用渠道', channel, disabled),
+                      if (extra.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 6.0),
+                        Text(
+                          extra.join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
+                        ),
+                      ],
+                      const SizedBox(height: 6.0),
+                      Text(
+                        timeText(item),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
                       ),
                     ],
-                    const SizedBox(height: 5.0),
-                    Text(
-                      timeText(item),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
-            // 状态按钮区
-            SizedBox(
-              width: 72.0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-                  decoration: BoxDecoration(
-                    color: disabled ? const Color(0xFFF2F2F2) : primary,
-                    borderRadius: BorderRadius.circular(14.0),
-                  ),
-                  child: Text(
-                    itemState == CouponApi.stateUsed
-                        ? '已使用'
-                        : (itemState == CouponApi.stateExpired ? '已过期' : '去使用'),
-                    style: TextStyle(
-                      fontSize: 12.0,
-                      fontWeight: FontWeight.w500,
-                      color: disabled ? const Color(0xFF999999) : Colors.white,
+              // 状态按钮区
+              SizedBox(
+                width: 72.0,
+                child: Center(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                    decoration: BoxDecoration(
+                      color: disabled ? const Color(0xFFF2F2F2) : primary,
+                      borderRadius: BorderRadius.circular(14.0),
+                    ),
+                    child: Text(
+                      itemState == CouponApi.stateUsed
+                          ? '已使用'
+                          : (itemState == CouponApi.stateExpired ? '已过期' : '去使用'),
+                      style: TextStyle(
+                        fontSize: 12.0,
+                        fontWeight: FontWeight.w500,
+                        color: disabled ? const Color(0xFF999999) : Colors.white,
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

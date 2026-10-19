@@ -1,8 +1,11 @@
 /// 商品详情页
 library;
 
+import 'dart:async';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../components/common_empty.dart';
 import '../../components/live_float_window.dart';
@@ -19,10 +22,54 @@ import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/backtop.dart';
 import '../../components/loading.dart';
 import '../../styles/index.dart';
+import '../../config/index.dart';
 import './coupon_sheet.dart';
 import './sku_sheet.dart';
 import './delivery_sheet.dart';
 import './evaluate.dart';
+
+/// 通用底部弹窗骨架(标题 + 关闭 + 可滚动内容)
+class _PromoSheet extends StatelessWidget {
+  const _PromoSheet({ required this.title, required this.child, this.footer });
+  final String title;
+  final Widget child;
+  final Widget? footer;
+  @override
+  Widget build(BuildContext context) => Container(
+    constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+    decoration: const BoxDecoration(color: Colors.white, borderRadius: BorderRadius.vertical(top: Radius.circular(15.0))),
+    child: SafeArea(
+      top: false,
+      child: Column(
+        children: <Widget>[
+          SizedBox(
+            height: 48.0,
+            child: Stack(
+              children: <Widget>[
+                Center(child: Text(title, style: const TextStyle(fontSize: 16.0, fontWeight: FontWeight.w600))),
+                Positioned(
+                  right: 5.0,
+                  top: 0.0,
+                  bottom: 0.0,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const Padding(padding: EdgeInsets.all(8.0), child: Icon(Icons.close, size: 20.0, color: Colors.black45)),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(child: child),
+          if (footer != null) ...<Widget>[
+            const Divider(height: 1.0, thickness: 1.0, color: Color(0xFFEEEEEE)),
+            footer!,
+          ],
+        ],
+      ),
+    ),
+  );
+}
 
 class Goods extends StatefulWidget {
   const Goods({
@@ -61,6 +108,9 @@ bool loading = true;
 String errorMsg = '';
 // 用户已领取的券标识集合(本地记录, 关闭弹窗时回写)
 Set<int> fetchedCoupons = <int>{};
+// 限时折扣倒计时(剩余秒数), 每秒刷新
+final ValueNotifier<int> discountRemain = ValueNotifier<int>(0);
+Timer? _discountTimer;
 // 规格属性是否展开
 bool attrExpanded = false;
 // 加入购物车请求中
@@ -79,6 +129,11 @@ String storeAddress = '';
 bool evaluateShow = false;
 int evaluateCount = 0;
 List<Map<String, dynamic>> evaluateList = <Map<String, dynamic>>[];
+// 商品视频(media_kit 播放器)
+Player? _player;
+VideoController? _videoController;
+bool _showVideo = false;
+bool _videoError = false;
 
 @override
 void initState() {
@@ -90,6 +145,8 @@ void initState() {
   loadCartNum();
   // loadStore(); // 适用门店暂时隐藏, 暂不请求
   loadEvaluate();
+  // 限时折扣倒计时(每秒刷新剩余时间)
+  _discountTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickDiscount());
   // 从直播间进来的: 等首帧布局完再挂悬浮小窗(小窗继续播直播画面,点它回直播间)
   WidgetsBinding.instance.addPostFrameCallback((_) {
     if (!mounted) return;
@@ -157,6 +214,8 @@ Future<void> loadEvaluate() async {
 void dispose() {
   // 离开详情页收起直播间悬浮小窗(返回直播间时也是走这里)
   LiveFloatWindow.instance.hide();
+  _discountTimer?.cancel();
+  _player?.dispose();
   scrollController.dispose();
   super.dispose();
 }
@@ -201,6 +260,8 @@ Future<void> loadDetail() async {
       loading = false;
       errorMsg = res.isEmpty ? '未查询到商品信息' : '';
     });
+    // 有视频时初始化播放器(视频地址在详情返回后才确定)
+    _initVideo();
   } catch (e) {
     if (!mounted) return;
     setState(() {
@@ -208,6 +269,55 @@ Future<void> loadDetail() async {
       errorMsg = '$e'.replaceAll(RegExp(r'^DioException.*message: '), '');
     });
   }
+}
+
+/// 初始化商品视频播放器(仅在 videoUrl 非空且未初始化时)
+void _initVideo() {
+  if (videoUrl.isEmpty || _player != null) return;
+  _player = Player();
+  _videoController = VideoController(_player!);
+  _player!.stream.error.listen((dynamic e) {
+    if (mounted) setState(() => _videoError = true);
+  });
+  _player!.open(Media(videoUrl), play: false).catchError((dynamic e) {
+    if (mounted) setState(() => _videoError = true);
+  });
+}
+
+/// 限时折扣每秒刷新剩余秒数(promotion_type==1 且未过期才计数)
+void _tickDiscount() {
+  if (promotionType != 1 || discountEndTime <= 0) {
+    if (discountRemain.value != 0) discountRemain.value = 0;
+    return;
+  }
+  final int remain = discountEndTime - DateTime.now().millisecondsSinceEpoch ~/ 1000;
+  final int next = remain < 0 ? 0 : remain;
+  if (discountRemain.value != next) discountRemain.value = next;
+}
+
+/// 秒 -> 天/时/分/秒 文案
+String _formatCountdown(int remain) {
+  if (remain <= 0) return '已结束';
+  final int d = remain ~/ 86400;
+  final int h = (remain % 86400) ~/ 3600;
+  final int m = (remain % 3600) ~/ 60;
+  final int s = remain % 60;
+  if (d > 0) return '$d天${_pad2(h)}:${_pad2(m)}:${_pad2(s)}';
+  return '${_pad2(h)}:${_pad2(m)}:${_pad2(s)}';
+}
+
+String _pad2(int v) => v < 10 ? '0$v' : '$v';
+
+/// 图片地址处理(配置了 imageProxy 时走代理, 与 GoodsApi._fixImage 一致)
+String _fixImg(String url) {
+  if (url.isEmpty || Config.imageProxy.isEmpty) return url;
+  return '${Config.imageProxy}${Uri.encodeComponent(url)}';
+}
+
+/// 安全转 num(接口字段多为字符串)
+num _num(dynamic value) {
+  if (value == null || '$value'.isEmpty) return 0;
+  return num.tryParse('$value') ?? 0;
 }
 
 /* 数据快捷读取 */
@@ -229,11 +339,23 @@ bool get onSale => detail['onSale'] == true;
 int get skuId => int.tryParse('${detail['skuId'] ?? 0}') ?? 0;
 String get skuName => '${detail['skuName'] ?? title}';
 String get skuImage => '${detail['skuImage'] ?? ''}';
+// 商品视频地址(为空表示无视频)
+String get videoUrl => '${detail['videoUrl'] ?? ''}';
 List<dynamic> get couponList => (detail['couponList'] as List? ?? const []);
 List<dynamic> get specGroups => (detail['specGroups'] as List? ?? const []);
 /// 规格属性(商品参数)
 List<dynamic> get attrList => (detail['attrList'] as List? ?? const []);
 Map<String, dynamic> get expressType => (detail['expressType'] as Map? ?? const {}).cast<String, dynamic>();
+// 限时折扣: promotion_type==1 且未过期才展示折扣价/标签
+int get promotionType => detail['promotionType'] as int? ?? 0;
+int get discountEndTime => detail['discountEndTime'] as int? ?? 0;
+bool get showDiscount =>
+    promotionType == 1 && discountEndTime * 1000 > DateTime.now().millisecondsSinceEpoch;
+// 满减活动(原始 map, 含 type / manjian_name / rule_json)
+Map<String, dynamic> get manjian => (detail['manjian'] as Map? ?? const {}).cast<String, dynamic>();
+// 组合套餐列表(每项: bl_id / bl_name / bl_price / bundling_goods[])
+List<Map<String, dynamic>> get bundlingList =>
+    (detail['bundlingList'] as List? ?? const []).cast<Map<String, dynamic>>();
 
 /// 金额格式化(保留两位)
 String money(num value) => value.toStringAsFixed(2);
@@ -280,8 +402,9 @@ Widget _buildError() {
 
 // 顶部圆形按钮直径(返回/搜索/购物车统一)
 static const double _kTopBtnSize = 34.0;
-// 价格块压在轮播图上的高度: 轮播区额外留出这么多,保证图片内容不被裁掉
-static const double _kPriceOverlap = 12.0;
+// 价格块压在轮播图上的高度: 设为 0 表示价格块不再覆盖轮播图,
+// 图片完整显示, 价格块紧贴轮播图下方(顶部圆角衔接)
+static const double _kPriceOverlap = 0.0;
 
 Widget _buildContent() {
   return Stack(
@@ -303,8 +426,8 @@ Widget _buildContent() {
                   color: Color(0xFFFAFAFA),
                   borderRadius: BorderRadius.vertical(top: Radius.circular(15.0)),
                 ),
-                // 压住价格块底部 15: 价格块整体上移了 _kPriceOverlap,这里同步多压一点
-                transform: Matrix4.translationValues(0.0, -(15.0 + _kPriceOverlap), 0.0),
+                // 不再用负位移去压价格块: 价格块已不覆盖轮播, 这里让浅灰内容卡片
+                // 从价格块正下方平铺开始, 红橙金额板块完整显示、不被白色背景遮挡
                 child: Column(
                   children: [
                     _buildTitle(),
@@ -342,11 +465,12 @@ Widget _buildSliverAppBar() {
         backgroundColor: bg,
         elevation: 0,
         scrolledUnderElevation: 0,
-        // 280 是轮播可视高度, 多出的 12 是让给价格块上压的部分(_kPriceOverlap)
-        expandedHeight: 280.0 + _kPriceOverlap,
+        // 360 是轮播可视高度(接近 1:1 主图比例,避免商家图底部贴边的促销贴片被裁掉),
+        // 价格块接在其正下方(由 _kPriceOverlap 控制是否上压)
+        expandedHeight: 360.0 + _kPriceOverlap,
         // 按钮自己画(见 _buildTopBar),这里不要默认的返回按钮和标题
         automaticallyImplyLeading: false,
-        flexibleSpace: FlexibleSpaceBar(background: _buildSwiper()),
+        flexibleSpace: FlexibleSpaceBar(background: _buildMedia()),
       );
     },
   );
@@ -523,12 +647,73 @@ Widget _buildTopButton(Widget child, VoidCallback onTap, double t, {double margi
   );
 }
 
+/// 顶部媒体区: 图片轮播 + 商品视频(可切换, 仅在 videoUrl 非空时显示切换标签)
+Widget _buildMedia() {
+  final bool hasVideo = videoUrl.isNotEmpty;
+  return Stack(
+    children: <Widget>[
+      // 图片轮播(始终挂载, 切到视频时作为底层被覆盖)
+      _buildSwiper(),
+      // 视频(条件挂载: 已切到视频且播放器就绪)
+      if (hasVideo && _showVideo && _videoController != null)
+        Positioned.fill(child: Video(controller: _videoController!, fit: BoxFit.cover)),
+      // 视频加载失败提示
+      if (hasVideo && _showVideo && _videoError)
+        Positioned.fill(
+          child: DecoratedBox(
+            decoration: const BoxDecoration(color: Colors.black),
+            child: const Center(child: Text('视频加载失败', style: TextStyle(color: Colors.white, fontSize: 13.0))),
+          ),
+        ),
+      // 视频/图片切换标签(右上, 在购物车按钮下方)
+      if (hasVideo)
+        Positioned(
+          top: MediaQuery.paddingOf(context).top + 54.0,
+          right: 12.0,
+          child: Container(
+            decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(14.0)),
+            child: Row(
+              children: <Widget>[
+                _mediaTag('视频', _showVideo),
+                _mediaTag('图片', !_showVideo),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+}
+
+/// 媒体切换标签(视频 / 图片), 点击切换并控制播放/暂停
+Widget _mediaTag(String text, bool active) {
+  return GestureDetector(
+    onTap: () {
+      setState(() {
+        _showVideo = text == '视频';
+        if (_showVideo) {
+          _player?.play();
+        } else {
+          _player?.pause();
+        }
+      });
+    },
+    child: Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0),
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFFFF2C55) : Colors.transparent,
+        borderRadius: BorderRadius.circular(12.0),
+      ),
+      child: Text(text, style: TextStyle(color: active ? Colors.white : Colors.white70, fontSize: 12.0, fontWeight: FontWeight.w600)),
+    ),
+  );
+}
+
 /// 顶部轮播(接口 images)
 Widget _buildSwiper() {
   final List<String> list = images;
   if (list.isEmpty) {
     return Container(
-      height: 280.0,
+      height: 360.0,
       color: Colors.grey[200],
       alignment: Alignment.center,
       child: const Icon(Icons.image_outlined, color: Colors.grey, size: 40.0),
@@ -577,12 +762,11 @@ Widget _buildPriceBlock() {
           Color(0xFFFF2C55), Color(0xFFFF9C55)
         ]
       ),
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(12.0)),
       boxShadow: [
         BoxShadow(
           color: const Color(0xFFFF2C55).withValues(alpha: 0.25),
           blurRadius: 8.0,
-          offset: const Offset(0.0, -2.0),
+          offset: const Offset(0.0, 2.0),
         ),
       ],
     ),
@@ -590,6 +774,24 @@ Widget _buildPriceBlock() {
       crossAxisAlignment: CrossAxisAlignment.start,
       spacing: 5.0,
       children: [
+        if (showDiscount)
+          Row(
+            spacing: 8.0,
+            children: <Widget>[
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(4.0)),
+                child: const Text('限时折扣', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0, fontWeight: FontWeight.w700)),
+              ),
+              ValueListenableBuilder<int>(
+                valueListenable: discountRemain,
+                builder: (BuildContext context, int remain, _) => Text(
+                  '距结束 ${_formatCountdown(remain)}',
+                  style: const TextStyle(color: Colors.white, fontSize: 12.0),
+                ),
+              ),
+            ],
+          ),
         Row(
         spacing: 5.0,
         children: [
@@ -764,6 +966,244 @@ Future<void> _showCouponSheet() async {
   if (mounted) setState(() {});
 }
 
+/// 满减规则文案列表(解析 manjian.rule_json: 满减 / 满送 / 包邮)
+List<String> get _manjianRules {
+  final dynamic raw = manjian['rule_json'];
+  if (raw is! Map) return const [];
+  final int type = _num(manjian['type']).toInt();
+  final String unit = type == 1 ? '件' : '元';
+  final List<String> rules = <String>[];
+  raw.forEach((dynamic key, dynamic value) {
+    if (value is! Map) return;
+    final num limit = _num(value['limit']);
+    final num discount = _num(value['discount_money']);
+    if (discount > 0) rules.add('满${trimNum(limit)}$unit减${trimNum(discount)}元');
+    final num point = _num(value['point']);
+    if (point > 0) rules.add('满${trimNum(limit)}$unit送${trimNum(point)}积分');
+    if (value['free_shipping'] != null) rules.add('满${trimNum(limit)}$unit包邮');
+  });
+  return rules;
+}
+
+/// 满减入口摘要(优先活动名, 否则拼接前两条规则)
+String get _manjianSummary {
+  final String name = '${manjian['manjian_name'] ?? ''}';
+  if (name.isNotEmpty) return name;
+  final List<String> rules = _manjianRules;
+  return rules.isEmpty ? '查看优惠' : rules.take(2).join('；');
+}
+
+/// 组合套餐入口预览(活动名 + 首组商品缩略图横向滚动)
+Widget _buildBundlingPreview() {
+  final Map<String, dynamic> first = bundlingList.first;
+  final List<dynamic> goods = (first['bundling_goods'] as List? ?? const []);
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    spacing: 6.0,
+    children: <Widget>[
+      Text('${first['bl_name'] ?? ''}', style: const TextStyle(fontSize: 12.0, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis),
+      if (goods.isNotEmpty)
+        SizedBox(
+          height: 44.0,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: goods.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 6.0),
+            itemBuilder: (BuildContext context, int i) {
+              final Map<String, dynamic> g = (goods[i] as Map? ?? const {}).cast<String, dynamic>();
+              return ClipRRect(
+                borderRadius: BorderRadius.circular(4.0),
+                child: CachedNetworkImage(
+                  imageUrl: _fixImg('${g['sku_image'] ?? ''}'),
+                  width: 44.0,
+                  height: 44.0,
+                  fit: BoxFit.cover,
+                  errorWidget: (BuildContext c, String u, Object e) => Container(color: Colors.grey[200]),
+                ),
+              );
+            },
+          ),
+        ),
+      Text('套餐价 ¥${money(_num(first['bl_price']))}', style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0, fontWeight: FontWeight.w600)),
+    ],
+  );
+}
+
+/// 满减弹窗
+Future<void> _showManjianSheet() async {
+  final List<String> rules = _manjianRules;
+  if (rules.isEmpty) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (BuildContext context) => _PromoSheet(
+      title: '促销活动',
+      footer: _sheetConfirmButton(context),
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(15.0, 12.0, 15.0, 12.0),
+        itemCount: rules.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 12.0),
+        itemBuilder: (BuildContext context, int i) => _manjianRuleItem(rules[i]),
+      ),
+    ),
+  );
+}
+
+/// 单条满减规则(类型标签 + 文案)
+Widget _manjianRuleItem(String text) {
+  final String tag;
+  final Color tagColor;
+  if (text.contains('包邮')) {
+    tag = '包邮';
+    tagColor = const Color(0xFF3B82F6);
+  } else if (text.contains('送')) {
+    tag = '满送';
+    tagColor = const Color(0xFFFF7A45);
+  } else {
+    tag = '满减';
+    tagColor = const Color(0xFFFF2C55);
+  }
+  return Container(
+    padding: const EdgeInsets.all(12.0),
+    decoration: BoxDecoration(color: const Color(0xFFF7F7F7), borderRadius: BorderRadius.circular(8.0)),
+    child: Row(
+      spacing: 10.0,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: <Widget>[
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 3.0),
+          decoration: BoxDecoration(color: tagColor, borderRadius: BorderRadius.circular(4.0)),
+          child: Text(tag, style: const TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
+        ),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 13.0, color: Colors.black87))),
+      ],
+    ),
+  );
+}
+
+/// 弹窗底部确认按钮(全宽品牌渐变, 点击关闭弹窗)
+Widget _sheetConfirmButton(BuildContext context) {
+  return Container(
+    padding: const EdgeInsets.fromLTRB(15.0, 10.0, 15.0, 12.0),
+    child: SizedBox(
+      width: double.infinity,
+      height: 44.0,
+      child: GestureDetector(
+        onTap: () => Navigator.of(context).pop(),
+        child: Container(
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(colors: <Color>[Color(0xFFFF2C55), Color(0xFFFF7A45)]),
+            borderRadius: BorderRadius.circular(22.0),
+          ),
+          child: const Text('确认', style: TextStyle(color: Colors.white, fontSize: 15.0, fontWeight: FontWeight.w600)),
+        ),
+      ),
+    ),
+  );
+}
+
+/// 组合套餐弹窗
+Future<void> _showBundlingSheet() async {
+  final List<Map<String, dynamic>> list = bundlingList;
+  if (list.isEmpty) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (BuildContext context) => _PromoSheet(
+      title: '组合套餐',
+      child: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(15.0, 5.0, 15.0, 10.0),
+        itemCount: list.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 14.0),
+        itemBuilder: (BuildContext context, int i) {
+          final Map<String, dynamic> item = list[i];
+          final List<dynamic> goods = (item['bundling_goods'] as List? ?? const []);
+          return Container(
+            padding: const EdgeInsets.all(12.0),
+            decoration: BoxDecoration(color: const Color(0xFFF7F7F7), borderRadius: BorderRadius.circular(8.0)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              spacing: 8.0,
+              children: <Widget>[
+                Row(
+                  spacing: 6.0,
+                  children: <Widget>[
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+                      decoration: BoxDecoration(color: const Color(0xFFFF2C55), borderRadius: BorderRadius.circular(4.0)),
+                      child: const Text('套餐', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
+                    ),
+                    Expanded(child: Text('${item['bl_name'] ?? ''}', style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+                SizedBox(
+                  height: 62.0,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: goods.length,
+                    separatorBuilder: (_, __) => const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 2.0),
+                      child: Center(child: Text('＋', style: TextStyle(fontSize: 18.0, color: Colors.grey, fontWeight: FontWeight.w700))),
+                    ),
+                    itemBuilder: (BuildContext context, int j) {
+                      final Map<String, dynamic> g = (goods[j] as Map? ?? const {}).cast<String, dynamic>();
+                      return Column(
+                        spacing: 3.0,
+                        children: <Widget>[
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(4.0),
+                            child: CachedNetworkImage(
+                              imageUrl: _fixImg('${g['sku_image'] ?? ''}'),
+                              width: 48.0,
+                              height: 48.0,
+                              fit: BoxFit.cover,
+                              errorWidget: (BuildContext c, String u, Object e) => Container(color: Colors.grey[200]),
+                            ),
+                          ),
+                          SizedBox(
+                            width: 48.0,
+                            child: Text('${g['sku_name'] ?? ''}', style: const TextStyle(fontSize: 10.0, color: Colors.grey), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                Row(
+                  children: <Widget>[
+                    Text('套餐价 ', style: const TextStyle(fontSize: 12.0, color: Colors.grey)),
+                    Text('¥${money(_num(item['bl_price']))}', style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 15.0, fontWeight: FontWeight.w700)),
+                    const Spacer(),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.of(context).pop();
+                        final List<dynamic> gs = (item['bundling_goods'] as List? ?? const []);
+                        if (gs.isNotEmpty) {
+                          final int gid = _num((gs.first as Map? ?? const {})['goods_id']).toInt();
+                          if (gid > 0) Get.toNamed('/goods/detail', arguments: <String, dynamic>{'goodsId': gid});
+                        }
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 6.0),
+                        decoration: BoxDecoration(color: const Color(0xFFFF2C55), borderRadius: BorderRadius.circular(20.0)),
+                        child: const Text('立即购买', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w600)),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    ),
+  );
+}
+
 /// 打开规格选择弹窗
 /// * 单规格商品也弹窗(弹窗内可选购买数量), 不再直接下单
 Future<void> _showSkuSheet({String? action}) async {
@@ -849,14 +1289,41 @@ Widget _buildInfoRow({required String label, required Widget content, VoidCallba
   );
 }
 
+/// 醒目促销行: 左侧红色标签 + 内容 + 箭头(用于领券 / 满减 / 组合套餐)
+Widget _buildPromoRow({required String tag, required Widget content, required VoidCallback onTap}) {
+  return GestureDetector(
+    onTap: onTap,
+    behavior: HitTestBehavior.opaque,
+    child: Container(
+      padding: const EdgeInsets.symmetric(vertical: 6.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: <Widget>[
+          Container(
+            margin: const EdgeInsets.only(right: 8.0),
+            padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+            decoration: BoxDecoration(
+              color: const Color(0xFFFF2C55),
+              borderRadius: BorderRadius.circular(4.0),
+            ),
+            child: Text(tag, style: const TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
+          ),
+          Expanded(child: content),
+          const Icon(Icons.arrow_forward_ios_rounded, color: Colors.grey, size: 12.0),
+        ],
+      ),
+    ),
+  );
+}
+
 /// 领券 / 选择规格 / 配送
 Widget _buildPromotion() {
   final List<Widget> rows = <Widget>[];
 
   // 领券
   if (couponList.isNotEmpty) {
-    rows.add(_buildInfoRow(
-      label: '领券',
+    rows.add(_buildPromoRow(
+      tag: '券',
       onTap: _showCouponSheet,
       // 单行横向滚动: 券多时也不换行占满整行
       content: SingleChildScrollView(
@@ -868,6 +1335,26 @@ Widget _buildPromotion() {
       ),
     ));
   }
+
+    // 满减(促销)
+    if (_manjianRules.isNotEmpty)
+      rows.add(_buildPromoRow(
+        tag: '满减',
+        onTap: _showManjianSheet,
+        content: Text(
+          _manjianSummary,
+          style: const TextStyle(fontSize: 12.0, color: Color(0xFFFF2C55), fontWeight: FontWeight.w600),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      ));
+    // 组合套餐
+    if (bundlingList.isNotEmpty)
+      rows.add(_buildPromoRow(
+        tag: '套餐',
+        onTap: _showBundlingSheet,
+        content: _buildBundlingPreview(),
+      ));
 
   // 适用门店暂时隐藏(后续开放时去掉注释即可, 需同时放开 initState 里的 loadStore)
   // if (storeName.isNotEmpty) {
@@ -1234,7 +1721,7 @@ Widget _buildBottomBar(BuildContext context) {
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 20.0),
               color: onSale ? primary : disabled,
-              child: Text(onSale ? '领券购买' : '已下架', style: const TextStyle(color: Colors.white, fontSize: 14.0),),
+              child: Text(onSale ? '立即购买' : '已下架', style: const TextStyle(color: Colors.white, fontSize: 14.0),),
             ),
             onTap: onSale ? () => _showSkuSheet(action: 'buy') : null,
           ),

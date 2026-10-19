@@ -241,6 +241,7 @@ class _SkuSheetState extends State<SkuSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               spacing: 4.0,
               children: <Widget>[
+                Text(title, style: const TextStyle(color: Colors.black87, fontSize: 14.0, fontWeight: FontWeight.w600), maxLines: 2, overflow: TextOverflow.ellipsis),
                 Text('¥${price.toStringAsFixed(2)}', style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 18.0, fontWeight: FontWeight.w700)),
                 Text('库存${trimNum(stock)}件', style: const TextStyle(color: Colors.grey, fontSize: 12.0)),
                 Text(selectedText, style: const TextStyle(color: Colors.grey, fontSize: 12.0), maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -334,7 +335,7 @@ class _SkuSheetState extends State<SkuSheet> {
   Widget _buildQuantityRow() {
     final int max = maxNum;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(15.0, 8.0, 15.0, 2.0),
+      padding: const EdgeInsets.fromLTRB(15.0, 10.0, 15.0, 16.0),
       child: Row(
         children: <Widget>[
           const Text('购买数量', style: TextStyle(fontSize: 13.0, fontWeight: FontWeight.w600, color: Colors.black87)),
