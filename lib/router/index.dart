@@ -73,6 +73,7 @@ import '../pages/study/detail.dart';
 import '../pages/study/article.dart';
 import '../pages/study/more.dart';
 import '../pages/my/payment_qrcode.dart';
+import '../pages/my/invite.dart';
 // 看播集章
 import '../pages/stamp/index.dart';
 import '../pages/stamp/detail.dart';
@@ -146,6 +147,8 @@ final Map<String, Widget> routes = {
   '/point/order_list': const PointOrderListPage(),
   // 直播连麦(观众/嘉宾端: 输连麦码 -> 等主播同意 -> TRTC 同屏), 从「我的服务」后台入口进
   '/live/link_mic': const LinkMicPage(),
+  // 邀请好友(我的服务入口, 需登录)
+  '/my/invite': const InvitePage(),
 };
 
 // 需要登录后才能访问的路由(其余路由游客可直接浏览)
@@ -167,6 +170,7 @@ const Set<String> authRoutes = {
   '/my/point_detail',
   '/my/signin',
   '/my/coupon',
+  '/my/invite',
   '/my/watching_record',
   '/my/watching_record/detail',
   '/my/collection',

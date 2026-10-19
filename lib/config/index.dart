@@ -12,6 +12,10 @@ class Config {
   static const String imgDomain = 'https://lehuilife.chongloutech.com';
     // static const String imgDomain = 'https://lehui.chongloutech.com';
 
+  /// 邀请好友: APP 下载/落地页地址(邀请二维码内容)
+  /// * 留空时二维码内容为邀请码文本; 配置后为 {downloadUrl}?invite_code=邀请码
+  static const String downloadUrl = '';
+
   /// websocket连接地址
   static const String socketUrl = 'wss://lehuilife.chongloutech.com//wss';
 

@@ -70,6 +70,8 @@ dependencies:
   image_picker: ^1.1.2
   # 生日: 成熟滚轮日期选择器(自带中文,不依赖 MaterialLocalizations)
   flutter_datetime_picker_plus: ^2.1.0
+  # 邀请好友: 截图海报保存到系统相册
+  image_gallery_saver_plus: ^5.1.1
 
 # 微信 SDK(fluwx): app_id 只是配置, 真正注册在代码里调 fluwx.registerApi
 # * debug_logging 打开后能看到微信返回的错误码, 排「分享失败」用(仅 Android 生效)

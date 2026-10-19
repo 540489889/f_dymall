@@ -29,6 +29,9 @@
 	<!-- 扫码组件支持从相册选图识别(image_picker) -->
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>用于从相册选择门店二维码图片进行识别</string>
+	<!-- 邀请好友: 保存邀请海报到相册(仅添加,不读取) -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>用于将邀请海报保存到你的相册</string>
 	<!-- 直播连麦(TRTC)采集声音: 缺失时 iOS 申请麦克风会被系统直接拒绝(甚至崩溃) -->
 	<key>NSMicrophoneUsageDescription</key>
 	<string>用于直播连麦时采集你的声音</string>

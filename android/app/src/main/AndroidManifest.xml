@@ -6,6 +6,7 @@
         tools:replace="android:label,android:icon,android:usesCleartextTraffic"
         android:label="乐惠新零售"
         android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

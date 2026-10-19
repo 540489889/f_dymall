@@ -649,7 +649,8 @@ class _MyPageState extends State<MyPage> {
           Get.toNamed('/goods', arguments: <String, dynamic>{'category_id': '${info['category_id'] ?? ''}'});
           break;
         case 'INVITE':
-          Get.snackbar('提示', '邀请功能开发中', snackPosition: SnackPosition.BOTTOM);
+          // 邀请好友页(需登录, 路由带登录拦截)
+          Get.toNamed('/my/invite');
           break;
         default:
           Get.snackbar('提示', name.isNotEmpty ? '暂不支持的入口:$name' : '该入口暂未配置',
