@@ -54,8 +54,8 @@ class _SplashCoverState extends State<SplashCover> with SingleTickerProviderStat
     _loadingTimer = Timer(SplashCover.loadingDelay, () {
       if (mounted && !_removed) setState(() => _loadingVisible = true);
     });
-    // 兜底: 超时直接置为就绪(监听回调会自动触发淡出)
-    _timeout = Timer(SplashCover.timeout, () => AppSplash.dismiss());
+    // 兜底: 超时强制放行(首屏数据/全局配置任一迟迟不回也不能一直盖着)
+    _timeout = Timer(SplashCover.timeout, () => AppSplash.forceDismiss());
   }
 
   void _onReady() {

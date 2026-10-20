@@ -23,6 +23,7 @@ import 'controller/earn_preload.dart';
 // 引入路由管理
 import 'router/index.dart';
 import 'components/splash_cover.dart';
+import 'utils/app_splash.dart';
 import 'utils/privacy_agreement.dart';
 
 void main() async {
@@ -51,6 +52,8 @@ void main() async {
     Get.put(AppConfig()); // 进入 App 即拉取 /api/config/init 全局配置
   } catch (e) {
     debugPrint('[main] Get.put 异常: $e');
+    // 配置控制器没起来就没人通知启动图, 这里补一个放行信号(否则只能等启动图 6s 兜底超时)
+    AppSplash.markConfigReady();
   }
 
   // 微信 SDK: 尽早注册(微信登录/分享都依赖它, 晚了会报 Unassigned WxApi)

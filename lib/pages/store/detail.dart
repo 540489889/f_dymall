@@ -190,7 +190,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
         surfaceTintColor: Colors.white,
         elevation: 0,
         centerTitle: true,
-        title: const Text('门店详情', style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600)),
+        title: Text(storeName.isEmpty ? '门店详情' : storeName, style: const TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600)),
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0),
           onPressed: () => Navigator.of(context).pop(),

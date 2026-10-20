@@ -3,6 +3,7 @@ library;
 
 import 'package:get/get.dart';
 import '../api/config.dart';
+import '../utils/app_splash.dart';
 
 class AppConfig extends GetxController {
   static AppConfig get to => Get.find<AppConfig>();
@@ -49,16 +50,25 @@ class AppConfig extends GetxController {
         _retries = 0;
         return;
       }
+      // 首启(iOS 首次安装)时这个请求经常被系统网络授权弹窗打断: 弹窗没点之前请求直接失败,
+      // 而它只拉这一次, 失败后本次启动就一直拿不到 diy 底部导航 -> 底部 tab 只剩文字没有图标。
+      // 这里退避重试几次, 覆盖"用户点完授权弹窗 / 网络刚连上"这段时间
+      // * 用循环而不是递归调 fetch(): 递归会被上面的 _fetching 拦掉(重试一直没生效)
+      while (_retries < maxRetry && data.value.isEmpty) {
+        _retries += 1;
+        await Future<void>.delayed(Duration(seconds: 2 * _retries));
+        if (data.value.isNotEmpty) break;
+        final Map<String, dynamic> again = await ConfigApi.init();
+        if (again.isNotEmpty) {
+          data.value = again;
+          _retries = 0;
+          break;
+        }
+      }
     } finally {
       _fetching = false;
+      // 请求成功 / 重试到放弃都算"配置阶段结束": 启动图还要等这个信号才关闭(见 AppSplash)
+      AppSplash.markConfigReady();
     }
-    // 首启(iOS 首次安装)时这个请求经常被系统网络授权弹窗打断: 弹窗没点之前请求直接失败,
-    // 而它只拉这一次, 失败后本次启动就一直拿不到 diy 底部导航 -> 底部 tab 只剩文字没有图标。
-    // 这里退避重试几次, 覆盖"用户点完授权弹窗 / 网络刚连上"这段时间
-    if (_retries >= maxRetry) return;
-    _retries += 1;
-    await Future<void>.delayed(Duration(seconds: 2 * _retries));
-    if (data.value.isNotEmpty) return;
-    await fetch();
   }
 }

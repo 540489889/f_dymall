@@ -2,7 +2,9 @@
 library;
 
 import 'dart:math';
+import 'dart:convert';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:get/get.dart';
 import 'package:uuid/uuid.dart';
 
 class Utils {
@@ -108,4 +110,87 @@ Future<void> launchStringUrl(String url) async {
    throw Exception('无法访问 $url');
   }
  }
+
+  /// 统一跳转入口(广告/横幅/导航/推送等共用)
+  /// [link] 约定(对应后端 adv_url / nav_url):
+  ///   - 空字符串 -> 不跳转
+  ///   - 普通字符串: 以 http(s) 开头 -> 系统浏览器; 以 / 开头 -> 内部路由(可带 query 参数)
+  ///   - JSON 字符串(小程序约定) -> 按其中的 name 分发到对应 Flutter 路由:
+  ///       LIVE_LIST            -> /live/list
+  ///       SECKILL_PREFECTURE  -> /seckill
+  ///       SIGN_IN             -> /my/signin
+  ///       MEMBER_CENTER       -> /my/wallet
+  ///       GOODS_CATEGORY_PAGE -> /goods?category_id=xx
+  ///       CUSTOM_LINK         -> 取 wap_url(已是 Flutter 路径, 如 /goods/detail?id=80)
+  ///     带参时参数会同时塞进 Get.arguments 与 Get.parameters, 兼容两种取参方式
+  static Future<void> openAppLink(String link) async {
+    final String raw = link.trim();
+    if (raw.isEmpty) return;
+
+    String target = raw;
+    String? name;
+
+    // 后端可能是 JSON 字符串(小程序约定): { name, wap_url, category_id?, ... }
+    if (raw.startsWith('{')) {
+      Map<String, dynamic>? info;
+      try {
+        info = jsonDecode(raw) as Map<String, dynamic>?;
+      } catch (_) {
+        info = null;
+      }
+      if (info == null) return;
+      name = '${info['name'] ?? ''}';
+      final String? wap = info['wap_url']?.toString();
+      switch (name) {
+        case 'LIVE_LIST':
+          // 直播列表页(注意: /live 是直播间, 列表是 /live/list)
+          target = '/live/list';
+          break;
+        case 'SECKILL_PREFECTURE':
+          target = '/seckill';
+          break;
+        case 'SIGN_IN':
+          target = '/my/signin';
+          break;
+        case 'MEMBER_CENTER':
+          target = '/my/wallet';
+          break;
+        case 'GOODS_CATEGORY_PAGE':
+          final String cid = '${info['category_id'] ?? ''}'.trim();
+          target = cid.isEmpty ? '/goods' : '/goods?category_id=$cid';
+          break;
+        case 'CUSTOM_LINK':
+        default:
+          // 自定义链接: 用 wap_url(已是 Flutter 路径, 如 /goods/detail?id=80)
+          target = (wap != null && wap.isNotEmpty) ? wap : '';
+      }
+    }
+
+    // 小程序路径(/pages...)无法映射到 Flutter 路由, 视为未配置
+    if (target.startsWith('/pages')) target = '';
+
+    if (target.isEmpty) {
+      if (name != null && name.isNotEmpty) {
+        Get.snackbar('提示', '跳转:$name', snackPosition: SnackPosition.BOTTOM);
+      }
+      return;
+    }
+
+    if (target.startsWith('http')) {
+      final Uri? uri = Uri.tryParse(target);
+      if (uri != null && await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      }
+      return;
+    }
+
+    final Uri uri = Uri.parse(target);
+    final String path = uri.path.isEmpty ? '/' : uri.path;
+    final Map<String, String> params = uri.queryParameters;
+    if (params.isEmpty) {
+      Get.toNamed(path);
+    } else {
+      Get.toNamed(path, arguments: params, parameters: params);
+    }
+  }
 }

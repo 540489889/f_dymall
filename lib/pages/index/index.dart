@@ -2,7 +2,6 @@
 library;
 
 import 'dart:async';
-import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -20,9 +19,11 @@ import '../../components/loading.dart';
 import '../../components/skeleton.dart';
 import '../../utils/app_splash.dart';
 import '../../components/live_playing_bars.dart';
+import '../../widgets/live_chat_ticker.dart';
 import '../../components/backtop.dart';
 import '../../components/custom_pageview_indicator.dart';
 import '../../utils/player_config.dart';
+import '../../utils/index.dart';
 import '../../api/goods.dart';
 import '../../api/live.dart';
 import '../../pages/live/index.dart';
@@ -160,6 +161,8 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
 
   // 首页直播信息(无直播间时为 null,直播板块不展示)
   Map<String, dynamic>? liveRoom;
+  // 首页直播卡片消息/观看数轮询(每 15 秒刷新 getRoomRecentMsg)
+  Timer? _liveMsgTimer;
   // 首页直播预览播放器(静音播放 push_link,点进直播间才有声音)
   Player? livePlayer;
   VideoController? liveVideoController;
@@ -178,6 +181,20 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   Timer? _liveStableTimer;
   // 排障用(仅 debug): 起播后的状态巡检定时器
   Timer? _liveDiagTimer;
+  // 直播预览"播放多少秒后切回封面"(来自 getTopRoom 的 playtime); 0 = 不限制, 一直播
+  int _livePlaytime = 0;
+  // playtime 倒计时: 到点把预览画面切回封面
+  Timer? _livePlaytimeTimer;
+  // play=1: 直接进入直播间(不展示静音预览卡片, 加载完自动跳转)
+  bool _liveDirectPlay = false;
+  // 防止自动跳转重复触发(并发/重复调度)
+  bool _liveAutoJumping = false;
+  // play=1: 是否已自动进过直播间(只"首次进入APP"跳一次, 退出后/回到前台都不再强制)
+  // * 必须是 static(进程级): 直播列表的"回到首页"走 Get.offAllNamed('/'), 会重建 IndexPage,
+  //   实例字段会跟着重置成 false, 导致回到首页后又自动跳一次直播间
+  static bool _liveDirectPlayUsed = false;
+  // 是否显示封面(盖住视频): true=封面, false=视频; 初始 / 重连 / 到点均为 true
+  final ValueNotifier<bool> liveShowCover = ValueNotifier(true);
 
   // 限时秒杀板块: 当前场次
   SeckillTime? seckillTime;
@@ -193,6 +210,10 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   Timer? seckillTimer;
   // 滚动停止判定: 滚动中先暂停直播预览(解码 + 纹理合成抢 GPU),停手 300ms 后再按可见性恢复
   Timer? liveScrollIdleTimer;
+  // 切后台前预览是否在播: 回前台据此恢复(在直播间里切后台时为 false, 不做恢复)
+  bool _livePlayingBeforeBackground = false;
+  // 回前台后恢复预览的复查定时器(见 _restoreLivePreviewAfterResume)
+  Timer? _liveResumeTimer;
 
   // 首页 tab 分类(来自 /api/goodscategory/tree 一级分类)
   List<Map<String, dynamic>> categoryList = [];
@@ -201,6 +222,10 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   List bannerList = [];
   List navList = [];
   Map<String, dynamic> popupInfo = {};
+  // 首页直播板块上/下广告(来自 /api/index/index 的 live_top_info / live_bottom_info)
+  // * 用可空 + 默认值: 热重载已有实例的新字段会是 undefined, 读取处用 ?./?? 容错避免崩溃
+  List? liveTopInfo = const [];
+  List? liveBottomInfo = const [];
   bool _popupShown = false;
   int cartCount = 0;
 
@@ -355,13 +380,15 @@ Future<void> handleRefresh() async {
       _guard(loadCategory()),
       _guard(loadSeckill()),
     ]);
-    // 首屏(商品第一页 + 秒杀板块 + 轮播/金刚区 + 分类)已到位: 通知关闭启动图,直接露出渲染好的首页
-    AppSplash.dismiss();
+    // 首屏(商品第一页 + 秒杀板块 + 轮播/金刚区 + 分类)已到位, 但启动图关闭交给 loadLiveRoom 把关:
+    // * play=1 时 loadLiveRoom 会先跳进直播间, 再关启动图(避免露出首页);
+    // * 其余情况 loadLiveRoom 起播前关启动图(露出首页)
     // 直播起播可能要等平台视图创建(iOS 最多 3s),放到启动图关闭之后再等,不拖慢首屏
     await _guard(loadLiveRoom());
   } finally {
     isRefreshing = false;
-    AppSplash.dismiss();
+    // 兜底: play=1 由 _autoEnterLiveRoom 在跳完直播间后关; 其余情况这里补关(防 loadLiveRoom 被跳过/异常)
+    if(!_liveDirectPlay) AppSplash.dismiss();
     if(mounted) setState(() {});
   }
 }
@@ -458,13 +485,43 @@ Future<void> loadLiveRoom() async {
   try {
   final Map<String, dynamic>? room = await LiveApi.topRoom();
   if(!mounted) return;
-  setState(() {
-    liveRoom = room;
-  });
-  // 排查用: 封面取的是 feeds_img(见 liveCover), 打出来看它有没有被拼错/被丢弃
-  if(kDebugMode) debugPrint('[live]首页直播封面: 原始=${room?['feeds_img']} 使用=$liveCover');
   final String sn = room == null ? '' : '${room['sn'] ?? ''}';
   final String pushLink = room == null ? '' : '${room['push_link'] ?? ''}';
+  // playtime: 首页直播板块播放多少秒后切回封面(0 表示不限制, 一直播)
+  _livePlaytime = int.tryParse('${room?['playtime'] ?? 0}') ?? 0;
+  // getTopRoom 拿到 sn 后, 再拉「最近消息」(首页直播卡片展示用), 同时拿到在线人数
+  List<Map<String, dynamic>> recentMsg = const <Map<String, dynamic>>[];
+  int online = int.tryParse('${room?['online'] ?? 0}') ?? 0;
+  if (sn.isNotEmpty) {
+    try {
+      final Map<String, dynamic> rm = await LiveApi.roomRecentMsg(sn);
+      final dynamic rawList = rm['list'];
+      recentMsg = rawList is List ? rawList.whereType<Map<String, dynamic>>().toList() : const <Map<String, dynamic>>[];
+      final int rmOnline = int.tryParse('${rm['online'] ?? 0}') ?? 0;
+      if (rmOnline > 0) online = rmOnline;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[live]首页最近消息加载失败: $e');
+    }
+  }
+  setState(() {
+    // 并回 room, 供直播卡片直接读取(room 为 null 时整块不展示, 无需展示消息)
+    liveRoom = room == null ? null : <String, dynamic>{...room, 'recentMsg': recentMsg, 'online': online};
+  });
+  // play=1 且本次启动还没自动进过: 直接进入直播间(不展示静音预览卡片, 也不起播首页预览播放器)
+  // * 已自动进过(_liveDirectPlayUsed)时这里为 false, 走下面正常的预览分支:
+  //   退出直播间/回到首页后直播卡片照常展示, 只是不再强制进房
+  _liveDirectPlay = '${room?['play'] ?? ''}' == '1' && !_liveDirectPlayUsed;
+  if(_liveDirectPlay) {
+    _autoEnterLiveRoom();
+    return;
+  }
+  // 非 play=1: 关启动图(露出首页),直播预览播放器在后面异步起播, 不阻塞首屏
+  AppSplash.dismiss();
+  // 有直播间则启动 15 秒轮询, 刷新聊天消息与观看人数; 无直播则停掉轮询
+  // * 只在「首页 tab 可见 且 不在直播间里」时轮: 否则离开首页后还在后台请求 getRoomRecentMsg
+  _syncLiveMsgPollingByVisibility();
+  // 排查用: 封面取的是 feeds_img(见 liveCover), 打出来看它有没有被拼错/被丢弃
+  if(kDebugMode) debugPrint('[live]首页直播封面: 原始=${room?['feeds_img']} 使用=$liveCover');
   if(kDebugMode) debugPrint('[live]首页直播间字段: ${room == null ? 'null' : room.keys.toList()}');
   if(pushLink.isEmpty && sn.isEmpty) return;
   // 起播地址统一用 push_link(与直播间详情页一致), 不再等 getPullUrl
@@ -489,6 +546,7 @@ Future<void> loadLiveRoom() async {
   // 重新加载时先释放上一个播放器
   // 注意: VideoController 没有 dispose,随 Player 释放
   liveReconnector?.dispose();
+  _livePlaytimeTimer?.cancel();
   await livePlayer?.dispose();
   final Player player = createLivePlayer();
   livePlayer = player;
@@ -511,6 +569,8 @@ Future<void> loadLiveRoom() async {
       _liveStableTimer?.cancel();
       _liveStableTimer = null;
       liveFirstFrame.value = false;
+      // 重连期间画面为空, 把封面重新盖回来
+      liveShowCover.value = true;
     },
   );
   liveReconnector = reconnector;
@@ -523,6 +583,7 @@ Future<void> loadLiveRoom() async {
   );
   liveVideoController = controller;
   liveFirstFrame.value = false;
+  liveShowCover.value = true;
   // 起播前先把 Surface 尺寸设成视频实际尺寸: 出帧后那次 SetSize 就会因尺寸一致被跳过,
   // Surface 不重建 -> 不触发 seek -> RTMP 不断 -> 不用重连(见 presetLiveSurfaceSize)
   await presetLiveSurfaceSize(player, controller);
@@ -579,6 +640,7 @@ Future<void> loadLiveRoom() async {
     _liveStableTimer?.cancel();
     _liveStableTimer = null;
     if(mounted && liveFirstFrame.value) liveFirstFrame.value = false;
+    if(mounted && !liveShowCover.value) liveShowCover.value = true;
   });
   // 首页是静音预览: 直接禁掉音频轨(不只是静音),省掉 OpenSLES/AudioTrack 初始化与音频同步等待
   // * 起播更快(日志里 AudioTrack createTrack_l / underrun 那一串就是这部分开销)
@@ -617,8 +679,59 @@ Future<void> loadLiveRoom() async {
   WidgetsBinding.instance.addPostFrameCallback((_) => syncLivePlayState());
   // 卡片若已滚出视口则不播放
   syncLivePlayState();
+  } catch (e) {
+    // 直播间拉取/起播失败: 无论如何先放启动图, 不卡首屏(走普通首页, 无直播预览)
+    if(kDebugMode) debugPrint('[live]首页直播间加载失败: $e');
+    AppSplash.dismiss();
   } finally {
     _liveLoading = false;
+  }
+}
+
+// 首页直播卡片消息/人数轮询: 每 15 秒拉一次 getRoomRecentMsg, 更新聊天飘屏与观看人数
+// 首页直播卡片消息/观看数轮询: 每 15 秒拉一次 getRoomRecentMsg
+// * 只在首页 tab 可见时才由 loadLiveRoom / _onHomeTabActive 调起;
+//   切走 tab / 切后台 / dispose 都会 cancel, 离开首页后不再请求
+void _startLiveMsgPolling(String sn) {
+  if (sn.isEmpty) return;
+  _liveMsgTimer?.cancel();
+  _liveMsgTimer = Timer.periodic(const Duration(seconds: 15), (_) => _refreshLiveMsg(sn));
+}
+
+// 直播消息轮询开关: 只有「首页 tab 可见 且 人不在直播间里」时才轮询
+// * 切到别的 tab / 进直播间 / 切后台都不轮: 否则离开首页后 getRoomRecentMsg 还在后台每 15s 请求一次
+void _syncLiveMsgPollingByVisibility() {
+  if (!mounted) return;
+  if (!homeTabActive.value || livePreviewSuspended.value) {
+    _liveMsgTimer?.cancel();
+    _liveMsgTimer = null;
+    return;
+  }
+  final String sn = '${liveRoom?['sn'] ?? ''}';
+  if (sn.isNotEmpty) _startLiveMsgPolling(sn);
+}
+
+// 首页 tab 可见性变化: 离开首页停掉直播消息轮询, 回到首页(有直播间)再恢复
+// * 首页被 KeepAliveWrapper 保活, 切 tab 不销毁, 只能靠这个信号停轮询
+void _onHomeTabActive() => _syncLiveMsgPollingByVisibility();
+
+void _refreshLiveMsg(String sn) async {
+  if (!mounted || sn.isEmpty) return;
+  try {
+    final Map<String, dynamic> rm = await LiveApi.roomRecentMsg(sn);
+    final dynamic rawList = rm['list'];
+    final List<Map<String, dynamic>> list = rawList is List ? rawList.whereType<Map<String, dynamic>>().toList() : const <Map<String, dynamic>>[];
+    final int rmOnline = int.tryParse('${rm['online'] ?? 0}') ?? 0;
+    if (!mounted) return;
+    setState(() {
+      if (liveRoom == null) return;
+      final Map<String, dynamic> next = <String, dynamic>{...liveRoom!};
+      next['recentMsg'] = list;
+      if (rmOnline > 0) next['online'] = rmOnline;
+      liveRoom = next;
+    });
+  } catch (e) {
+    if (kDebugMode) debugPrint('[live]首页消息轮询失败: $e');
   }
 }
 
@@ -637,8 +750,39 @@ void _scheduleLiveCoverHide(String from) {
     if(!mounted) return;
     if((livePlayer?.state.width ?? 0) <= 0) return;
     if(!liveFirstFrame.value) liveFirstFrame.value = true;
+    // 首帧稳定 -> 显示视频, 并启动 playtime 倒计时(到点切回封面)
+    if(!liveShowCover.value) return; // 已在显示视频(如重连后二次触发), 不重复起计时
+    liveShowCover.value = false;
+    _startLivePlaytimeCountdown();
     if(kDebugMode) debugPrint('[live]画面已稳定, 隐藏封面');
   });
+}
+
+// playtime 倒计时: 到点把预览画面切回封面并暂停解码(省 GPU/流量),
+// 返回直播间 / 回前台时由 _resumeLivePreview 重新来一轮
+void _startLivePlaytimeCountdown() {
+  _livePlaytimeTimer?.cancel();
+  _livePlaytimeTimer = null;
+  if(_livePlaytime <= 0) return; // 0 = 不限制, 一直播
+  _livePlaytimeTimer = Timer(Duration(seconds: _livePlaytime), () {
+    _livePlaytimeTimer = null;
+    if(!mounted) return;
+    // 切回封面并暂停; Player/Video 实例保留, 用户返回时再 play
+    liveShowCover.value = true;
+    livePlayer?.pause();
+  });
+}
+
+// 从直播间返回 / 回前台: 重新显示视频并再播 playtime 秒(若从未出过帧则交给通用逻辑)
+void _resumeLivePreview() {
+  if(!mounted || livePlayer == null) return;
+  if(!liveFirstFrame.value) {
+    syncLivePlayState();
+    return;
+  }
+  liveShowCover.value = false;
+  _startLivePlaytimeCountdown();
+  if(!livePlayer!.state.playing) livePlayer!.play();
 }
 
 // 排障用(仅 debug): 起播后定时打印预览链路的关键状态, 区分"播放器没画面"和"画面出来了但 UI 没画出来"
@@ -663,7 +807,7 @@ void _startLiveDiag() {
         ' 播放器: playing=${p?.state.playing} buffering=${p?.state.buffering} 尺寸=${p?.state.width}x${p?.state.height}'
         ' | 输出: notifier=${c?.notifier.value != null} textureId=${c?.id.value} rect=${c?.rect.value}'
         ' | UI: 卡片挂载=${liveCardKey.currentContext != null} 卡片尺寸=${obj is RenderBox ? obj.size : null}'
-        ' 封面隐藏=${liveFirstFrame.value}');
+        ' 封面隐藏=${liveFirstFrame.value} 显示封面=${liveShowCover.value}');
     if (tick >= 6) {
       timer.cancel();
       _liveDiagTimer = null;
@@ -693,6 +837,8 @@ void syncLivePlayState() {
   final Rect viewRect = viewObject.localToGlobal(Offset.zero) & viewObject.size;
   final bool visible = cardRect.intersect(viewRect).height > 0;
   if(visible) {
+    // 已因 playtime 切到封面(parked): 不自动恢复, 等用户离开再回来(_resumeLivePreview)才重播
+    if(liveShowCover.value) return;
     if(!player.state.playing) {
       debugPrint('[index]直播卡片进入视口,恢复预览');
       player.play();
@@ -703,10 +849,97 @@ void syncLivePlayState() {
   }
 }
 
+// 切后台: 暂停首页预览, 并记下"切走前是否在播"供回前台恢复
+// * 后台期间 Surface 可能被系统回收, RTMP 会断流; 那种情况光 play() 救不回来,
+//   所以回前台还要复查一次(见 _restoreLivePreviewAfterResume)
+void _suspendLivePreviewForBackground() {
+  final Player? player = livePlayer;
+  if(player == null) return;
+  _liveResumeTimer?.cancel();
+  _liveResumeTimer = null;
+  _livePlayingBeforeBackground = player.state.playing;
+  if(player.state.playing) player.pause();
+}
+
+// 回到前台恢复预览: 先按卡片可见性 play(), 再复查一次, 没画面就重新起播
+// * 时序: 刚 resumed 时 Surface 往往还没重建好, 立刻 play() 常常无效, 所以先等 600ms 再动,
+//   再等 900ms 看画面有没有真的回来(playing + 有视频轨), 没有就交给 LiveReconnector 重连
+// * 在直播间里切后台的场景不在这里处理: 那时首页预览本来就是挂起的(_livePlayingBeforeBackground=false)
+void _restoreLivePreviewAfterResume() {
+  if(!mounted) return;
+  // 之前在播, 或已因 playtime 停在封面(都说明有可用预览) -> 回前台都重新来一轮
+  if(!_livePlayingBeforeBackground && !liveFirstFrame.value) return;
+  _liveResumeTimer?.cancel();
+  _liveResumeTimer = Timer(const Duration(milliseconds: 600), () {
+    if(!mounted) return;
+    // 预览压根没起来过: 重走一次加载
+    if(!liveFirstFrame.value && livePlayer == null) {
+      unawaited(loadLiveRoom());
+      return;
+    }
+    _resumeLivePreview();
+    _liveResumeTimer = Timer(const Duration(milliseconds: 900), () {
+      _liveResumeTimer = null;
+      if(!mounted || livePreviewSuspended.value) return;
+      final Player? player = livePlayer;
+      final LiveReconnector? reconnector = liveReconnector;
+      final String src = _livePlayingSrc;
+      if(player == null || reconnector == null || src.isEmpty) {
+        unawaited(loadLiveRoom());
+        return;
+      }
+      final bool playing = player.state.playing;
+      final bool hasVideo = (player.state.width ?? 0) > 0;
+      if(playing && hasVideo) return;
+      if(kDebugMode) {
+        debugPrint('[live]回前台后预览未恢复(playing=$playing 视频轨=$hasVideo), 重新起播');
+      }
+      unawaited(reconnector.open(src, play: true));
+    });
+  });
+}
+
+// play=1: 加载完直播间后自动进入直播间(不展示静音预览卡片)
+// * 每次从直播间返回首页 / 回到前台, 都会再自动跳(活动强引流)
+// * 已在直播间(Get.currentRoute == '/live')时不重复跳, 避免叠加路由
+void _autoEnterLiveRoom() {
+  // 只"首次进入APP"跳一次: 已经自动进过就不再强制(退出直播间/回前台都不再跳)
+  if(!_liveDirectPlay || _liveDirectPlayUsed || _liveAutoJumping || !mounted) return;
+  if(Get.currentRoute == '/live') return;
+  _liveDirectPlayUsed = true;
+  _liveAutoJumping = true;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if(!mounted) { _liveAutoJumping = false; return; }
+    if(Get.currentRoute == '/live') { _liveAutoJumping = false; return; }
+    if(kDebugMode) debugPrint('[live]play=1, 首次进入APP自动进入直播间');
+    // 先跳进直播间(入栈), 再关闭启动图: 淡出时栈顶已是 /live, 直接露出直播间而非首页
+    Get.toNamed('/live', arguments: <String, dynamic>{
+      'sn': liveText(const ['sn'], ''),
+      'name': liveText(const ['name'], ''),
+      'src': liveText(const ['push_link'], ''),
+      'type': liveText(const ['type'], ''),
+      'cover': liveCover,
+    })?.then((dynamic _) {
+      _liveAutoJumping = false;
+      // 退出直播间后: 恢复首页直播卡片(可手动点进, 不再强制)
+      // * 直接进房那次跳过了预览播放器与消息轮询, 这里重新 loadLiveRoom 补上;
+      //   此时 _liveDirectPlayUsed 已为 true, loadLiveRoom 不会再走自动进房分支
+      if(!mounted) return;
+      setState(() => _liveDirectPlay = false);
+      loadLiveRoom();
+    });
+    AppSplash.dismiss();
+  });
+}
+
 // 进出直播间信号: 进直播间暂停预览, 回来按卡片可见性恢复(见 syncLivePlayState)
 void _onLivePreviewSuspended() {
   if(!mounted) return;
-  syncLivePlayState();
+  // 离开直播间(suspended 复位) -> 重新来一轮预览; 进入直播间 -> 暂停即可
+  if(!livePreviewSuspended.value) _resumeLivePreview();
+  else syncLivePlayState();
+  // 同步直播消息轮询: 进直播间停(人已在看直播, 首页卡片飘屏没必要再刷), 出来再恢复
+  _syncLiveMsgPollingByVisibility();
 }
 
 // 直播间字段取值(真实字段名待确认: 按候选键依次取,取不到用默认文案)
@@ -723,6 +956,13 @@ String liveText(List<String> keys, String fallback) {
 String get liveCover {
   final String cover = liveText(const ['feeds_img', 'cover', 'cover_img'], '');
   return cover.isEmpty ? '' : LiveApi.fixImage(cover);
+}
+
+// 直播间最近消息(首页 getRoomRecentMsg 拉取, 存于 liveRoom['recentMsg'])
+List<Map<String, dynamic>> get liveRecentMsg {
+  final dynamic raw = liveRoom?['recentMsg'];
+  if (raw is! List) return const <Map<String, dynamic>>[];
+  return raw.whereType<Map<String, dynamic>>().toList();
 }
 
 // 主播头像 anchor_img
@@ -785,11 +1025,8 @@ void initState() {
   }
 
   // 初始化加载(首屏 = 一次完整刷新: 商品列表 + 轮播/金刚区 + 分类 + 直播 + 秒杀)
+  // * 启动图关闭交给 loadLiveRoom 把关: play=1 先跳进直播间再关(不露首页), 其余起播前关
   handleRefresh();
-  // 首帧后即可让启动图遮罩淡出,由首页内容区自己的 loading 承接等待
-  // * 启动图最短展示 300ms 仍生效,不会一闪而过
-  // * 首页骨架(搜索栏 + 底部 tab)先露出来,内容区用全屏 loading,贴合京东式加载体验
-  WidgetsBinding.instance.addPostFrameCallback((_) => AppSplash.dismiss());
   // 购物车数量(搜索栏角标)
   loadCartCount();
   // 秒杀倒计时(每秒局部刷新)
@@ -800,6 +1037,8 @@ void initState() {
 
   // 进出直播间: 进直播间暂停首页预览(把硬解码器让给直播间), 离开直播间再按可见性恢复
   livePreviewSuspended.addListener(_onLivePreviewSuspended);
+  // 首页 tab 可见性: 切到别的 tab 就停直播消息轮询, 回来再恢复
+  homeTabActive.addListener(_onHomeTabActive);
 
   // 监听网络可用性: 网络从无到有时重刷首页(监听授权后网络真正可用)
   try {
@@ -865,6 +1104,8 @@ void initState() {
       setState(() {
         bannerList = (data['banner_info'] as List? ?? const []).toList();
         navList = (data['nav_info'] as List? ?? const []).toList();
+        liveTopInfo = (data['live_top_info'] as List? ?? const []).toList();
+        liveBottomInfo = (data['live_bottom_info'] as List? ?? const []).toList();
         popupInfo = data['popup_info'] is Map
             ? Map<String, dynamic>.from(data['popup_info'] as Map)
             : <String, dynamic>{};
@@ -879,6 +1120,46 @@ void initState() {
     } catch (e) {
       debugPrint('[index]首页配置加载失败: $e');
     }
+  }
+
+  /// 直播板块上/下广告(live_top_info / live_bottom_info)
+  /// * 不轮播, 多张直接上下排列; adv_url 非空时点击按统一跳转入口跳(外链浏览器 / 内部路由带参)
+  Widget _buildLiveAds(List ads) {
+    if (ads.isEmpty) return const SizedBox.shrink();
+    // 与直播板块同款白卡圆角, 多张图上下堆叠
+    return Container(
+      margin: EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 10.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10.0),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        children: ads.map<Widget>((dynamic item) {
+          final Map<String, dynamic> ad = item is Map
+              ? item.cast<String, dynamic>()
+              : <String, dynamic>{};
+          final String image = '${ad['adv_image'] ?? ''}'.trim();
+          final String url = '${ad['adv_url'] ?? ''}'.trim();
+          if (image.isEmpty) return const SizedBox.shrink();
+          final Widget img = CachedNetworkImage(
+            imageUrl: image,
+            width: double.infinity,
+            fit: BoxFit.cover,
+            placeholder: (BuildContext c, String u) =>
+                Container(height: 90.0, color: const Color(0xFFF2F2F2)),
+            errorWidget: (BuildContext c, String u, Object e) =>
+                Container(height: 90.0, color: const Color(0xFFF2F2F2)),
+          );
+          // adv_url 非空: 点击按统一跳转入口处理(外链浏览器 / 内部路由带参)
+          if (url.isEmpty) return img;
+          return GestureDetector(
+            onTap: () => Utils.openAppLink(url),
+            child: img,
+          );
+        }).toList(),
+      ),
+    );
   }
 
   /// 购物车商品数量(用于搜索栏购物车角标)
@@ -939,35 +1220,8 @@ void initState() {
   }
 
   /// 解析 nav_url / adv_url(JSON 字符串) 中的 name 跳转到对应页面
-  void _handleNavUrl(String navUrlJson) {
-    if (navUrlJson.isEmpty) return;
-    Map<String, dynamic>? info;
-    try {
-      info = jsonDecode(navUrlJson) as Map<String, dynamic>?;
-    } catch (_) {
-      return;
-    }
-    if (info == null) return;
-    final String name = '${info['name'] ?? ''}';
-    switch (name) {
-      case 'SIGN_IN':
-        Get.toNamed('/my/signin');
-        break;
-      case 'SECKILL_PREFECTURE':
-        Get.toNamed('/seckill');
-        break;
-      case 'GOODS_CATEGORY_PAGE':
-        final String cid = '${info['category_id'] ?? ''}';
-        Get.toNamed('/goods', arguments: <String, dynamic>{'category_id': cid});
-        break;
-      case 'MEMBER_CENTER':
-        Get.toNamed('/my/wallet');
-        break;
-      default:
-        Get.snackbar('提示', name.isNotEmpty ? '跳转:$name' : '该入口暂未配置',
-            snackPosition: SnackPosition.BOTTOM);
-    }
-  }
+  /// * 统一走 Utils.openAppLink(与首页广告位同一套跳转协议)
+  void _handleNavUrl(String navUrlJson) => Utils.openAppLink(navUrlJson);
 
   // 首页限时秒杀板块: 取当前(或最近一场)场次的前 10 个商品
   Future<void> loadSeckill() async {
@@ -1033,22 +1287,22 @@ void initState() {
     final int m = (remain % 3600) ~/ 60;
     final int s = remain % 60;
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
+      padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       decoration: BoxDecoration(
         color: Color(0xFFFFEFEF),
-        borderRadius: BorderRadius.circular(10.0),
+        borderRadius: BorderRadius.circular(12.0),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(tip, style: TextStyle(color: Color(0xFFFF2C55), fontSize: 11.0)),
+          Text(tip, style: TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0, fontWeight: FontWeight.w600)),
           if (seckillStatus != 0) ...[
-            SizedBox(width: 4.0),
-            Text(_two(h), style: TextStyle(color: Color(0xFFFF2C55), fontSize: 11.0, fontWeight: FontWeight.w700, fontFamily: 'Arial')),
-            Text(':', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 11.0)),
-            Text(_two(m), style: TextStyle(color: Color(0xFFFF2C55), fontSize: 11.0, fontWeight: FontWeight.w700, fontFamily: 'Arial')),
-            Text(':', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 11.0)),
-            Text(_two(s), style: TextStyle(color: Color(0xFFFF2C55), fontSize: 11.0, fontWeight: FontWeight.w700, fontFamily: 'Arial')),
+            SizedBox(width: 5.0),
+            Text(_two(h), style: TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0, fontWeight: FontWeight.w700, fontFamily: 'Arial')),
+            Text(':', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0)),
+            Text(_two(m), style: TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0, fontWeight: FontWeight.w700, fontFamily: 'Arial')),
+            Text(':', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0)),
+            Text(_two(s), style: TextStyle(color: Color(0xFFFF2C55), fontSize: 13.0, fontWeight: FontWeight.w700, fontFamily: 'Arial')),
           ],
         ],
       ),
@@ -1272,7 +1526,9 @@ void initState() {
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     livePreviewSuspended.removeListener(_onLivePreviewSuspended);
+    homeTabActive.removeListener(_onHomeTabActive);
     _resumeRetryTimer?.cancel();
+    _liveResumeTimer?.cancel();
     _connectivitySub?.cancel();
     _goodsFormatWorker?.dispose();
     scrollController.dispose();
@@ -1280,6 +1536,8 @@ void initState() {
     liveScrollIdleTimer?.cancel();
     _liveStableTimer?.cancel();
     _liveDiagTimer?.cancel();
+    _liveMsgTimer?.cancel();
+    _livePlaytimeTimer?.cancel();
     liveReconnector?.dispose();
     livePlayer?.dispose();
     super.dispose();
@@ -1289,7 +1547,17 @@ void initState() {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _tryReloadOnResume();
+      // 回到前台: 把切后台时暂停的直播预览恢复回来(流断了还会重新起播)
+      _restoreLivePreviewAfterResume();
+      // 回到前台: 按可见性恢复直播消息轮询
+      _syncLiveMsgPollingByVisibility();
+      return;
     }
+    // 切后台/失去焦点: 先暂停预览(后台继续解码既耗电, RTMP 也常被系统掐断)
+    _suspendLivePreviewForBackground();
+    // 切后台: 同时停掉直播消息轮询, 后台不要再请求 getRoomRecentMsg
+    _liveMsgTimer?.cancel();
+    _liveMsgTimer = null;
   }
 
   /// 网络可用性变化: 仅在「无网络 -> 有网络」跳变时重刷首页
@@ -1398,20 +1666,22 @@ void initState() {
                       children: [
                         Image.asset(
                           'assets/images/home_logo.png',
-                          width: 124.0,
-                          height: 38.0,
+                          width: 142.0,
+                          height: 42.0,
                           fit: BoxFit.contain,
                           isAntiAlias: true,
-                          errorBuilder: (context, error, stackTrace) => const SizedBox(width: 110.0, height: 34.0),
+                          errorBuilder: (context, error, stackTrace) => const SizedBox(width: 142.0, height: 42.0),
                         ),
                         Spacer(),
                         Obx(() {
                           final bool bound = AuthStore.to.hasStore;
                           final String name = AuthStore.to.storeName;
+                          // 已绑定就显示门店名(拿不到名字才回退"内部门店"),未绑定显示"绑定门店"
+                          final String label = bound ? (name.isNotEmpty ? name : '内部门店') : '绑定门店';
                           return Material(
                             color: Colors.transparent,
                             child: InkWell(
-                              borderRadius: BorderRadius.circular(15.0),
+                              borderRadius: BorderRadius.circular(18.0),
                               onTap: () {
                                 if (!bound) {
                                   Get.toNamed('/bind_store');
@@ -1425,22 +1695,37 @@ void initState() {
                                 Get.toNamed('/store/detail', arguments: <String, dynamic>{'store_id': sid});
                               },
                               child: Container(
-                                padding: EdgeInsets.fromLTRB(4.0, 3.0, 8.0, 3.0),
+                                padding: const EdgeInsets.fromLTRB(8.0, 6.0, 8.0, 6.0),
                                 decoration: BoxDecoration(
                                   gradient: const LinearGradient(
                                     colors: [Color(0xFFFF8A75), Color(0xFFFF5A4D)],
                                     begin: Alignment.centerLeft,
                                     end: Alignment.centerRight,
                                   ),
-                                  borderRadius: BorderRadius.circular(14.0),
+                                  borderRadius: BorderRadius.circular(18.0),
                                 ),
                                 child: Row(
                                   mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Icon(Icons.store, color: Colors.white, size: 13.0),
-                                    SizedBox(width: 4.0),
-                                    Text(bound ? '内部门店' : '绑定门店', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w500)),
-                                    Icon(Icons.chevron_right, color: Colors.white, size: 14.0),
+                                  children: <Widget>[
+                                    const Icon(Icons.store, color: Colors.white, size: 18.0),
+                                    const SizedBox(width: 5.0),
+                                    // 门店名可能很长: 限宽 + 单行省略,不把 logo 挤出屏幕
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 96.0),
+                                      child: Text(
+                                        label,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14.0,
+                                          fontWeight: FontWeight.w600,
+                                          height: 1.1,
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 2.0),
+                                    const Icon(Icons.chevron_right, color: Colors.white, size: 18.0),
                                   ],
                                 ),
                               ),
@@ -1523,10 +1808,10 @@ void initState() {
             if (showPageLoading)
               _buildPageLoading()
             else ...<Widget>[
-              // 轮播图卡片
-              SliverToBoxAdapter(
+              // 轮播图卡片(无数据时不占位)
+              if (bannerList.isNotEmpty) SliverToBoxAdapter(
                 child: Container(
-                  margin: EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 6.0),
+                  margin: EdgeInsets.fromLTRB(10.0, 8.0, 10.0, 6.0),
                   height: 150.0,
                 clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
@@ -1573,7 +1858,7 @@ void initState() {
           // 金刚区(来自 /api/index/index 的 nav_info;每页 5 个, 可翻页)
           if (navList.isNotEmpty) SliverToBoxAdapter(
             child: Container(
-              margin: EdgeInsets.fromLTRB(10.0, 6.0, 10.0, 10.0),
+              margin: EdgeInsets.fromLTRB(10.0, 12.0, 10.0, 10.0),
               height: 112.0,
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
@@ -1599,8 +1884,13 @@ void initState() {
             ),
           ),
 
+            // 直播板块上广告(来自 /api/index/index 的 live_top_info; 无直播间时整块隐藏; 不轮播, 多张上下排列)
+            if (liveRoom != null && !_liveAutoJumping && (liveTopInfo?.isNotEmpty ?? false)) SliverToBoxAdapter(
+              child: _buildLiveAds(liveTopInfo ?? const []),
+            ),
+
             // App直播板块(无直播间时隐藏)
-            if (liveRoom != null) SliverToBoxAdapter(
+            if (liveRoom != null && !_liveAutoJumping) SliverToBoxAdapter(
               child: Container(
                 key: liveCardKey,
                 margin: EdgeInsets.fromLTRB(10.0, 0.0, 10.0, 10.0),
@@ -1685,9 +1975,10 @@ void initState() {
                                 // * 必须排在 Video 之后: Stack 后面的子元素才画在上层,
                                 //   放在 Video 之前会被它不透明的 fill 完全盖住, 封面永远看不见
                                 ValueListenableBuilder<bool>(
-                                  valueListenable: liveFirstFrame,
-                                  builder: (BuildContext context, bool hasFrame, Widget? child) {
-                                    return hasFrame ? const SizedBox.expand() : Positioned.fill(child: liveBg());
+                                  valueListenable: liveShowCover,
+                                  builder: (BuildContext context, bool showCover, Widget? child) {
+                                    // showCover=true 显示封面(盖住视频); false 显示视频
+                                    return showCover ? Positioned.fill(child: liveBg()) : const SizedBox.expand();
                                   },
                                 ),
                                 // 观看人数 + 直播中标签
@@ -1706,29 +1997,15 @@ void initState() {
                                         child: Row(
                                           mainAxisSize: MainAxisSize.min,
                                           children: [
-                                            Icon(Icons.videocam, color: Colors.white, size: 13.0),
+                                            Icon(Icons.videocam, color: Colors.white, size: 15.0),
                                             SizedBox(width: 4.0),
                                             Text('${liveText(const ['online'], '0')}观看', style: TextStyle(color: Colors.white, fontSize: 11.0)),
                                           ],
                                         ),
                                       ),
+                                      // 右上角「直播中」标签已隐藏: 中间「点击看直播」按钮里的
+                                      // 红色动效已经能表达在播状态, 画面顶部只留左侧观看数
                                       Spacer(),
-                                      // 直播中: 红底白点, 一眼看出在播
-                                      Container(
-                                        padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
-                                        decoration: BoxDecoration(
-                                          color: Color(0xFFFF2C55),
-                                          borderRadius: BorderRadius.circular(20.0),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            LivePlayingBars(color: Colors.white, height: 11.0),
-                                            SizedBox(width: 5.0),
-                                            Text('直播中', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w600)),
-                                          ],
-                                        ),
-                                      ),
                                     ],
                                   ),
                                 ),
@@ -1742,25 +2019,54 @@ void initState() {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           Container(
-                                            padding: EdgeInsets.symmetric(horizontal: 14.0, vertical: 7.0),
+                                            padding: EdgeInsets.fromLTRB(6.0, 5.0, 22.0, 5.0),
                                             decoration: BoxDecoration(
-                                              color: Colors.white,
-                                              borderRadius: BorderRadius.circular(18.0),
+                                              // 整体仍是半透明黑遮罩: 白字压在画面上更清晰
+                                              color: Colors.black.withAlpha(130),
+                                              borderRadius: BorderRadius.circular(22.0),
                                             ),
                                             child: Row(
                                               mainAxisSize: MainAxisSize.min,
                                               children: [
-                                                Icon(Icons.play_arrow_rounded, color: Color(0xFFFF2C55), size: 18.0),
-                                                SizedBox(width: 4.0),
-                                                Text('点击看直播', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 14.0, fontWeight: FontWeight.w700)),
+                                                // 只有动效图标用红底包裹(与右上「直播中」同一套红 + 白动效)
+                                                Container(
+                                                  width: 26.0,
+                                                  height: 26.0,
+                                                  alignment: Alignment.center,
+                                                  decoration: const BoxDecoration(
+                                                    color: Color(0xFFFF2C55),
+                                                    // 50% 圆角: 正圆红底
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: LivePlayingBars(color: Colors.white, height: 12.0),
+                                                ),
+                                                SizedBox(width: 10.0),
+                                                Text('点击看直播', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700, letterSpacing: 0.5)),
                                               ],
                                             ),
                                           ),
+                                          // 按钮下方留空, 让居中布局整体上移约 10, 避免遮挡左下角聊天飘屏
+                                          const SizedBox(height: 20.0),
                                         ],
                                       ),
                                     ),
                                   ),
                                 ),
+                                // 左下角聊天飘屏(首页 getRoomRecentMsg 历史消息循环滚动)
+                                if (liveRecentMsg.isNotEmpty)
+                                  Positioned(
+                                    left: 8.0,
+                                    right: 8.0,
+                                    bottom: 8.0,
+                                    child: LiveChatTicker(
+                                        messages: liveRecentMsg,
+                                        maxVisible: 3,
+                                        itemHeight: 22.0,
+                                        nicknameColor: const Color(0xFF8FD0FF),
+                                        contentColor: Colors.white,
+                                        fontSize: 12.0,
+                                      ),
+                                  ),
                               ],
                             ),
                           ),
@@ -1768,7 +2074,8 @@ void initState() {
                           Container(
                             height: 54.0,
                             padding: EdgeInsets.symmetric(horizontal: 12.0),
-                            color: Colors.white,
+                            // 浅灰底: 与上方画面区区分开,信息区更像一条独立的条
+                            color: const Color(0xFFF7F7F7),
                             child: Row(
                               children: [
                                 Container(
@@ -1790,22 +2097,24 @@ void initState() {
                                       ),
                                 ),
                                 SizedBox(width: 10.0),
-                                // 名称 + 福利文案竖排: 名称再长也不会把右侧挤出去了
+                                // 福利文案在上 + 名称在下(两行对调): 福利更抓眼, 名称作副标题
+                                // * 两行都是单行省略: 再长也不会把右侧"进入"挤出去
                                 Expanded(
                                   child: Column(
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
+                                      // 第一行: 直播标题(福利文案),取直播间 name,取不到才用默认文案
                                       Text(
-                                        liveText(const ['anchor_name', 'shop_name', 'nickname'], '惠买官方直播'),
+                                        liveText(const ['name'], '限时福利特惠'),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(color: Color(0xFF222222), fontSize: 15.0, fontWeight: FontWeight.w700),
                                       ),
                                       SizedBox(height: 2.0),
-                                      // 福利文案: 取直播间 name(直播标题),取不到才用默认文案
+                                      // 第二行: 主播名/店铺名
                                       Text(
-                                        liveText(const ['name'], '限时福利特惠'),
+                                        liveText(const ['anchor_name', 'shop_name', 'nickname'], '惠买官方直播'),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0),
@@ -1815,16 +2124,17 @@ void initState() {
                                 ),
                                 // 原来的心形圆按钮只是装饰(点了没反应), 换成"进入"更明确
                                 Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 10.0, vertical: 4.0),
+                                  padding: EdgeInsets.symmetric(horizontal: 16.0, vertical: 7.0),
                                   decoration: BoxDecoration(
                                     color: Color(0xFFFF2C55),
-                                    borderRadius: BorderRadius.circular(14.0),
+                                    borderRadius: BorderRadius.circular(17.0),
                                   ),
-                                  child: Text('进入', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w600)),
+                                  child: Text('进入', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w600)),
                                 ),
                               ],
                             ),
                           ),
+
                         ],
                       ),
                       ),
@@ -1832,6 +2142,11 @@ void initState() {
                   ],
                 ),
               ),
+            ),
+
+            // 直播板块下广告(来自 /api/index/index 的 live_bottom_info; 无直播间时整块隐藏; 不轮播, 多张上下排列)
+            if (liveRoom != null && !_liveAutoJumping && (liveBottomInfo?.isNotEmpty ?? false)) SliverToBoxAdapter(
+              child: _buildLiveAds(liveBottomInfo ?? const []),
             ),
 
             // 限时秒杀板块(无场次/无商品时不展示)
@@ -1853,8 +2168,8 @@ void initState() {
                       behavior: HitTestBehavior.opaque,
                       child: Row(
                         children: [
-                          Icon(Icons.bolt, color: Color(0xFFFF2C55), size: 20.0),
-                          SizedBox(width: 4.0),
+                          Icon(Icons.bolt, color: Color(0xFFFF2C55), size: 26.0),
+                          SizedBox(width: 5.0),
                           Text('限时秒杀', style: TextStyle(color: Colors.black87, fontSize: 18.0, fontWeight: FontWeight.w900)),
                           SizedBox(width: 8.0),
                           ValueListenableBuilder<int>(

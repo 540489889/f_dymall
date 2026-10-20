@@ -85,18 +85,12 @@ class _BacktopButtonState extends State<_BacktopButton> {
           width: 46.0,
           height: 46.0,
           decoration: BoxDecoration(
-            // 白 -> 浅粉渐变: 在浅米色底(首页 #FCF7EE)上比纯白更有质感
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: <Color>[Color(0xFFFFFFFF), Color(0xFFFFF1F4)],
-            ),
-            borderRadius: BorderRadius.circular(23.0),
-            border: Border.all(color: const Color(0x33FF2C55), width: 1.0),
+            // 半透明白圆底(带透明度,叠在内容上不显生硬) + 中性投影
+            color: Colors.white.withOpacity(0.85),
+            shape: BoxShape.circle,
             boxShadow: const <BoxShadow>[
-              // 主色投影撑起层次,中性投影托底,避免浮在内容上没有边界
-              BoxShadow(color: Color(0x2EFF2C55), blurRadius: 14.0, offset: Offset(0.0, 4.0)),
-              BoxShadow(color: Color(0x0F000000), blurRadius: 4.0, offset: Offset(0.0, 1.0)),
+              BoxShadow(color: Color(0x26000000), blurRadius: 12.0, offset: Offset(0.0, 4.0)),
+              BoxShadow(color: Color(0x0F000000), blurRadius: 3.0, offset: Offset(0.0, 1.0)),
             ],
           ),
           // * 必须显式居中: Container 不带 alignment 时 child 会贴左上,
@@ -145,28 +139,32 @@ class _BacktopIconPainter extends CustomPainter {
     final double s = size.width / base;
     final Paint paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.5 * s
+      ..strokeWidth = 2.2 * s
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
-      // 上浅下深的同色系渐变,让图标在白底上有立体感
-      ..shader = const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: <Color>[Color(0xFFFF7089), Color(0xFFFF2C55)],
-      ).createShader(Offset.zero & size);
+      // 近黑细线(对齐设计稿,不再用主色渐变)
+      ..color = const Color(0xFF1F1F1F);
 
-    // 上层 chevron: 顶点在上,两侧斜线圆角交汇(比之前更挺拔)
     final double cx = size.width / 2.0;
+
+    // 顶部横线: 表示"顶"
+    canvas.drawLine(
+      Offset(cx - 5.4 * s, 4.6 * s),
+      Offset(cx + 5.4 * s, 4.6 * s),
+      paint,
+    );
+
+    // 箭头 chevron: 尖朝上, 与横线之间留一点空隙
     final Path arrow = Path()
-      ..moveTo(cx - 6.6 * s, 12.1 * s)
-      ..lineTo(cx, 5.4 * s)
-      ..lineTo(cx + 6.6 * s, 12.1 * s);
+      ..moveTo(cx - 4.8 * s, 10.8 * s)
+      ..lineTo(cx, 6.4 * s)
+      ..lineTo(cx + 4.8 * s, 10.8 * s);
     canvas.drawPath(arrow, paint);
 
-    // 下层基线: 比 chevron 窄,弱化成"顶部"的暗示
+    // 竖线: 从 chevron 尖端一直延伸到按钮下部
     canvas.drawLine(
-      Offset(cx - 3.6 * s, 16.9 * s),
-      Offset(cx + 3.6 * s, 16.9 * s),
+      Offset(cx, 6.4 * s),
+      Offset(cx, 17.4 * s),
       paint,
     );
   }

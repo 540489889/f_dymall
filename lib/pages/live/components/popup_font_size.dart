@@ -59,7 +59,7 @@ class _PopupFontSizeState extends State<PopupFontSize> {
                     width: double.infinity,
                     padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
                     decoration: BoxDecoration(
-                      color: Colors.black26,
+                      color: const Color(0xFF161823),
                       borderRadius: BorderRadius.circular(12.0),
                     ),
                     child: Text.rich(

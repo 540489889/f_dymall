@@ -97,6 +97,13 @@ int presetHeightOf(bool landscape) =>
 /// * 所以进直播间先把首页预览停掉, 空出解码器; 离开直播间再按"卡片是否可见"恢复
 final ValueNotifier<bool> livePreviewSuspended = ValueNotifier<bool>(false);
 
+/// 首页 tab 当前是否正在展示(底部导航切到其它 tab 时为 false)
+///
+/// * 首页被 KeepAliveWrapper 保活, 切 tab 不会 dispose 首页, 直播消息轮询不会自动停,
+///   离开首页后 getRoomRecentMsg 还在后台每 15s 请求一次
+/// * 由 Layout 在切 tab / 布局时维护, 首页据此暂停/恢复轮询(见 _IndexPageState._onHomeTabActive)
+final ValueNotifier<bool> homeTabActive = ValueNotifier<bool>(true);
+
 /// media_kit_video 的底层 channel(与插件内 AndroidVideoController 用的是同一个)
 /// * Android 的 VideoController.setSize 直接抛 UnsupportedError,
 ///   但 Java 侧 `VideoOutputManager.SetSurfaceSize` 是通的, 只能绕过 Dart API 调它

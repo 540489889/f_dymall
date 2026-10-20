@@ -622,6 +622,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
       barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           content: Column(

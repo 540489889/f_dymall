@@ -117,10 +117,18 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                   padding: const EdgeInsets.only(bottom: 30.0),
                   children: <Widget>[
                     const SizedBox(height: 12.0),
-                    // 账号: 个人资料 / 微信绑定 / 账户安全
+                    // 账号资料: 个人资料入口(头像 / 昵称 / 查看编辑), 单独成组与下方绑定项区分
                     _group(
+                      title: '账号资料',
                       items: <Widget>[
                         _personalInfoEntry(),
+                      ],
+                    ),
+                    const SizedBox(height: 16.0),
+                    // 账号与安全: 微信绑定 / 账户安全(与「账号资料」分开,避免和查看编辑信息混淆)
+                    _group(
+                      title: '账号与安全',
+                      items: <Widget>[
                         _wxItem(),
                         _navItem('账户安全', _openAccountSecurity),
                       ],
@@ -128,6 +136,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                     const SizedBox(height: 16.0),
                     // 协议 / 关于我们
                     _group(
+                      title: '关于',
                       items: <Widget>[
                         _navItem('隐私协议',
                             () => Get.toNamed('/agreement', arguments: <String, dynamic>{'type': 'PRIVACY'})),
@@ -139,6 +148,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                     const SizedBox(height: 16.0),
                     // 个性化推荐 / 版本号
                     _group(
+                      title: '其他',
                       items: <Widget>[
                         _switchItem(),
                         _versionItem(),
@@ -159,7 +169,8 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
   // ============== 组件 ==============
 
   /// 分组卡片: 白底圆角,组内条目之间自动插入分隔线
-  Widget _group({required List<Widget> items}) {
+  /// * [title] 非空时在卡片上方渲染灰色小标题, 用来区分不同分组(如「账号资料」/「账号与安全」)
+  Widget _group({required List<Widget> items, String? title}) {
     final List<Widget> rows = <Widget>[];
     for (int i = 0; i < items.length; i++) {
       rows.add(items[i]);
@@ -169,6 +180,14 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: <Widget>[
+        if (title != null && title.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16.0, 4.0, 16.0, 8.0),
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 13.0, fontWeight: FontWeight.w500, color: Color(0xFF999999)),
+            ),
+          ),
         Container(
           margin: const EdgeInsets.symmetric(horizontal: 12.0),
           decoration: BoxDecoration(
@@ -489,7 +508,9 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     final bool ok = await showLogoutDialog();
     if (!ok) return;
     auth.logout();
-    Get.offAllNamed('/login');
+    // 回到首页游客态, 不要强制跳 /login(否则登录页成了唯一路由,
+    // 系统返回键/点返回都会撞上被保护的上一页被中间件踢回登录页, 卡死)
+    Get.offAllNamed('/');
   }
 
 }

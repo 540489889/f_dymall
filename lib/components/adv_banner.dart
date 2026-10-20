@@ -9,8 +9,7 @@ import 'dart:ui';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
-import 'package:url_launcher/url_launcher.dart';
+import '../../utils/index.dart';
 
 class AdvBanner extends StatefulWidget {
   const AdvBanner({
@@ -118,18 +117,9 @@ class _AdvBannerState extends State<AdvBanner> {
     super.dispose();
   }
 
-  /// 点击广告: 外链用系统浏览器, 其它按内部路由跳
+  /// 点击广告: 统一走 App 跳转入口(外链浏览器 / 内部路由带参)
   Future<void> onTap(String link) async {
-    final String url = link.trim();
-    if (url.isEmpty) return;
-    if (url.startsWith('http')) {
-      final Uri uri = Uri.tryParse(url) ?? Uri();
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-      return;
-    }
-    Get.toNamed(url);
+    await Utils.openAppLink(link);
   }
 
   /// 单条广告图

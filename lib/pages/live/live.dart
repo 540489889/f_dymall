@@ -33,7 +33,7 @@ import './components/popup_luckybag.dart';
 import './components/popup_sign_stamp.dart';
 // import './components/popup_gift.dart'; // 礼物弹窗: 随底部礼物入口一起停用, 恢复入口时一并放开
 import './components/popup_more.dart';
-import './components/popup_share.dart';
+
 // import './components/popup_recharge.dart'; // 充值弹窗: 只被礼物弹窗调用, 随礼物入口一起停用
 import './components/popup_redpacket.dart';
 
@@ -1029,7 +1029,7 @@ void _sendJoinPayload() {
 // socket 业务消息分发(与H5 livepull.nvue onMessage 一致)
 // * 已接入: livestart 开播(带拉流地址) / livepause 暂停 / liverestore 恢复
 //   liveend 结束 / forbid 被踢出房间 / mute, unmute 禁言 / room 在线人数与本场点赞
-//   msg 弹幕 / msg_sys 系统消息 / join 用户进场 / goods 讲解中商品
+//   msg 弹幕 / history 历史弹幕 / msg_sys 系统消息 / join 用户进场 / goods 讲解中商品
 // * 已接入: activity 活动表(福袋/红包/签到/集章入口与倒计时) / luckybag_start 开启
 //   / luckybag_join 参与成功 / luckybag_end 开奖 / hongbao_start 红包
 //   / sign_start 签到 / stamp_sign 集章开始 / stamp_award 集章开奖
@@ -1086,6 +1086,11 @@ void _onSocketMessage(Map<String, dynamic> msg) {
       break;
     // 弹幕消息: data 为消息数组(与H5 messageList 一致)
     case 'msg':
+      _appendDanmu(data);
+      break;
+    // 历史消息: data 为历史弹幕数组(与 msg 同结构), 进入直播间时补齐已有弹幕
+    // * 直接复用 _appendDanmu: 同样按 mid 去重、队列上限 50 条(只保留最近的历史 + 实时)
+    case 'history':
       _appendDanmu(data);
       break;
     // 系统消息: data 为 {msg}(与H5 messageSys 一致)
@@ -2128,18 +2133,32 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                   mainAxisSize: MainAxisSize.min,
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0),
+                                      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
                                       decoration: BoxDecoration(
-                                        color: Colors.black38,
-                                        borderRadius: BorderRadius.circular(20.0),
+                                        color: Colors.black45,
+                                        borderRadius: BorderRadius.circular(22.0),
                                       ),
                                       child: Text(
                                         LiveApi.statusName(roomInfo),
-                                        style: const TextStyle(color: Colors.white, fontSize: 13.0),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 17.0,
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 10.0),
-                                    Text(liveStatusHint, style: const TextStyle(color: Colors.white70, fontSize: 13.0)),
+                                    const SizedBox(height: 12.0),
+                                    Text(
+                                      liveStatusHint,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 15.0,
+                                        fontWeight: FontWeight.w500,
+                                        shadows: <Shadow>[
+                                          Shadow(color: Colors.black54, blurRadius: 6.0, offset: Offset(0.0, 1.0)),
+                                        ],
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -2164,17 +2183,17 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                         mainAxisAlignment: MainAxisAlignment.end,
                         spacing: 7.0,
                         children: [
-                            Container(
-                                alignment: Alignment.center,
-                                height: 35.0,
-                                width: 35.0,
-                              decoration: BoxDecoration(
-                                color: Colors.black26,
-                                borderRadius: BorderRadius.circular(50.0),
-                              ),
-                              child: Icon(Icons.help, color: Colors.white,),
-                            ),
-                            Container(
+                          // 退出清屏: 点击切回「直播浮层」(index 1)
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: () {
+                              pageHorizontalController.animateToPage(
+                                1,
+                                duration: const Duration(milliseconds: 250),
+                                curve: Curves.easeInOut,
+                              );
+                            },
+                            child: Container(
                               alignment: Alignment.center,
                               height: 35.0,
                               width: 35.0,
@@ -2182,11 +2201,33 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 color: Colors.black26,
                                 borderRadius: BorderRadius.circular(50.0),
                               ),
-                              child: Icon(Icons.clear_all_rounded, color: Colors.white,),
+                              child: Icon(Icons.fullscreen_exit, color: Colors.white,),
                             ),
-                            ],
                           ),
-                          ),
+                          // 原右下角两个图标(已停用, 保留以备还原):
+                          // Container(
+                          //   alignment: Alignment.center,
+                          //   height: 35.0,
+                          //   width: 35.0,
+                          //   decoration: BoxDecoration(
+                          //     color: Colors.black26,
+                          //     borderRadius: BorderRadius.circular(50.0),
+                          //   ),
+                          //   child: Icon(Icons.help, color: Colors.white,),
+                          // ),
+                          // Container(
+                          //   alignment: Alignment.center,
+                          //   height: 35.0,
+                          //   width: 35.0,
+                          //   decoration: BoxDecoration(
+                          //     color: Colors.black26,
+                          //     borderRadius: BorderRadius.circular(50.0),
+                          //   ),
+                          //   child: Icon(Icons.clear_all_rounded, color: Colors.white,),
+                          // ),
+                        ],
+                      ),
+                      ),
                           // 直播浮层
                           Stack(
                             children: [
@@ -2542,8 +2583,13 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 ],
                                 joinMessages: joinMessages,
                               ),
-                              // 弹幕区: 与上方进场提示保持 20 间距
-                              Container(
+                              ],
+                              ),
+                              // 弹幕区: 横屏由 Flexible(flex=1) 撑满「进场提示 ↔ 工具栏」, 竖屏 flex=0 保持原固定高度(布局不变)
+                              Flexible(
+                                flex: isHorizontal ? 1 : 0,
+                                fit: isHorizontal ? FlexFit.tight : FlexFit.loose,
+                                child: Container(
                                 margin: const EdgeInsets.only(top: 20.0),
                                 child: Row(
                                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -2571,7 +2617,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                       return ValueListenableBuilder<double>(
                                         valueListenable: danmuZoom,
                                         builder: (BuildContext context, double zoom, Widget? child) =>
-                                            DanmuScrollView(items: danmuList(list, zoom: zoom), lastId: lastId),
+                                            DanmuScrollView(items: danmuList(list, zoom: zoom), lastId: lastId, expanded: isHorizontal),
                                       );
                                     },
                                   ),
@@ -2707,7 +2753,6 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     ],
                                     ),
                                   ),
-                                  ],
                                   ),
                                   // 底部工具栏
                                   Container(
@@ -2736,47 +2781,32 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     Wrap(
                                         spacing: 7.0,
                                     children: [
-                                    // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
-                                    GestureDetector(
-                                      behavior: HitTestBehavior.opaque,
-                                      child: Container(
-                                          alignment: Alignment.center,
-                                          height: 38.0,
-                                          width: 38.0,
-                                          decoration: BoxDecoration(
-                                            color: Colors.black26,
-                                            borderRadius: BorderRadius.circular(50.0),
-                                          ),
-                                          child: Image.asset('assets/images/icon-cart.png', width: 23.0,),
+                                  // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                  GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    child: Container(
+                                    alignment: Alignment.center,
+                                    height: 38.0,
+                                    width: 38.0,
+                                  decoration: BoxDecoration(
+                                    color: Colors.black26,
+                                    borderRadius: BorderRadius.circular(50.0),
+                                  ),
+                                  child: Image.asset('assets/images/more-copy.png', width: 27.0,),
+                                ),
+                                onTap: () {
+                                      navigator?.push(FadeRoute(
+                                        effect: 'bottom',
+                                        child: PopupMore(
+                                          roomId: roomSn,
+                                          // 分享内容用当前房间的标题 + share_href(更多框第一排直接拉起微信分享)
+                                          shareTitle: '${roomInfo?['name'] ?? ''}'.trim(),
+                                          shareUrl: '${roomInfo?['share_href'] ?? ''}'.trim(),
+                                          shareCover: LiveApi.imageOf(roomInfo?['feeds_img']),
                                         ),
-                                        onTap: () {
-                                          // 一律打开橱窗, 不再做任何前置拦截/toast:
-                                          // * 商品由弹窗自己拉(见 onRefresh), 拉不到由弹窗显示空态
-                                          navigator?.push(FadeRoute(
-                                            effect: 'bottom',
-                                            child: PopupGoods(
-                                            // 首屏占位用进房那份, 打开后立即被 onRefresh 的结果整体替换
-                                            // * 不再做演示数据兜底: 演示房间已停用(_isDemoRoom 恒 false),
-                                            //   真实房间串进写死的演示商品会误导
-                                            goodsList: onlineGoods,
-                                            // 每次打开购物车 / 切分类都重新拉一次(商品会上下架/改价, 进房时那份可能已过期)
-                                            // * 参数是当前选中的商品分类 id(「全部」为空串), 后端按 category_id 返回
-                                            onRefresh: (String categoryId) => LiveApi.onlineGoods(roomSn, categoryId: categoryId),
-                                            // 头部主播信息(真实: 当前房间 anchor_name / anchor_img / name)
-                                            // * 用 item 而不是 roomInfo: 上下滑切房后 roomInfo 未必跟着更新
-                                            anchorName: anchorNameOf(item),
-                                            anchorAvatar: '${item['logo'] ?? ''}'.trim(),
-                                            roomTitle: '${item['name'] ?? ''}'.trim(),
-                                            // 房间号: 橱窗里点商品进详情后,加购 / 下单要回传 live_roomid
-                                            roomSn: roomSn,
-                                            // 悬浮小窗: 封面 + 拉流地址(主播名走上面的 anchorName)
-                                            liveCover: '${item['poster'] ?? ''}'.trim(),
-                                            livePullUrl: pullUrl.isNotEmpty ? pullUrl : '${item['src'] ?? ''}'.trim(),
-                                            )
-                                          ));
-                                            goodsTalkVisible = true;
-                                          }
-                                        ),
+                                      ));
+                                    }
+                                  ),
                                         // 点赞: 从按钮位置飘心并上行
                                         // * GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
                                         GestureDetector(
@@ -2790,7 +2820,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                           color: Colors.black26,
                                           borderRadius: BorderRadius.circular(50.0),
                                         ),
-                                        child: Image.asset('assets/images/icon-aixin.png', width: 23.0,),
+                                        child: Image.asset('assets/images/icon-aixin.png', width: 27.0,),
                                       ),
                                     ),
                                     // 底部礼物入口: 先停用(礼物弹窗 + 钻石不足充值弹窗), 需要时取消下面整段注释即可
@@ -2827,41 +2857,57 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     }
                                   ),
                                   */
-                                  // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
-                                  GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    child: Container(
-                                    alignment: Alignment.center,
-                                    height: 38.0,
-                                    width: 38.0,
-                                  decoration: BoxDecoration(
-                                    color: Colors.black26,
-                                    borderRadius: BorderRadius.circular(50.0),
-                                  ),
-                                  child: const Icon(Icons.more_horiz_outlined, color: Colors.white, size: 23),
-                                ),
-                                onTap: () {
-                                      navigator?.push(FadeRoute(
-                                        effect: 'bottom',
-                                        child: PopupMore(
-                                          roomId: roomSn,
-                                          // 点「分享」: 收起更多框后打开分享弹窗
-                                          // * 分享内容用当前房间的标题 + share_href
-                                          onShare: () {
-                                            navigator?.push(FadeRoute(
-                                              effect: 'bottom',
-                                              child: PopupShare(
-                                                roomId: roomSn,
-                                                title: '${roomInfo?['name'] ?? ''}'.trim(),
-                                                shareUrl: '${roomInfo?['share_href'] ?? ''}'.trim(),
-                                                coverUrl: LiveApi.imageOf(roomInfo?['feeds_img']),
-                                              ),
-                                            ));
-                                          },
+                                    // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                    GestureDetector(
+                                      behavior: HitTestBehavior.opaque,
+                                      child: Container(
+                                          height: 38.0,
+                                          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                          decoration: BoxDecoration(
+                                            gradient: const LinearGradient(
+                                              colors: <Color>[Color(0xFFFF2C55), Color(0xFFFF7A45)],
+                                              begin: Alignment.centerLeft,
+                                              end: Alignment.centerRight,
+                                            ),
+                                            borderRadius: BorderRadius.circular(19.0),
+                                          ),
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: <Widget>[
+                                              SvgPicture.asset('assets/images/svg/goods_bag.svg', width: 16.0, height: 16.0),
+                                              const SizedBox(width: 4.0),
+                                              const Text('商品', style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w600)),
+                                            ],
+                                          ),
                                         ),
-                                      ));
-                                    }
-                                  ),
+                                        onTap: () {
+                                          // 一律打开橱窗, 不再做任何前置拦截/toast:
+                                          // * 商品由弹窗自己拉(见 onRefresh), 拉不到由弹窗显示空态
+                                          navigator?.push(FadeRoute(
+                                            effect: 'bottom',
+                                            child: PopupGoods(
+                                            // 首屏占位用进房那份, 打开后立即被 onRefresh 的结果整体替换
+                                            // * 不再做演示数据兜底: 演示房间已停用(_isDemoRoom 恒 false),
+                                            //   真实房间串进写死的演示商品会误导
+                                            goodsList: onlineGoods,
+                                            // 每次打开购物车 / 切分类都重新拉一次(商品会上下架/改价, 进房时那份可能已过期)
+                                            // * 参数是当前选中的商品分类 id(「全部」为空串), 后端按 category_id 返回
+                                            onRefresh: (String categoryId) => LiveApi.onlineGoods(roomSn, categoryId: categoryId),
+                                            // 头部主播信息(真实: 当前房间 anchor_name / anchor_img / name)
+                                            // * 用 item 而不是 roomInfo: 上下滑切房后 roomInfo 未必跟着更新
+                                            anchorName: anchorNameOf(item),
+                                            anchorAvatar: '${item['logo'] ?? ''}'.trim(),
+                                            roomTitle: '${item['name'] ?? ''}'.trim(),
+                                            // 房间号: 橱窗里点商品进详情后,加购 / 下单要回传 live_roomid
+                                            roomSn: roomSn,
+                                            // 悬浮小窗: 封面 + 拉流地址(主播名走上面的 anchorName)
+                                            liveCover: '${item['poster'] ?? ''}'.trim(),
+                                            livePullUrl: pullUrl.isNotEmpty ? pullUrl : '${item['src'] ?? ''}'.trim(),
+                                            )
+                                          ));
+                                            goodsTalkVisible = true;
+                                          }
+                                        ),
                                   ],
                                 ),
                               ],

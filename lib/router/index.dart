@@ -13,6 +13,7 @@ import '../pages/store/detail.dart';
 // 直播
 import '../pages/live/live.dart';
 import '../pages/live/link_mic.dart';
+import '../pages/live/index.dart' show LivePage;
 // 商品详细
 import '../pages/goods/detail.dart';
 import '../pages/goods/search.dart';
@@ -90,7 +91,9 @@ import '../pages/point/order_list.dart';
 // 路由地址集合
 final Map<String, Widget> routes = {
  '/': const Layout(),
-  '/live': const Live(),
+ '/live': const Live(),
+ // 直播列表(独立页面: 广告/导航等 link 跳转用; 底部 tab 内嵌实例不走此路由)
+ '/live/list': const LivePage(fromHome: true),
  '/goods': const Goods(),
   // 商品搜索 / 搜索结果分类列表(游客可见,不进 authRoutes)
   '/search': const SearchPage(),

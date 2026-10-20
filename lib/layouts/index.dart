@@ -7,7 +7,9 @@ import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../controller/video_store.dart';
 import '../controller/app_config.dart';
+import '../controller/auth_store.dart';
 import '../components/keepalive_wrapper.dart';
+import '../utils/player_config.dart';
 // 引入pages页面
 import '../pages/index/index.dart';
 import '../pages/video/index.dart';
@@ -34,6 +36,14 @@ class _LayoutState extends State<Layout> {
     // 进首页时配置还是空的(首启那次请求被系统网络弹窗打断了), 再补拉一次:
     // 拿不到 diy 配置就只能显示默认导航(只有文字没有图标)
     AppConfig.to.fetchIfEmpty();
+    _syncHomeTabActive();
+  }
+
+  /// 首页 tab 是否正在展示(切到其它 tab 为 false)
+  /// * 首页被保活不销毁, 直播轮询要等这个信号才停, 否则离开首页后还在后台请求
+  void _syncHomeTabActive() {
+    final bool isHome = pageCurrent < _pageTypes.length && _pageTypes[pageCurrent] == 'home';
+    if (homeTabActive.value != isHome) homeTabActive.value = isHome;
   }
 
   /// 把 diy 的 link.type 映射到对应页面(未知类型回退首页)
@@ -195,6 +205,7 @@ class _LayoutState extends State<Layout> {
     setState(() {
       pageCurrent = index;
     });
+    _syncHomeTabActive();
     videoStore.updateBottomNavigationIndex(index);
     pageController.jumpToPage(index);
     // 切到直播 tab(包括重复点当前 tab)时让直播列表重新拉一次:
@@ -212,6 +223,61 @@ class _LayoutState extends State<Layout> {
     }
   }
 
+  /// 未登录横幅: 悬浮在底部导航栏上方(黑底圆角条 + 金币图标 + 红色渐变「立即登录」按钮)
+  /// * 整条可点,统一起去 /login
+  Widget _loginBanner() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Get.toNamed('/login'),
+      child: Container(
+        height: 44.0,
+        padding: const EdgeInsets.only(left: 12.0, right: 5.0),
+        decoration: BoxDecoration(
+          color: const Color(0xD91A1A1A),
+          borderRadius: BorderRadius.circular(22.0),
+        ),
+        child: Row(
+          children: [
+            // 金币图标(自绘: 金色渐变圆 + ¥)
+            Container(
+              width: 26.0,
+              height: 26.0,
+              decoration: const BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(colors: <Color>[Color(0xFFFFE082), Color(0xFFFFB300)]),
+              ),
+              alignment: Alignment.center,
+              child: const Text(
+                '¥',
+                style: TextStyle(color: Color(0xFF8C5A00), fontSize: 15.0, fontWeight: FontWeight.w900),
+              ),
+            ),
+            const SizedBox(width: 8.0),
+            const Expanded(
+              child: Text(
+                '登录享更多福利！',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w600),
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 7.0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(20.0),
+                gradient: const LinearGradient(colors: <Color>[Color(0xFFFF6A3D), Color(0xFFFA2C19)]),
+              ),
+              child: const Text(
+                '立即登录',
+                style: TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     // 配置动态: 用 Obx 包裹, /api/config/init 拉取完成后自动切换为 diy 导航
@@ -227,6 +293,16 @@ class _LayoutState extends State<Layout> {
       final Color unselColor = _useDiy
           ? _parseColor(_diy?['textColor'], Colors.black54)
           : Colors.black54;
+      // diy 导航配置是异步来的: tab 类型可能随之后到而变化(首页也可能不在 0 位), 每次布局都同步一次
+      _syncHomeTabActive();
+      // 未登录: 在底部导航栏上方悬浮「立即登录」横幅
+      // 读 authorization.value 让外层 Obx 订阅登录态, 登录/退出自动显隐
+      final bool notLogin = AuthStore.to.authorization.value.isEmpty;
+      // 只在「首页」tab 显示(默认列表/diy 配置里 type == 'home' 的页面)
+      final bool isHome =
+          pageCurrent < _pageTypes.length && _pageTypes[pageCurrent] == 'home';
+      // 仅未登录 + 当前在首页时才显示
+      final bool showLoginBanner = notLogin && isHome;
 
       return Scaffold(
         backgroundColor: const Color(0xFFFCF7EE),
@@ -235,7 +311,7 @@ class _LayoutState extends State<Layout> {
           physics: const NeverScrollableScrollPhysics(),
           children: pages,
         ),
-        // 底部导航栏
+        // 底部导航栏(未登录时上方悬浮「立即登录」横幅)
         bottomNavigationBar: Theme(
           data: Theme.of(context).copyWith(
             splashColor: Colors.transparent,
@@ -244,26 +320,37 @@ class _LayoutState extends State<Layout> {
           ),
           child: Stack(
             children: [
+              // 未登录时给悬浮横幅预留顶部空间
               Container(
-                decoration: BoxDecoration(
-                  border: Border(top: BorderSide(color: Colors.black45, width: .1)),
-                ),
-                child: BottomNavigationBar(
-                  backgroundColor: barBg,
-                  fixedColor: selColor,
-                  unselectedItemColor: unselColor,
-                  type: BottomNavigationBarType.fixed,
-                  elevation: 1.0,
-                  unselectedFontSize: 12.0,
-                  selectedFontSize: 12.0,
-                  // tab 文字加粗(选中/未选中均加粗,字号保持 12)
-                  selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0),
-                  unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0),
-                  currentIndex: pageCurrent,
-                  items: items,
-                  onTap: onNavTap,
+                padding: EdgeInsets.only(top: showLoginBanner ? 60.0 : 0.0),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border(top: BorderSide(color: Colors.black45, width: .1)),
+                  ),
+                  child: BottomNavigationBar(
+                    backgroundColor: barBg,
+                    fixedColor: selColor,
+                    unselectedItemColor: unselColor,
+                    type: BottomNavigationBarType.fixed,
+                    elevation: 1.0,
+                    unselectedFontSize: 12.0,
+                    selectedFontSize: 12.0,
+                    // tab 文字加粗(选中/未选中均加粗,字号保持 12)
+                    selectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0),
+                    unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12.0),
+                    currentIndex: pageCurrent,
+                    items: items,
+                    onTap: onNavTap,
+                  ),
                 ),
               ),
+              if (showLoginBanner)
+                Positioned(
+                  left: 10.0,
+                  right: 10.0,
+                  top: 8.0,
+                  child: _loginBanner(),
+                ),
             ],
           ),
         ),

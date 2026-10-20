@@ -16,6 +16,77 @@ import 'package:get/get.dart';
 
 import '../../../config/index.dart';
 
+/// 分享直播间到微信(会话/朋友圈): 供「更多」弹窗与分享弹窗共用
+/// * 拉起前会检查微信是否已安装并注册 SDK(appId/universalLink 取自 Config)
+/// * 微信网页分享必须带缩略图(≤32KB), 否则 SDK 直接返回失败
+Future<void> shareToWeChat({
+  required String title,
+  required String url,
+  String desc = '',
+  String coverUrl = '',
+  required WeChatScene scene,
+}) async {
+  if (url.isEmpty) {
+    Get.snackbar('提示', '直播间信息还在加载', snackPosition: SnackPosition.BOTTOM);
+    return;
+  }
+  try {
+    final Fluwx fluwx = Fluwx();
+    final bool installed = await fluwx.isWeChatInstalled;
+    if (!installed) {
+      Get.snackbar('提示', '未安装微信', snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+    final bool registered = await fluwx.registerApi(
+      appId: Config.wxAppId,
+      universalLink: Config.wxUniversalLink,
+    );
+    debugPrint('[share]registerApi=$registered appId=${Config.wxAppId}');
+    if (!registered) {
+      Get.snackbar('提示', '微信注册失败，检查 AppID 与包名签名', snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+    final Uint8List? thumb = await _makeThumb(coverUrl);
+    final bool ok = await fluwx.share(WeChatShareWebPageModel(
+      url,
+      title: title.trim().isEmpty ? '直播分享' : title.trim(),
+      description: desc,
+      scene: scene,
+      thumbData: thumb,
+    ));
+    debugPrint('[share]share=$ok scene=$scene url=$url thumb=${thumb?.length ?? 0}字节');
+    if (!ok) Get.snackbar('提示', '分享失败', snackPosition: SnackPosition.BOTTOM);
+  } catch (e) {
+    debugPrint('[share]分享异常: $e');
+    Get.snackbar('提示', '分享失败', snackPosition: SnackPosition.BOTTOM);
+  }
+}
+
+/// 分享缩略图: 网络图 -> 96x96 PNG 字节
+Future<Uint8List?> _makeThumb(String imageUrl) async {
+  final String url = imageUrl.trim();
+  if (url.isEmpty) return null;
+  try {
+    final dio.Response<List<int>> res = await dio.Dio().get<List<int>>(
+      url,
+      options: dio.Options(responseType: dio.ResponseType.bytes),
+    );
+    final List<int>? bytes = res.data;
+    if (bytes == null || bytes.isEmpty) return null;
+    final Codec codec = await instantiateImageCodec(
+      Uint8List.fromList(bytes),
+      targetWidth: 96,
+      targetHeight: 96,
+    );
+    final FrameInfo frame = await codec.getNextFrame();
+    final ByteData? data = await frame.image.toByteData(format: ImageByteFormat.png);
+    return data?.buffer.asUint8List();
+  } catch (e) {
+    debugPrint('[share]缩略图处理失败: $e');
+    return null;
+  }
+}
+
 class PopupShare extends StatefulWidget {
   const PopupShare({
     super.key,
@@ -67,79 +138,21 @@ class _PopupShareState extends State<PopupShare> {
         },
       ];
 
-  /// 分享到微信: [scene] 会话(微信好友) / 朋友圈
+  /// 分享到微信: [scene] 会话(微信好友) / 朋友圈(转调顶层公共函数)
   Future<void> _shareTo(WeChatScene scene) async {
     if (sharing) return;
-    final String url = widget.shareUrl.trim();
-    if (url.isEmpty) {
-      _toast('直播间信息还在加载');
-      return;
-    }
     setState(() => sharing = true);
     try {
-      final Fluwx fluwx = Fluwx();
-      final bool installed = await fluwx.isWeChatInstalled;
-      if (!installed) {
-        _toast('未安装微信');
-        return;
-      }
-      // 重复注册无副作用: 分享前兜一次, 免得 app 起来还没注册过 SDK
-      final bool registered = await fluwx.registerApi(
-        appId: Config.wxAppId,
-        universalLink: Config.wxUniversalLink,
-      );
-      debugPrint('[share]registerApi=$registered appId=${Config.wxAppId}');
-      if (!registered) {
-        _toast('微信注册失败，检查 AppID 与包名签名');
-        return;
-      }
-      final Uint8List? thumb = await _makeThumb(widget.coverUrl);
-      // 标题为空时微信也不收, 兜一个
-      final bool ok = await fluwx.share(WeChatShareWebPageModel(
-        url,
-        title: widget.title.trim().isEmpty ? '直播分享' : widget.title.trim(),
-        description: widget.desc,
+      await shareToWeChat(
+        title: widget.title,
+        url: widget.shareUrl,
+        desc: widget.desc,
+        coverUrl: widget.coverUrl,
         scene: scene,
-        thumbData: thumb,
-      ));
-      debugPrint('[share]share=$ok scene=$scene url=$url thumb=${thumb?.length ?? 0}字节');
-      if (!ok) _toast('分享失败');
-    } catch (e) {
-      debugPrint('[share]分享异常: $e');
-      _toast('分享失败');
+      );
     } finally {
       if (mounted) setState(() => sharing = false);
     }
-  }
-
-  /// 分享缩略图: 网络图 -> 96x96 PNG 字节
-  /// * 微信网页分享必须带缩略图(要求 ≤32KB), 不带的话 SDK 直接返回失败
-  Future<Uint8List?> _makeThumb(String imageUrl) async {
-    final String url = imageUrl.trim();
-    if (url.isEmpty) return null;
-    try {
-      final dio.Response<List<int>> res = await dio.Dio().get<List<int>>(
-        url,
-        options: dio.Options(responseType: dio.ResponseType.bytes),
-      );
-      final List<int>? bytes = res.data;
-      if (bytes == null || bytes.isEmpty) return null;
-      final Codec codec = await instantiateImageCodec(
-        Uint8List.fromList(bytes),
-        targetWidth: 96,
-        targetHeight: 96,
-      );
-      final FrameInfo frame = await codec.getNextFrame();
-      final ByteData? data = await frame.image.toByteData(format: ImageByteFormat.png);
-      return data?.buffer.asUint8List();
-    } catch (e) {
-      debugPrint('[share]缩略图处理失败: $e');
-      return null;
-    }
-  }
-
-  void _toast(String message) {
-    Get.snackbar('提示', message, snackPosition: SnackPosition.BOTTOM);
   }
 
   @override

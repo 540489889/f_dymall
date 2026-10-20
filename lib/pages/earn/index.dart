@@ -453,7 +453,7 @@ class _EarnPageState extends State<EarnPage> {
                           const SizedBox(width: 4.0),
                           const Text(
                             '现金余额可提现至微信账户',
-                            style: TextStyle(color: Colors.white, fontSize: 11.0),
+                            style: TextStyle(color: Colors.white, fontSize: 12.0),
                           ),
                         ] else ...<Widget>[
                           Icon(
@@ -467,7 +467,7 @@ class _EarnPageState extends State<EarnPage> {
                               withdrawAuthText,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(color: Colors.white, fontSize: 11.0),
+                              style: const TextStyle(color: Colors.white, fontSize: 12.0),
                             ),
                           ),
                           if (!withdrawAuthOk) ...<Widget>[
@@ -479,7 +479,7 @@ class _EarnPageState extends State<EarnPage> {
                                 withdrawAccountBound ? '去授权' : '去绑定',
                                 style: const TextStyle(
                                   color: Colors.white,
-                                  fontSize: 11.0,
+                                  fontSize: 12.0,
                                   fontWeight: FontWeight.w700,
                                   decoration: TextDecoration.underline,
                                   decorationColor: Colors.white,
@@ -509,7 +509,7 @@ class _EarnPageState extends State<EarnPage> {
         Row(
           children: <Widget>[
             Flexible(
-              child: Text('我的积分', style: const TextStyle(color: Colors.white70, fontSize: 10.0), maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text('我的积分', style: const TextStyle(color: Colors.white70, fontSize: 11.0), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const SizedBox(width: 2.0),
             Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
@@ -539,7 +539,7 @@ class _EarnPageState extends State<EarnPage> {
         Row(
           children: <Widget>[
             Flexible(
-              child: Text('可提现（元）', style: const TextStyle(color: Colors.white70, fontSize: 10.0), maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text('可提现（元）', style: const TextStyle(color: Colors.white70, fontSize: 11.0), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const SizedBox(width: 2.0),
             Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
@@ -620,7 +620,7 @@ class _EarnPageState extends State<EarnPage> {
                   color: primary.withAlpha(18),
                   borderRadius: BorderRadius.circular(10.0),
                 ),
-                child: Text('已连续签到$signDaysSeries天', style: const TextStyle(color: primary, fontSize: 10.0)),
+                child: Text('已连续签到$signDaysSeries天', style: const TextStyle(color: primary, fontSize: 11.0)),
               ),
             ],
           ),
@@ -652,12 +652,12 @@ class _EarnPageState extends State<EarnPage> {
                                 ? Icon(Icons.card_giftcard, size: 22.0, color: signed ? Colors.white : const Color(0xFFCCCCCC))
                                 : Image.asset('assets/images/sign-icon.png', width: 22.0, height: 22.0, fit: BoxFit.contain),
                             const SizedBox(height: 4.0),
-                            Text('+$point', style: TextStyle(color: signed ? Colors.white : const Color(0xFFFFA500), fontSize: 11.0, fontWeight: FontWeight.w700)),
+                            Text('+$point', style: TextStyle(color: signed ? Colors.white : const Color(0xFFFFA500), fontSize: 12.0, fontWeight: FontWeight.w700)),
                           ],
                         ),
                       ),
                       const SizedBox(height: 2.0),
-                      Text('第$day天', style: const TextStyle(color: Colors.black54, fontSize: 10.0)),
+                      Text('第$day天', style: const TextStyle(color: Colors.black54, fontSize: 11.0)),
                     ],
                   ),
                 ),
@@ -776,10 +776,10 @@ class _EarnPageState extends State<EarnPage> {
                         color: primary.withAlpha(18),
                         borderRadius: BorderRadius.circular(4.0),
                       ),
-                      child: const Text('天天提', style: TextStyle(color: primary, fontSize: 10.0, fontWeight: FontWeight.w700)),
+                      child: const Text('天天提', style: TextStyle(color: primary, fontSize: 11.0, fontWeight: FontWeight.w700)),
                     ),
                     const SizedBox(width: 6.0),
-                    const Text('福利用户专属，每日可提', style: TextStyle(color: Colors.black45, fontSize: 11.0)),
+                    const Text('福利用户专属，每日可提', style: TextStyle(color: Colors.black45, fontSize: 12.0)),
                   ],
                 ),
               ],
@@ -791,7 +791,7 @@ class _EarnPageState extends State<EarnPage> {
               color: primary,
               borderRadius: BorderRadius.circular(16.0),
             ),
-            child: const Text('去提现', style: TextStyle(color: Colors.white, fontSize: 11.0, fontWeight: FontWeight.w700)),
+            child: const Text('去提现', style: TextStyle(color: Colors.white, fontSize: 12.0, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -871,7 +871,7 @@ class _EarnPageState extends State<EarnPage> {
                                     '${task['desc']}',
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(color: Colors.black45, fontSize: 11.0),
+                                    style: const TextStyle(color: Colors.black45, fontSize: 12.0),
                                   ),
                                   const SizedBox(height: 2.0),
                                   Text(
@@ -898,7 +898,7 @@ class _EarnPageState extends State<EarnPage> {
                                       done ? '已完成' : '${task['btn']}',
                                       style: TextStyle(
                                         color: done ? Colors.black38 : Colors.white,
-                                        fontSize: 11.0,
+                                        fontSize: 12.0,
                                         fontWeight: FontWeight.w700,
                                       ),
                                     ),

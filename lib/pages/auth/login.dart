@@ -19,6 +19,7 @@ import '../../utils/index.dart';
 import '../../utils/wx.dart';
 import '../../controller/auth_store.dart';
 import '../../widgets/field_error.dart';
+import '../../router/index.dart';
 
 /// 表单项统一间距
 const double _gap = 12.0;
@@ -204,6 +205,7 @@ class _LoginState extends State<Login> {
   void showError(String message, {String? field}) {
     debugPrint('[login] error: $message');
     if (!mounted) return;
+    final String errField = field ?? guessErrorField(message) ?? '';
     setState(() {
       mobileError = null;
       dynacodeError = null;
@@ -211,7 +213,7 @@ class _LoginState extends State<Login> {
       pwdError = null;
       vercodeError = null;
       formError = null;
-      switch (field ?? guessErrorField(message)) {
+      switch (errField) {
         case 'mobile':
           mobileError = message;
         case 'dynacode':
@@ -226,6 +228,8 @@ class _LoginState extends State<Login> {
           formError = message;
       }
     });
+    // 字段级错误改为 Toast 提示,不在输入框下方展示文字(避免布局被挤占)
+    if (errField != 'agreement') MyDialog.toast(message);
   }
 
   /// 清空全部错误提示
@@ -250,6 +254,7 @@ class _LoginState extends State<Login> {
       barrierDismissible: false,
       builder: (BuildContext ctx) {
         return AlertDialog(
+          backgroundColor: Colors.white,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
           content: Column(
@@ -564,9 +569,12 @@ class _LoginState extends State<Login> {
   }
 
   /// 顶部返回: 栈里还有上一页就返回,没有(路由中间件重定向过来,previousRoute 为空)直接回首页
-  /// * 原来只判 Get.previousRoute,为空时点了完全没反应
+  /// * 上一页是需登录的受保护页时, Get.back() 会被路由中间件踢回 /login(未登录态),
+  ///   形成"无法返回"死循环 —— 这种情况也直接回首页游客态
   void onBack() {
-    if (Get.previousRoute.isNotEmpty) {
+    final String prev = Get.previousRoute;
+    // 复用 RouteMiddleware.redirect 判断: 返回上一页会被拦截(未登录 + 上一页受保护)时回首页
+    if (prev.isNotEmpty && RouteMiddleware().redirect(prev) == null) {
       Get.back();
       return;
     }
@@ -607,6 +615,12 @@ class _LoginState extends State<Login> {
                     ),
                   ),
                 ),
+                // 本机号码一键登录: 移到页面底部(点击拉起阿里云授权页)
+                if (showOneKeyEntry)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16.0),
+                    child: _buildOneKeyEntry(),
+                  ),
               ],
             ),
           ),
@@ -789,11 +803,12 @@ class _LoginState extends State<Login> {
               counterText: '',
               hintText: '请输入手机号码',
               hintStyle: TextStyle(fontSize: 14.0, color: Colors.black26),
-              // 只保留区号: 不带「中国」和下箭头(没有国家选择功能)
+              // 手机图标(替代 +86 区号,没有国家选择功能)
+              // 颜色/尺寸与下方验证码图标(black26/18)保持一致,视觉协调
               prefixIcon: const SizedBox(
                 width: 40.0,
                 child: Center(
-                  child: Text('+86', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600, color: Colors.black87)),
+                  child: Icon(Icons.phone_android_rounded, size: 22.0, color: Colors.black26),
                 ),
               ),
               prefixIconConstraints: const BoxConstraints(minWidth: 40.0),
@@ -804,7 +819,6 @@ class _LoginState extends State<Login> {
             onChanged: (String value) => setState(() => mobileError = null),
           ),
         ),
-        FieldError(mobileError),
       ],
     );
   }
@@ -827,7 +841,7 @@ class _LoginState extends State<Login> {
             decoration: InputDecoration(
               hintText: '请输入验证码',
               hintStyle: const TextStyle(fontSize: 14.0, color: Colors.black26),
-              prefixIcon: const Icon(Icons.sms_outlined, size: 18.0, color: Colors.black26),
+              prefixIcon: const Icon(Icons.verified_user_outlined, size: 22.0, color: Colors.black26),
               prefixIconConstraints: const BoxConstraints(minWidth: 42.0),
               // 右侧: 分隔线 + 获取动态码
               suffixIcon: SizedBox(
@@ -863,7 +877,6 @@ class _LoginState extends State<Login> {
             onChanged: (String value) => setState(() => dynacodeError = null),
           ),
         ),
-        FieldError(dynacodeError),
       ],
     );
   }
@@ -885,7 +898,7 @@ class _LoginState extends State<Login> {
             decoration: const InputDecoration(
               hintText: '请输入账号',
               hintStyle: TextStyle(fontSize: 14.0, color: Colors.black26),
-              prefixIcon: Icon(Icons.person_outline_rounded, size: 18.0, color: Colors.black26),
+              prefixIcon: Icon(Icons.person_outline_rounded, size: 22.0, color: Colors.black26),
               prefixIconConstraints: BoxConstraints(minWidth: 42.0),
               contentPadding: EdgeInsets.symmetric(vertical: 14.0),
               border: InputBorder.none,
@@ -894,7 +907,6 @@ class _LoginState extends State<Login> {
             onChanged: (String value) => setState(() => accountError = null),
           ),
         ),
-        FieldError(accountError),
       ],
     );
   }
@@ -916,7 +928,7 @@ class _LoginState extends State<Login> {
             decoration: InputDecoration(
               hintText: '请输入密码',
               hintStyle: const TextStyle(fontSize: 14.0, color: Colors.black26),
-              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 18.0, color: Colors.black26),
+              prefixIcon: const Icon(Icons.lock_outline_rounded, size: 22.0, color: Colors.black26),
               prefixIconConstraints: const BoxConstraints(minWidth: 42.0),
               suffixIcon: IconButton(
                 padding: EdgeInsets.zero,
@@ -935,7 +947,6 @@ class _LoginState extends State<Login> {
             onChanged: (String value) => setState(() => pwdError = null),
           ),
         ),
-        FieldError(pwdError),
       ],
     );
   }
@@ -956,7 +967,7 @@ class _LoginState extends State<Login> {
             decoration: InputDecoration(
               hintText: '请输入验证码',
               hintStyle: const TextStyle(fontSize: 14.0, color: Colors.black26),
-              prefixIcon: const Icon(Icons.verified_user_outlined, size: 18.0, color: Colors.black26),
+              prefixIcon: const Icon(Icons.verified_user_outlined, size: 22.0, color: Colors.black26),
               prefixIconConstraints: const BoxConstraints(minWidth: 42.0),
               suffixIcon: GestureDetector(
                 onTap: refreshCaptcha,
@@ -982,7 +993,6 @@ class _LoginState extends State<Login> {
             onChanged: (String value) => setState(() => vercodeError = null),
           ),
         ),
-        FieldError(vercodeError),
       ],
     );
   }
@@ -1130,6 +1140,9 @@ class _LoginState extends State<Login> {
   /// 是否展示「其他登录方式」区块
   bool get showSocialLogin => showWxLogin || showAppleLogin;
 
+  /// 是否展示「本机号码一键登录」文字入口(端上支持阿里云一键登录时)
+  bool get showOneKeyEntry => AliOneKey.available;
+
   /// 其他登录方式: 微信授权登录 / Apple登录
   /// * 没装微信就不显示微信;设备不支持 Apple 登录就不显示 Apple;两个都没有则整块不展示
   Widget _buildSocialLogin() {
@@ -1174,6 +1187,26 @@ class _LoginState extends State<Login> {
           ],
         ),
       ],
+    );
+  }
+
+  /// 本机号码一键登录(文字切换入口)
+  /// * 点击拉起阿里云授权页(原生页覆盖), 无需手动输入手机号
+  /// * 授权页自带协议勾选, 取消/失败回退到常规验证码/账号密码登录
+  Widget _buildOneKeyEntry() {
+    return Center(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        // 拉起授权页期间(aliSubmitting)禁用, 避免重复唤起
+        onTap: aliSubmitting ? null : handleAliLogin,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6.0),
+          child: Text(
+            '本机号码一键登录',
+            style: TextStyle(fontSize: 13.0, color: _primary, fontWeight: FontWeight.w500),
+          ),
+        ),
+      ),
     );
   }
 

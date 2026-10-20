@@ -130,6 +130,57 @@ class LiveApi {
     }
   }
 
+  /// 直播间最近消息 + 在线人数(/live/api/shop/getRoomRecentMsg)
+  /// * [no] 房间号 sn; 一次返回既含互动消息列表, 也含当前在线人数(用于刷新首页直播卡片)
+  /// * 返回 {list: 消息列表(已归一化), online: 在线人数}; 失败/无数据返回 {list:[], online:0}
+  static Future<Map<String, dynamic>> roomRecentMsg(String no) async {
+    const Map<String, dynamic> empty = <String, dynamic>{'list': <Map<String, dynamic>>[], 'online': 0};
+    if (no.isEmpty) return empty;
+    try {
+      final Map<String, dynamic> res = await Request().getRaw(
+        '/live/api/shop/getRoomRecentMsg',
+        queryParameters: <String, dynamic>{'no': no},
+      );
+      if ('${res['code']}' != '0') {
+        debugPrint('[live]直播间最近消息返回异常: ${res['code']} ${res['message']}');
+        return empty;
+      }
+      final dynamic data = res['data'];
+      // 兼容: data 直接是数组 / {msg:[...]}(实际返回) / {list:[...]} / {msgs:[...]} / {data:[...]} / {messages:[...]}
+      dynamic raw;
+      if (data is List) {
+        raw = data;
+      } else if (data is Map) {
+        raw = data['msg'] ?? data['list'] ?? data['msgs'] ?? data['data'] ?? data['messages'];
+      }
+      final List<Map<String, dynamic>> list = <Map<String, dynamic>>[];
+      if (raw is List) {
+        for (final dynamic one in raw) {
+          if (one is! Map) continue;
+          final Map<dynamic, dynamic> m = one;
+          // 消息内容: 实际返回 key 为 msg, 兼容 content / message
+          final String content = '${m['content'] ?? m['msg'] ?? m['message'] ?? ''}'.trim();
+          if (content.isEmpty) continue;
+          // 发送者信息嵌在 user 子对象里(实际返回结构), 兼容平铺字段
+          final Map<dynamic, dynamic>? user = m['user'] is Map ? (m['user'] as Map).cast<dynamic, dynamic>() : null;
+          list.add(<String, dynamic>{
+            'content': content,
+            'nickname': '${user?['nickname'] ?? m['nickname'] ?? m['user_name'] ?? m['name'] ?? ''}'.trim(),
+            'time': '${user?['time'] ?? m['time'] ?? m['create_time'] ?? m['add_time'] ?? ''}'.trim(),
+            'headimg': imageOf(user?['headimg'] ?? m['headimg']),
+            'level': '${user?['member_level_name'] ?? m['member_level_name'] ?? ''}'.trim(),
+          });
+        }
+      }
+      // 在线人数: 接口在 data.online 下发的当前观看数
+      final int online = intOf(data is Map ? data['online'] : 0);
+      return <String, dynamic>{'list': list, 'online': online};
+    } catch (e) {
+      debugPrint('[live]直播间最近消息加载失败: $e');
+      return empty;
+    }
+  }
+
   /// 直播间信息(/live/api/shop/getRoomInfo)
   /// * [no] 房间号 sn(直播间id),进入直播间时先查该接口再起播
   /// * 返回字段: sn(房间号) / name(标题) / feeds_img(封面) / anchor_img(主播头像)

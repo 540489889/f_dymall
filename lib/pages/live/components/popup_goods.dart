@@ -88,10 +88,10 @@ bool refreshing = false;
 // 头部主播信息(真实数据, 由直播间页传入)
 String get _anchorAvatar => (widget.anchorAvatar ?? '').trim();
 String get _roomTitle => (widget.roomTitle ?? '').trim();
-// 橱窗标题「xxx的橱窗」; 主播名没下发时回退「商品橱窗」
+// 标题即主播名; 主播名没下发时回退「直播间」
 String get _shopTitle {
   final String name = (widget.anchorName ?? '').trim();
-  return name.isEmpty ? '商品橱窗' : '$name的橱窗';
+  return name.isEmpty ? '直播间' : name;
 }
 
 @override
@@ -245,11 +245,11 @@ Widget build(BuildContext context) {
                             child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // 橱窗名(真实主播名): 去掉原来的箭头图标
-                              Text(_shopTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600),),
-                              // 第二行: 直播间标题(真实数据); 接口没下发时不占高度
+                              // 第一行(样式保持原样: 15 加粗): 直播间标题(真实数据); 接口没下发时不占高度
                               if (_roomTitle.isNotEmpty)
-                              Text(_roomTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 12.0,),),
+                              Text(_roomTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600),),
+                              // 第二行(样式保持原样: 灰色 12): 主播名(真实主播名): 去掉「橱窗」字样
+                              Text(_shopTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: Colors.grey, fontSize: 12.0,),),
                               ],
                             ),
                           ),
@@ -495,16 +495,12 @@ Widget build(BuildContext context) {
                                   ),
                                   child: Row(
                                     children: [
-                                      const Padding(
-                                        padding: EdgeInsets.symmetric(horizontal: 7.0),
-                                        child: Icon(Icons.add_shopping_cart, color: Colors.grey, size: 16.0,),
-                                      ),
                                       Container(
                                         alignment: Alignment.center,
                                         height: 30.0,
                                         padding: const EdgeInsets.symmetric(horizontal: 10.0),
                                         color: Color(0xFFFF2C55),
-                                        child: const Text('领券购买', style: TextStyle(color: Colors.white, fontSize: 12.0),),
+                                        child: const Text('立即购买', style: TextStyle(color: Colors.white, fontSize: 12.0),),
                                       ),
                                       ],
                                       ),
