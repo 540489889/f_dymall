@@ -853,8 +853,17 @@ class _MyPageState extends State<MyPage> {
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(authStore.hasStore ? '内部门店' : '绑定门店',
+                          // 与首页右上角一致: 已绑定显示具体门店名(拿不到名字回退"内部门店"),未绑定显示"绑定门店"
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 110.0),
+                            child: Text(
+                              authStore.hasStore
+                                  ? (authStore.storeName.isNotEmpty ? authStore.storeName : '内部门店')
+                                  : '绑定门店',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(fontSize: 12.0, color: Color(0xFFFF7A33), fontWeight: FontWeight.w500)),
+                          ),
                           const Icon(Icons.chevron_right, color: Color(0xFFFF7A33), size: 16.0),
                         ],
                       ),

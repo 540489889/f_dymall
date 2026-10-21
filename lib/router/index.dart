@@ -7,6 +7,7 @@ import '../layouts/index.dart';
 import '../pages/auth/bind_mobile.dart';
 import '../pages/auth/login.dart';
 import '../pages/auth/register.dart';
+import '../pages/auth/forgot_password.dart';
 import '../pages/goods/evaluate.dart';
 import '../pages/store/bind_store.dart';
 import '../pages/store/detail.dart';
@@ -61,6 +62,7 @@ import '../pages/setting/personal_info.dart';
 // 关于我们
 import '../pages/setting/about.dart';
 import '../pages/setting/license_info.dart';
+import '../pages/setting/qualification.dart';
 // 协议详情(隐私协议 / 用户协议)
 import '../pages/setting/agreement.dart';
 // 首次启动隐私政策概要
@@ -134,6 +136,8 @@ final Map<String, Widget> routes = {
   // 关于我们(游客可见,不进 authRoutes)
   '/about': const AboutPage(),
   '/license_info': const LicenseInfoPage(),
+  // 平台资质(游客可见, 数据来自 /api/config/qualification)
+  '/qualification': const QualificationPage(),
   // 首次启动隐私政策概要(游客可见,不进 authRoutes)
   '/privacy_agreement': const PrivacyAgreementPage(),
   // 协议详情: 游客也可查看,不进 authRoutes
@@ -206,7 +210,9 @@ middlewares: authRoutes.contains(e.key) ? [RouteMiddleware()] : [], // 仅需登
 final List<GetPage> routePages = [
  GetPage(name: '/login', page: () => const Login()),
 GetPage(name: '/register', page: () => const Register()),
-  GetPage(name: '/goods/evaluate', page: () => const GoodsEvaluatePage()),
+// 忘记密码(游客可见,不进 authRoutes)
+GetPage(name: '/forgot_password', page: () => const ForgotPassword()),
+GetPage(name: '/goods/evaluate', page: () => const GoodsEvaluatePage()),
   GetPage(name: '/store/detail', page: () => const StoreDetailPage()),
   // 绑定门店: 未登录直接跳 /login(首页右上角「绑定门店」/「我的」页入口都走这条)
   GetPage(name: '/bind_store', page: () => const BindStorePage(), middlewares: [RouteMiddleware()]),

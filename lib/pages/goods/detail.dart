@@ -423,7 +423,7 @@ Widget _buildError() {
 }
 
 // 顶部圆形按钮直径(返回/搜索/购物车统一)
-static const double _kTopBtnSize = 34.0;
+static const double _kTopBtnSize = 40.0;
 // 价格块压在轮播图上的高度: 设为 0 表示价格块不再覆盖轮播图,
 // 图片完整显示, 价格块紧贴轮播图下方(顶部圆角衔接)
 static const double _kPriceOverlap = 0.0;
@@ -559,15 +559,15 @@ Widget _buildSearchBox() {
   return GestureDetector(
     onTap: () => Get.toNamed('/search'),
     child: Container(
-      height: 32.0,
+      height: 36.0,
       padding: const EdgeInsets.symmetric(horizontal: 10.0),
       decoration: BoxDecoration(
         color: const Color(0xFFF5F5F5),
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(18.0),
       ),
       child: Row(
         children: const <Widget>[
-          Icon(Icons.search, size: 16.0, color: Color(0xFF999999)),
+          Icon(Icons.search, size: 18.0, color: Color(0xFF999999)),
           SizedBox(width: 6.0),
           Expanded(
             child: Text(
@@ -624,7 +624,7 @@ Future<void> _toggleCollect() async {
 /// 顶部圆形图标按钮(透明时带半透明黑底,吸顶后无底色)
 Widget _buildIconButton(IconData icon, VoidCallback onTap, double t, Color iconColor, {double marginRight = 6.0}) {
   return _buildTopButton(
-    Icon(icon, size: 18.0, color: iconColor),
+    Icon(icon, size: 22.0, color: iconColor),
     onTap,
     t,
     marginRight: marginRight,
@@ -636,14 +636,14 @@ Widget _buildTopImageButton(String asset, VoidCallback onTap, double t, Color ic
   return _buildTopButton(
     Image.asset(
       asset,
-      width: 18.0,
-      height: 18.0,
+      width: 22.0,
+      height: 22.0,
       fit: BoxFit.contain,
       color: iconColor,
       isAntiAlias: true,
       // 切图缺失时退化成同尺寸占位,避免红屏
       errorBuilder: (BuildContext context, Object error, StackTrace? stack) =>
-          const SizedBox(width: 18.0, height: 18.0),
+          const SizedBox(width: 22.0, height: 22.0),
     ),
     onTap,
     t,
@@ -651,7 +651,7 @@ Widget _buildTopImageButton(String asset, VoidCallback onTap, double t, Color ic
   );
 }
 
-/// 顶部按钮外壳: 34x34 圆底(滚动到商品区后底色透明),内容居中
+/// 顶部按钮外壳: 40x40 圆底(滚动到商品区后底色透明),内容居中
 Widget _buildTopButton(Widget child, VoidCallback onTap, double t, {double marginRight = 6.0}) {
   return GestureDetector(
     onTap: onTap,

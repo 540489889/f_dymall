@@ -15,6 +15,11 @@ class AliOneKey {
   /// 是否可以展示入口(Web 为 false,登录页据此隐藏一键登录按钮)
   static bool get available => false;
 
+  /// 预检一键登录环境: Web 不支持,空实现(保持入口不展示)
+  /// * 必须与 native 版签名一致,否则消费方(lib/pages/auth/login.dart 未引入 dart:io)
+  ///   在静态分析期按条件导出解析到本占位版时会报 undefined_method
+  static Future<void> prefetch() async {}
+
   /// 拉起一键登录授权页: Web 不支持,直接抛错
   static Future<String> login({Duration timeout = const Duration(seconds: 30)}) async {
     if (kDebugMode) debugPrint('[ali] Web 不支持一键登录');

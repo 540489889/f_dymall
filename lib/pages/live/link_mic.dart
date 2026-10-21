@@ -46,8 +46,6 @@ const Color kLinkTextSub = Color(0xFF8A8F99);
 /// 输入框底色与描边(浅灰卡片 + 极淡描边)
 const Color kLinkFieldBg = Color(0xFFF5F6F8);
 const Color kLinkFieldBorder = Color(0xFFE9EBF0);
-/// 等待接听页底色(预览还没起来时的兜底深色): 白字白图标
-const Color kCallBgBottom = Color(0xFF191C23);
 /// 通话页文字阴影: 画面上不盖遮罩, 靠阴影保证白字在任何画面上都看得清
 const List<Shadow> kCallTextShadows = <Shadow>[
   Shadow(color: Color(0x99000000), blurRadius: 6.0, offset: Offset(0.0, 1.0)),
@@ -338,10 +336,19 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
   }
 
   /// 本地预览起播: viewId 就绪就调(视图创建与实例准备顺序不定, 所以各自就绪时都试一次)
+  /// * iOS 上 TRTCCloudVideoView 是 PlatformView, 若在 onViewCreated 当帧同步调用
+  ///   startLocalPreview 容易卡死主线程; 推迟到当前帧构建完成后再起播, 规避卡死
   void _startPreviewIfReady() {
     final int? viewId = localViewId;
     if (viewId == null) return;
-    engine.startPreview(frontCamera, viewId);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || localViewId != viewId) return;
+      try {
+        engine.startPreview(frontCamera, viewId);
+      } catch (e) {
+        debugPrint('[link]本地预览起播失败(忽略): $e');
+      }
+    });
   }
 
   /// 申请相机 + 麦克风权限
@@ -409,17 +416,80 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
       },
       child: Scaffold(
         // 等待接听用通话底色; 输入态仍是白底表单
-        backgroundColor: calling ? kCallBgBottom : Colors.white,
+        // 输入态底色(与绑定门店页一致); 等待接听/连麦中由视频铺满, 底色不显
+        backgroundColor: const Color(0xFFFFF9F6),
         resizeToAvoidBottomInset: false,
         body: Stack(
           children: <Widget>[
+            // 输入态暖色背景(与绑定门店页一致); 等待接听/连麦中由视频铺满, 不需要背景
+            if (step == LinkMicStep.input) _buildBg(context),
             // 等待接听/连麦中: 本地预览(自己的画面)铺满; 连麦中再叠远端小窗
             if (step != LinkMicStep.input) _buildVideoLayer(),
+            // 等待主播同意: 底部遮罩渐变铺到屏幕最底(含 iPhone 底部安全距离), 不能放进 SafeArea
+            if (step == LinkMicStep.waiting)
+              Positioned(
+                left: 0.0,
+                right: 0.0,
+                bottom: 0.0,
+                height: 280.0,
+                child: Container(
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: <Color>[Colors.transparent, Color(0xB3000000)],
+                    ),
+                  ),
+                ),
+              ),
             SafeArea(child: _buildContent()),
           ],
         ),
       ),
     ),
+    );
+  }
+
+  /// 输入态背景: 与绑定门店页一致的暖色竖向渐变 + 两个半透明装饰圆
+  Widget _buildBg(BuildContext context) {
+    return Positioned.fill(
+      child: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[Color(0xFFFFF3EE), Colors.white],
+          ),
+        ),
+        child: Stack(
+          children: <Widget>[
+            Positioned(
+              top: -MediaQuery.of(context).padding.top - 40,
+              right: -60,
+              child: Container(
+                width: 220.0,
+                height: 220.0,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFF7A52).withValues(alpha: 0.10),
+                ),
+              ),
+            ),
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 60,
+              left: -40,
+              child: Container(
+                width: 100.0,
+                height: 100.0,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFFF2C55).withValues(alpha: 0.06),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -494,119 +564,188 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     );
   }
 
-  /// 连麦码输入
+  /// 连麦码输入(排版对齐设计稿: 顶部标题 + 居中插图/大标题 + 白卡表单 + 权限提示卡 + 底部说明)
   Widget _buildInput() {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(24.0, kToolbarHeight, 24.0, 24.0),
+      padding: const EdgeInsets.symmetric(horizontal: 24.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: <Widget>[
-          const SizedBox(height: 28.0),
-          // 申请连麦头部插图: t-head-2.png 用主题色染色, 垫主色 10% 的浅色圆底
-          Container(
-            width: 112.0,
-            height: 112.0,
+        // 顶部导航标题: 与左上返回箭头同一水平线(返回箭头由 _buildContent 叠加)
+        const SizedBox(
+          height: kToolbarHeight,
+          child: Center(
+            child: Text('申请连麦', style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w700, color: kLinkText)),
+          ),
+        ),
+        const SizedBox(height: 14.0),
+        // 申请连麦头部插图: t-head-2.png 用主题色染色, 垫主色 10% 的浅色圆底(保留原图标)
+        Center(
+          child: Container(
+            width: 92.0,
+            height: 92.0,
             alignment: Alignment.center,
             decoration: const BoxDecoration(color: kLinkBadgeBg, shape: BoxShape.circle),
-            // 用主题色整体染色(srcIn): 原图是蓝灰描边 + 蓝色波纹, 染成主色后与全站一致
-            // * 透明区不受影响; 代价是变成单色剪影(机身与波纹同色), 层次比原图少一点
             child: Image.asset(
               'assets/images/t-head-2.png',
-              width: 72.0,
+              width: 60.0,
               fit: BoxFit.contain,
               color: kLinkPrimary,
               colorBlendMode: BlendMode.srcIn,
             ),
           ),
-          const SizedBox(height: 22.0),
-          const Text(
-            '申请连麦',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 22.0, fontWeight: FontWeight.w700, color: kLinkText),
+        ),
+        const SizedBox(height: 20.0),
+        const Text(
+          '申请连麦',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 22.0, fontWeight: FontWeight.w700, color: kLinkText),
+        ),
+        const SizedBox(height: 10.0),
+        const Text(
+          '输入主播给你的连麦码，申请通过后即可与主播同屏',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13.0, height: 1.5, color: kLinkTextSub),
+        ),
+        const SizedBox(height: 28.0),
+        // 表单卡: 「连麦码」标题 + 输入框 + 申请按钮
+        Container(
+          padding: const EdgeInsets.all(16.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18.0),
+            boxShadow: <BoxShadow>[
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 18.0, offset: const Offset(0.0, 6.0)),
+            ],
           ),
-          const SizedBox(height: 10.0),
-          const Text(
-            '输入主播给你的连麦码，申请通过后即可与主播同屏',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 13.0, height: 1.5, color: kLinkTextSub),
-          ),
-          const SizedBox(height: 36.0),
-          Container(
-            height: 48.0,
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: kLinkFieldBg,
-              borderRadius: BorderRadius.circular(24.0),
-              border: Border.all(color: kLinkFieldBorder),
-            ),
-            child: TextField(
-              controller: codeController,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) {
-                // 未输入连麦码时不提交(按钮已置灰, 键盘完成键也保持一致)
-                if (codeFilled) apply();
-              },
-              cursorColor: kLinkPrimary,
-              style: const TextStyle(fontSize: 15.0, color: kLinkText),
-              // 连麦码是纯数字: 弹数字键盘, 并用 formatter 过滤掉非数字(含粘贴进来的字母/符号)
-              keyboardType: TextInputType.number,
-              inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
-              decoration: const InputDecoration(
-                hintText: '请输入连麦码',
-                hintStyle: TextStyle(fontSize: 14.0, color: Color(0xFFB6B9C0)),
-                border: InputBorder.none,
-                isCollapsed: true,
-                contentPadding: EdgeInsets.zero,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: <Widget>[
+              // 橙色小竖条 + 标题
+              Row(
+                children: <Widget>[
+                  Container(
+                    width: 4.0,
+                    height: 16.0,
+                    decoration: BoxDecoration(color: kLinkPrimary, borderRadius: BorderRadius.circular(2.0)),
+                  ),
+                  const SizedBox(width: 8.0),
+                  const Text('连麦码', style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.w700, color: kLinkText)),
+                ],
               ),
-            ),
-          ),
-          const SizedBox(height: 16.0),
-          GestureDetector(
-            // 未输入连麦码(或提交中): 置灰且不可点击
-            onTap: (codeFilled && !submitting) ? apply : null,
-            child: Container(
-              height: 48.0,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(24.0),
-                gradient: codeFilled
-                    ? const LinearGradient(colors: <Color>[kLinkPrimary, kLinkPrimaryLight])
-                    : null,
-                color: codeFilled ? null : Colors.grey.shade300,
-                // 白底上的投影: 主色 18% 的柔和投影, 按钮不至于"贴"在背景上(置灰时去掉)
-                boxShadow: codeFilled
-                    ? const <BoxShadow>[
-                        BoxShadow(color: Color(0x2EFF2C55), blurRadius: 12.0, offset: Offset(0.0, 6.0)),
-                      ]
-                    : null,
+              const SizedBox(height: 12.0),
+              Container(
+                height: 48.0,
+                alignment: Alignment.centerLeft,
+                padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                decoration: BoxDecoration(
+                  color: kLinkFieldBg,
+                  borderRadius: BorderRadius.circular(24.0),
+                  border: Border.all(color: kLinkFieldBorder),
+                ),
+                child: TextField(
+                  controller: codeController,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) {
+                    // 未输入连麦码时不提交(按钮已置灰, 键盘完成键也保持一致)
+                    if (codeFilled) apply();
+                  },
+                  cursorColor: kLinkPrimary,
+                  style: const TextStyle(fontSize: 15.0, color: kLinkText),
+                  // 连麦码是纯数字: 弹数字键盘, 并用 formatter 过滤掉非数字(含粘贴进来的字母/符号)
+                  keyboardType: TextInputType.number,
+                  inputFormatters: <TextInputFormatter>[FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    hintText: '请输入连麦码',
+                    hintStyle: TextStyle(fontSize: 14.0, color: Color(0xFFB6B9C0)),
+                    border: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ),
               ),
-              child: Center(
-                child: submitting
-                    ? const SizedBox(
-                        width: 18.0,
-                        height: 18.0,
-                        child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
-                      )
-                    : Text(
-                        '申请连麦',
-                        style: TextStyle(
-                          fontSize: 16.0,
-                          fontWeight: FontWeight.w600,
-                          color: codeFilled ? Colors.white : Colors.white70,
-                          letterSpacing: 2.0,
-                        ),
-                      ),
+              const SizedBox(height: 16.0),
+              GestureDetector(
+                // 未输入连麦码(或提交中): 置灰且不可点击
+                onTap: (codeFilled && !submitting) ? apply : null,
+                child: Container(
+                  height: 48.0,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(24.0),
+                    gradient: codeFilled
+                        ? const LinearGradient(colors: <Color>[kLinkPrimary, kLinkPrimaryLight])
+                        : null,
+                    color: codeFilled ? null : Colors.grey.shade300,
+                    // 白底上的投影: 主色 18% 的柔和投影, 按钮不至于"贴"在背景上(置灰时去掉)
+                    boxShadow: codeFilled
+                        ? const <BoxShadow>[
+                            BoxShadow(color: Color(0x2EFF2C55), blurRadius: 12.0, offset: Offset(0.0, 6.0)),
+                          ]
+                        : null,
+                  ),
+                  child: Center(
+                    child: submitting
+                        ? const SizedBox(
+                            width: 18.0,
+                            height: 18.0,
+                            child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                          )
+                        : Text(
+                            '申请连麦',
+                            style: TextStyle(
+                              fontSize: 16.0,
+                              fontWeight: FontWeight.w600,
+                              color: codeFilled ? Colors.white : Colors.white70,
+                              letterSpacing: 2.0,
+                            ),
+                          ),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
-          const SizedBox(height: 18.0),
-          // 底部说明: 提前告知要授权, 避免申请时被系统弹窗吓到
-          const Text(
-            '首次连麦会申请相机和麦克风权限',
+        ),
+        const SizedBox(height: 14.0),
+        // 权限提示卡: 盾牌图标 + 说明文字
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(18.0),
+            boxShadow: <BoxShadow>[
+              BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 18.0, offset: const Offset(0.0, 6.0)),
+            ],
+          ),
+          child: Row(
+            children: <Widget>[
+              Container(
+                width: 40.0,
+                height: 40.0,
+                alignment: Alignment.center,
+                decoration: const BoxDecoration(color: Color(0xFFFFF1E6), shape: BoxShape.circle),
+                child: const Icon(Icons.verified_user_rounded, size: 22.0, color: kLinkPrimaryLight),
+              ),
+              const SizedBox(width: 12.0),
+              const Expanded(
+                child: Text(
+                  '首次连麦需要授权相机和麦克风权限，请放心使用',
+                  style: TextStyle(fontSize: 13.0, height: 1.5, color: kLinkText),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const Spacer(),
+        // 底部说明: 提前告知要授权, 避免申请时被系统弹窗吓到
+        const Padding(
+          padding: EdgeInsets.only(bottom: 8.0),
+          child: Text(
+            '连麦过程中请遵守社区规范，文明互动',
             textAlign: TextAlign.center,
             style: TextStyle(fontSize: 12.0, color: kLinkTextSub),
           ),
-        ],
+        ),
+      ],
       ),
     );
   }
@@ -621,22 +760,6 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     return SizedBox.expand(
       child: Stack(
         children: <Widget>[
-          // 底部按钮区渐变(顶部不遮画面, 铺到状态栏)
-          Positioned(
-            left: 0.0,
-            right: 0.0,
-            bottom: 0.0,
-            child: Container(
-              height: 280.0,
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: <Color>[Colors.transparent, Color(0xB3000000)],
-                ),
-              ),
-            ),
-          ),
           Column(
             children: <Widget>[
               const SizedBox(height: 56.0),

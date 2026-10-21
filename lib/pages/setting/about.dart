@@ -1,6 +1,8 @@
 /// 关于我们
-/// 顶部 logo + 名称 + 标语 + 版本号，下方备案号 + 查询链接
-/// * 二维码已去掉(按需求不再展示下载二维码)
+/// 排版对齐 UI 设计稿: 橙色渐变顶栏 + 暖色背景
+/// * 上: 居中 Logo / 名称 / 标语
+/// * 中: 白色圆角信息卡(版本号 / 联系方式 / 运营主体 / 平台官网 / 平台资质 / ICP备案号)
+/// * 下: 版权文案贴底
 library;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -56,6 +58,12 @@ class _AboutPageState extends State<AboutPage> {
     return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
   }
 
+  /// 动态字符串兜底: 空值/空串返回 fallback
+  String _str(dynamic value, String fallback) {
+    final String s = value == null ? '' : '$value'.trim();
+    return s.isEmpty ? fallback : s;
+  }
+
   String _imgUrl(String? raw) {
     if (raw == null || raw.isEmpty) return '';
     if (raw.startsWith('http')) return raw;
@@ -64,21 +72,33 @@ class _AboutPageState extends State<AboutPage> {
 
   String get _logo => _imgUrl(_site['logo_square'] ?? _site['logo']);
 
-  String get _name => '${_site['site_name'] ?? ''}'.isNotEmpty
-      ? '${_site['site_name']}'
-      : '乐惠';
+  String get _name => _str(_site['site_name'], '乐惠新零售');
 
-  String get _slogan => '${_site['site_slogan'] ?? ''}'.isNotEmpty
-      ? '${_site['site_slogan']}'
-      : '正品拼团更便宜！';
+  String get _slogan => _str(_site['site_slogan'], '邻里生活，惠享到家');
 
-  String get _icpNo => '${_copyright['icp'] ?? _copyright['copyright_desc'] ?? ''}';
+  /// 联系方式(优先后台配置, 未配置用默认邮箱)
+  String get _contact =>
+      _str(_site['contact_email'] ?? _site['email'] ?? _copyright['email'], 'lehuishop@163.com');
 
-  String get _icpLink => '${_copyright['icp_link'] ?? 'https://beian.miit.gov.cn/'}';
+  /// 运营主体
+  String get _company =>
+      _str(_copyright['company_name'] ?? _site['company_name'], '重楼数字科技重庆有限公司');
 
-  String get _titleText => '关于$_name';
+  /// 平台官网(未配置时点击提示)
+  String get _officialUrl =>
+      _str(_site['site_url'] ?? _site['website'] ?? _copyright['site_url'], '');
+
+  /// ICP 备案号
+  String get _icpNo => _str(_copyright['icp'] ?? _copyright['copyright_desc'], '—');
+
+  /// ICP 查询链接
+  String get _icpLink => _str(_copyright['icp_link'], 'https://beian.miit.gov.cn/');
 
   Future<void> _openUrl(String url) async {
+    if (url.isEmpty) {
+      Get.snackbar('提示', '链接暂未配置');
+      return;
+    }
     final Uri uri = Uri.parse(url.startsWith('http') ? url : 'https://$url');
     if (await canLaunchUrl(uri)) {
       await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -87,36 +107,48 @@ class _AboutPageState extends State<AboutPage> {
     }
   }
 
-  // 给我评分吧(入口已隐藏,保留方法待后台配 app_store_url 后启用)
-  // ignore: unused_element
-  Future<void> _rate() async {
-    final String storeUrl = '${_site['app_store_url'] ?? ''}';
-    if (storeUrl.isNotEmpty) {
-      await _openUrl(storeUrl);
-      return;
-    }
-    Get.snackbar('提示', '评分链接暂未配置');
-  }
-
   @override
   Widget build(BuildContext context) {
     return AnnotatedRegion<SystemUiOverlayStyle>(
+      // 顶栏与页面同色(暖色), 状态栏图标用深色
       value: const SystemUiOverlayStyle(
-        // 状态栏用白色背景 + 深色图标(顶栏是白底,透明会让状态栏露出页面灰底)
-        statusBarColor: Colors.white,
+        statusBarColor: Colors.transparent,
         statusBarIconBrightness: Brightness.dark,
         statusBarBrightness: Brightness.light,
       ),
       child: Scaffold(
-        backgroundColor: const Color(0xFFF5F5F5),
+        backgroundColor: const Color(0xFFFFF6EE),
         body: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // 状态栏区域也铺白,和下面的标题栏连成一体
+            // 顶栏(仅占位, 无单独背景色, 与页面暖色背景融为一体)
             Container(
-              height: MediaQuery.of(context).padding.top,
-              color: Colors.white,
+              padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
+              child: SizedBox(
+                height: kToolbarHeight,
+                child: Stack(
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: GestureDetector(
+                        onTap: () => Get.back<void>(),
+                        behavior: HitTestBehavior.opaque,
+                        child: const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 14.0, vertical: 12.0),
+                          child: Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Color(0xFF3A2E24)),
+                        ),
+                      ),
+                    ),
+                    const Center(
+                      child: Text(
+                        '关于我们',
+                        style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Color(0xFF3A2E24)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            _appBar(),
             Expanded(
               child: LayoutBuilder(
                 builder: (BuildContext context, BoxConstraints constraints) {
@@ -124,29 +156,29 @@ class _AboutPageState extends State<AboutPage> {
                     child: ConstrainedBox(
                       constraints: BoxConstraints(minHeight: constraints.maxHeight),
                       child: Column(
+                        // 用 spaceBetween 把版权推到底部, 不能用 Spacer(弹性子组件在无限高度的
+                        // 滚动视图里会导致布局异常、整页空白)
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // 顶部信息区
-                          _headerCard(),
-                          // 底部备案 + 入口
+                          // 顶部内容组: 品牌区 + 信息卡
+                          Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SizedBox(height: 40.0),
+                              _header(),
+                              const SizedBox(height: 36.0),
+                              _infoCard(),
+                            ],
+                          ),
+                          // 底部版权(贴底, 预留底部安全区/手势条间距)
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16.0, 24.0, 16.0, 24.0),
-                            child: Column(
-                              children: [
-                                _icpSection(),
-                                // 证照信息 / 给我评分吧 先隐藏(后台未配置,暂不展示)
-                                // _entryRow(
-                                //   label: '证照信息',
-                                //   icon: Icons.verified_user_outlined,
-                                //   onTap: () => Get.toNamed('/license_info'),
-                                // ),
-                                // _entryRow(
-                                //   label: '给我评分吧',
-                                //   trailing: const Icon(Icons.chevron_right, size: 18.0, color: Color(0xFFCCCCCC)),
-                                //   onTap: _rate,
-                                // ),
-                              ],
+                            padding: EdgeInsets.only(
+                              top: 24.0,
+                              bottom: MediaQuery.of(context).padding.bottom + 12.0,
                             ),
+                            child: _copyrightText(),
                           ),
                         ],
                       ),
@@ -161,153 +193,140 @@ class _AboutPageState extends State<AboutPage> {
     );
   }
 
-  Widget _appBar() {
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 10.0),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => Get.back(),
-            child: const Padding(
-              padding: EdgeInsets.all(8.0),
-              child: Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Colors.black87),
-            ),
-          ),
-          Expanded(
-            child: Center(
-              child: Text(_titleText,
-                  style: const TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Colors.black87)),
-            ),
-          ),
-          const SizedBox(width: 34.0),
-        ],
-      ),
-    );
-  }
-
-  Widget _headerCard() {
-    return Padding(
-      padding: const EdgeInsets.only(top: 40.0),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Logo / 名称 / 标语: 上下居中排列
-          _buildLogo(),
-          const SizedBox(height: 16.0),
-          Text(_name,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 22.0, fontWeight: FontWeight.bold, color: Colors.black87)),
-          const SizedBox(height: 6.0),
-          Text(_slogan,
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 13.0, color: Color(0xFF666666))),
-          const SizedBox(height: 28.0),
-          // 版本号
-          Text(
-            version.isEmpty ? '版本：—' : '版本：$version',
-            style: const TextStyle(fontSize: 13.0, color: Color(0xFF999999)),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLogo() {
-    if (_logo.isEmpty) {
-      return Container(
-        width: 76.0,
-        height: 76.0,
-        decoration: BoxDecoration(color: _brandColor, borderRadius: BorderRadius.circular(18.0)),
-        child: const Icon(Icons.shopping_bag, size: 38.0, color: Colors.white),
-      );
-    }
-    return CachedNetworkImage(
-      imageUrl: _logo,
-      width: 76.0,
-      height: 76.0,
-      fit: BoxFit.cover,
-      imageBuilder: (BuildContext context, ImageProvider imageProvider) => Container(
-        width: 76.0,
-        height: 76.0,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18.0),
-          image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
-        ),
-      ),
-      placeholder: (_, __) => Container(
-        width: 76.0,
-        height: 76.0,
-        decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(18.0)),
-      ),
-      errorWidget: (_, __, ___) => Container(
-        width: 76.0,
-        height: 76.0,
-        decoration: BoxDecoration(color: _brandColor, borderRadius: BorderRadius.circular(18.0)),
-        child: const Icon(Icons.shopping_bag, size: 38.0, color: Colors.white),
-      ),
-    );
-  }
-
-  Widget _icpSection() {
-    if (_icpNo.isEmpty) return const SizedBox.shrink();
+  /// 顶部品牌区: Logo / 名称 / 标语
+  Widget _header() {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
+        _buildLogo(),
+        const SizedBox(height: 18.0),
         Text(
-          'APP备案号：$_icpNo',
-          style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999)),
+          _name,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 24.0, fontWeight: FontWeight.w700, color: Color(0xFF3A2E24)),
         ),
-        const SizedBox(height: 6.0),
-        GestureDetector(
-          onTap: () => _openUrl(_icpLink),
-          child: RichText(
-            text: TextSpan(
-              text: '查询链接：',
-              style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999)),
-              children: <TextSpan>[
-                TextSpan(
-                  text: _icpLink,
-                  style: const TextStyle(fontSize: 12.0, color: Color(0xFF2C8DFA)),
-                ),
-              ],
-            ),
-          ),
+        const SizedBox(height: 8.0),
+        Text(
+          _slogan,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 14.0, color: Color(0xFF9A8C7E)),
         ),
       ],
     );
   }
 
-  // 入口行(证照信息 / 给我评分吧 暂时隐藏,保留方法备用)
-  // ignore: unused_element
-  Widget _entryRow({
-    required String label,
-    IconData? icon,
-    Widget? trailing,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildLogo() {
+    const double size = 88.0;
+    final BorderRadius radius = BorderRadius.circular(20.0);
+    if (_logo.isEmpty) {
+      return Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: _brandColor, borderRadius: radius),
+        child: const Icon(Icons.shopping_bag, size: 42.0, color: Colors.white),
+      );
+    }
+    return CachedNetworkImage(
+      imageUrl: _logo,
+      width: size,
+      height: size,
+      fit: BoxFit.cover,
+      imageBuilder: (BuildContext context, ImageProvider imageProvider) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          borderRadius: radius,
+          image: DecorationImage(image: imageProvider, fit: BoxFit.cover),
+        ),
+      ),
+      placeholder: (_, __) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: const Color(0xFFF5EAE0), borderRadius: radius),
+      ),
+      errorWidget: (_, __, ___) => Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(color: _brandColor, borderRadius: radius),
+        child: const Icon(Icons.shopping_bag, size: 42.0, color: Colors.white),
+      ),
+    );
+  }
+
+  /// 信息卡: 版本号 / 联系方式 / 运营主体 / 平台官网 / 平台资质 / ICP备案号
+  Widget _infoCard() {
+    final TextStyle valueStyle = const TextStyle(fontSize: 14.0, color: Color(0xFF666666));
+    const TextStyle linkStyle = TextStyle(fontSize: 14.0, color: Color(0xFF666666));
+
+    // 可点击行右侧: 文案 + 小箭头
+    Widget linkValue(String text) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(text, style: linkStyle),
+            const SizedBox(width: 2.0),
+            const Icon(Icons.chevron_right, size: 18.0, color: Color(0xFFBBBBBB)),
+          ],
+        );
+
+    final List<Widget> rows = <Widget>[
+      _row('版本号', Text(version.isEmpty ? '—' : version, style: valueStyle)),
+      _divider(),
+      _row('联系方式', Text(_contact, style: valueStyle)),
+      _divider(),
+      _row('运营主体', Text(_company, style: valueStyle)),
+      _divider(),
+      _row('平台官网', linkValue('访问官网'), onTap: () => _openUrl(_officialUrl)),
+      _divider(),
+      _row('平台资质', linkValue('查看资质'), onTap: () => Get.toNamed('/qualification')),
+      _divider(),
+      _row('ICP备案号', Text(_icpNo, style: valueStyle), onTap: () => _openUrl(_icpLink)),
+    ];
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.0),
+        boxShadow: <BoxShadow>[
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 16.0, offset: const Offset(0.0, 4.0)),
+        ],
+      ),
+      child: Column(children: rows),
+    );
+  }
+
+  /// 信息卡单行: 左标签 + 右值(整行可点)
+  Widget _row(String label, Widget value, {VoidCallback? onTap}) {
     return Material(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(0),
+      color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        child: Container(
+        child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
           child: Row(
             children: [
-              Expanded(
-                child: Text(label,
-                    style: const TextStyle(fontSize: 15.0, color: Color(0xFF333333))),
-              ),
-              if (icon != null)
-                Padding(
-                  padding: const EdgeInsets.only(right: 4.0),
-                  child: Icon(icon, size: 18.0, color: const Color(0xFF999999)),
-                ),
-              if (trailing != null) trailing,
+              Text(label, style: const TextStyle(fontSize: 15.0, color: Color(0xFF333333))),
+              const Spacer(),
+              value,
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _divider() {
+    return const Divider(height: 1.0, thickness: 0.5, color: Color(0xFFF2EDE8), indent: 16.0, endIndent: 16.0);
+  }
+
+  /// 底部版权: Copyright © 2023-<当前年份> 名称. All Rights Reserved.
+  Widget _copyrightText() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Text(
+        'Copyright © 2023-${DateTime.now().year} $_name. All Rights Reserved.',
+        textAlign: TextAlign.center,
+        style: const TextStyle(fontSize: 12.0, color: Color(0xFFB8AA9C)),
       ),
     );
   }

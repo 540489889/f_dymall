@@ -192,6 +192,13 @@ final Random likeRandom = Random();
 final ValueNotifier<List<Map<String, dynamic>>> danmuMessages = ValueNotifier<List<Map<String, dynamic>>>(const <Map<String, dynamic>>[]);
 // 已展示弹幕的 id 集合: 服务端重推同一条时不重复展示(H5 未去重, 这里补上)
 final Set<String> danmuIds = <String>{};
+// 弹幕待展示队列: history 等批量消息先攒在这里, 按节奏逐条放入展示队列
+// * 否则进直播间时整批历史一次性砸在弹幕区, 看起来像一块静态历史, 不像有人在陆续发言
+final List<Map<String, dynamic>> _danmuPending = <Map<String, dynamic>>[];
+// 逐条放出的定时器(队列放空自动停)
+Timer? _danmuRevealTimer;
+// 逐条放出间隔: 抖音直播间那种"一条条飘出来"的节奏
+static const Duration _danmuRevealInterval = Duration(milliseconds: 320);
 // 系统消息(msg_sys): {msg}, 转成公告条目并入弹幕队列(与H5 messageSys 一致, 不额外占版面)
 String sysMessage = '';
 // 进场消息(join): {user:{nickname}, msg}, 交给进场动效按顺序播放(与H5 merber_join 一致)
@@ -892,6 +899,9 @@ Future<void> _switchRoom(int index) async {
     // 上一个房间的实时数据不带过来: 弹幕/活动/进场/在线人数/点赞/讲解中商品
     danmuMessages.value = const <Map<String, dynamic>>[];
     danmuIds.clear();
+    // 待放出的历史弹幕也清掉(否则上一个房间的消息会漏进新房间)
+    _danmuPending.clear();
+    _stopDanmuReveal();
     activityList.value = const <Map<String, dynamic>>[];
     joinMessages.value = const <Map<String, dynamic>>[];
     roomOnline = 0;
@@ -1089,9 +1099,10 @@ void _onSocketMessage(Map<String, dynamic> msg) {
       _appendDanmu(data);
       break;
     // 历史消息: data 为历史弹幕数组(与 msg 同结构), 进入直播间时补齐已有弹幕
-    // * 直接复用 _appendDanmu: 同样按 mid 去重、队列上限 50 条(只保留最近的历史 + 实时)
+    // * 逐条放出(progressive): 一次全塞进去会像一块静态历史, 逐条飘出来才像有人在陆续发言
+    // * 同样按 mid 去重、队列上限 50 条(只保留最近的历史 + 实时)
     case 'history':
-      _appendDanmu(data);
+      _appendDanmu(data, progressive: true);
       break;
     // 系统消息: data 为 {msg}(与H5 messageSys 一致)
     case 'msg_sys':
@@ -1436,7 +1447,21 @@ Map<String, dynamic>? _pushedActivity(dynamic data, String type) {
 // 弹幕消息(msg): data 为消息数组 [{mid, user:{nickname, member_level, chatrole}, msg}](与H5 messageList 一致)
 // * 与H5 f-danmu.handleMessageArray 一致: 缺 user/msg 的条目丢弃
 // * mid 去重(服务端重推不重复展示); 队列上限 50 条, 超出移除最早的
-void _appendDanmu(dynamic data) {
+// * [progressive] = true 时逐条放出(history 历史消息走这条): 进直播间不会一整块砸在脸上,
+//   而是像用户正在陆续发言一样一条条飘出来
+void _appendDanmu(dynamic data, {bool progressive = false}) {
+  final List<Map<String, dynamic>> items = _collectDanmu(data);
+  if (items.isEmpty) return;
+  if (!progressive) {
+    _pushDanmuItems(items);
+    return;
+  }
+  _danmuPending.addAll(items);
+  _startDanmuReveal();
+}
+
+/// 归一化 + 去重(不动展示队列): 返回可入队的弹幕条目
+List<Map<String, dynamic>> _collectDanmu(dynamic data) {
   List<dynamic> list = const <dynamic>[];
   if (data is List) {
     list = data;
@@ -1449,9 +1474,7 @@ void _appendDanmu(dynamic data) {
       list = <dynamic>[data];
     }
   }
-  if (list.isEmpty) return;
-  final List<Map<String, dynamic>> items = danmuMessages.value.toList();
-  bool changed = false;
+  final List<Map<String, dynamic>> items = <Map<String, dynamic>>[];
   for (final dynamic raw in list) {
     if (raw is! Map) continue;
     final dynamic user = raw['user'];
@@ -1470,13 +1493,37 @@ void _appendDanmu(dynamic data) {
       // 主播身份(socket chatrole): 复用弹幕条目原有的角色标签字段, 不新增UI
       'tag': '${user['chatrole'] ?? ''}'.trim() == 'streamer' ? '主播' : null,
     });
-    changed = true;
   }
-  // 超出队列上限时移除最早的, 同时释放其去重标记
-  while (items.length > 50) {
-    danmuIds.remove('${items.removeAt(0)['id']}');
+  return items;
+}
+
+/// 入队展示: 超出 50 条时移除最早的, 同时释放其去重标记
+void _pushDanmuItems(List<Map<String, dynamic>> items) {
+  if (items.isEmpty) return;
+  final List<Map<String, dynamic>> next = danmuMessages.value.toList();
+  next.addAll(items);
+  while (next.length > 50) {
+    danmuIds.remove('${next.removeAt(0)['id']}');
   }
-  if (changed) danmuMessages.value = items;
+  danmuMessages.value = next;
+}
+
+/// 开始逐条放出: 每 [_danmuRevealInterval] 放一条, 队列空自动停
+void _startDanmuReveal() {
+  if (_danmuRevealTimer?.isActive == true) return;
+  _danmuRevealTimer = Timer.periodic(_danmuRevealInterval, (_) {
+    if (!mounted || _danmuPending.isEmpty) {
+      _stopDanmuReveal();
+      return;
+    }
+    _pushDanmuItems(<Map<String, dynamic>>[_danmuPending.removeAt(0)]);
+  });
+}
+
+/// 停止逐条放出(切房 / 页面销毁时调用)
+void _stopDanmuReveal() {
+  _danmuRevealTimer?.cancel();
+  _danmuRevealTimer = null;
 }
 
 // 系统消息(msg_sys): data 为 {msg}(与H5 messageSys 一致)
@@ -1779,6 +1826,8 @@ bool _isDemoRoom(int index) => false;
   _joinWatchdog?.cancel();
   // 活动倒计时: 离开直播间一并停掉
   activityTimer?.cancel();
+  // 弹幕逐条放出: 离开直播间停掉(不等历史放完就走, 定时器不能留着)
+  _stopDanmuReveal();
   // 开播倒计时(预告房间)
   countdownTimer?.cancel();
   _videoStableTimer?.cancel();
@@ -1945,14 +1994,17 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
     // 公告
     if (item['type'] == 'notice') {
       danmu.add(
-        Container(
-          margin: EdgeInsets.symmetric(vertical: 2.0),
-          padding: EdgeInsets.all(8.0),
-          decoration: BoxDecoration(
-            color: Colors.black26,
-            borderRadius: BorderRadius.circular(12.0),
+        // 入场动画: 从下方滑入 + 淡入(抖音直播间"冒出来往上顶一下"的观感)
+        DanmuEnterAnim(
+          child: Container(
+            margin: EdgeInsets.symmetric(vertical: 2.0),
+            padding: EdgeInsets.all(8.0),
+            decoration: BoxDecoration(
+              color: Colors.black26,
+              borderRadius: BorderRadius.circular(12.0),
+            ),
+            child: Text('${item['content']}', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: size),),
           ),
-          child: Text('${item['content']}', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: size),),
         ),
       );
     }
@@ -1965,55 +2017,57 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
     // 其它消息（直播聊天弹幕消息自适应布局: Flexible配合Text.rich / TextSpan）
     else {
       danmu.add(
-        Row(
-          children: [
-            Flexible(
-              child: Container(
-                margin: EdgeInsets.symmetric(vertical: 2.0),
-                padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
-                decoration: BoxDecoration(
-                  color: Colors.black26,
-                  borderRadius: BorderRadius.circular(12.0),
-                ),
-                child: Text.rich(
-                  TextSpan(
-                    children: [
-                      WidgetSpan(
-                        child: Visibility(
-                          visible: item['tag'] != null,
-                          child: Container(
-                            margin: EdgeInsets.only(right: 5.0,),
-                            padding: EdgeInsets.symmetric(horizontal: 5.0),
-                            decoration: BoxDecoration(
-                              color: Color(0xFFD631F3),
-                              borderRadius: BorderRadius.circular(12.0),
+        DanmuEnterAnim(
+          child: Row(
+            children: [
+              Flexible(
+                child: Container(
+                  margin: EdgeInsets.symmetric(vertical: 2.0),
+                  padding: EdgeInsets.symmetric(horizontal: 8.0, vertical: 2.0),
+                  decoration: BoxDecoration(
+                    color: Colors.black26,
+                    borderRadius: BorderRadius.circular(12.0),
+                  ),
+                  child: Text.rich(
+                    TextSpan(
+                      children: [
+                        WidgetSpan(
+                          child: Visibility(
+                            visible: item['tag'] != null,
+                            child: Container(
+                              margin: EdgeInsets.only(right: 5.0,),
+                              padding: EdgeInsets.symmetric(horizontal: 5.0),
+                              decoration: BoxDecoration(
+                                color: Color(0xFFD631F3),
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              child: Text('${item['tag']}', style: TextStyle(color: Colors.white, fontSize: size),),
+                              ),
+                              ),
+                              ),
+                              TextSpan(text: '${item['user']}：', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: size),),
+                              TextSpan(text: '${item['isbuy'] != null ? '下单1号商品' : item['content']}', style: TextStyle(color: item['isbuy'] != null ? Colors.yellow : Colors.white, fontSize: size),),
+                        WidgetSpan(
+                          child: Visibility(
+                            visible: item['isbuy'] != null,
+                            child: Container(
+                              margin: EdgeInsets.only(left: 5.0,),
+                              padding: EdgeInsets.symmetric(horizontal: 5.0),
+                              decoration: BoxDecoration(
+                                color: Color(0xFFFF2C55),
+                                borderRadius: BorderRadius.circular(12.0),
+                              ),
+                              child: Text('去购买', style: TextStyle(color: Colors.white, fontSize: size),),
                             ),
-                            child: Text('${item['tag']}', style: TextStyle(color: Colors.white, fontSize: size),),
-                            ),
-                            ),
-                            ),
-                            TextSpan(text: '${item['user']}：', style: TextStyle(color: Color(0xFF8CE7FF), fontSize: size),),
-                            TextSpan(text: '${item['isbuy'] != null ? '下单1号商品' : item['content']}', style: TextStyle(color: item['isbuy'] != null ? Colors.yellow : Colors.white, fontSize: size),),
-                      WidgetSpan(
-                        child: Visibility(
-                          visible: item['isbuy'] != null,
-                          child: Container(
-                            margin: EdgeInsets.only(left: 5.0,),
-                            padding: EdgeInsets.symmetric(horizontal: 5.0),
-                            decoration: BoxDecoration(
-                              color: Color(0xFFFF2C55),
-                              borderRadius: BorderRadius.circular(12.0),
-                            ),
-                            child: Text('去购买', style: TextStyle(color: Colors.white, fontSize: size),),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       );
     }
@@ -2784,16 +2838,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                   // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
                                   GestureDetector(
                                     behavior: HitTestBehavior.opaque,
-                                    child: Container(
-                                    alignment: Alignment.center,
-                                    height: 38.0,
-                                    width: 38.0,
-                                  decoration: BoxDecoration(
-                                    color: Colors.black26,
-                                    borderRadius: BorderRadius.circular(50.0),
-                                  ),
-                                  child: Image.asset('assets/images/more-copy.png', width: 27.0,),
-                                ),
+                                    // 每 5s 在「更多」与「微信分享」图标间循环切换;
+                                    // 圆底由组件内部控制: 分享态不带黑半透明圆(见 MoreSharePulseIcon)
+                                    child: const MoreSharePulseIcon(),
                                 onTap: () {
                                       navigator?.push(FadeRoute(
                                         effect: 'bottom',
@@ -3015,6 +3062,58 @@ class LikeHeart {
   final Color color;
 }
 
+/// 弹幕条目入场动画: 从下方轻微滑入 + 淡入
+/// * 抖音直播间那种"新消息冒出来、把上面的内容往上顶一下"的观感
+/// * 只在条目首次挂载时播一次: 列表后续重建(新消息入队)按位置复用 element, 不会重播;
+///   队列满 50 条淘汰最早一条时, 各条目整体前移一位, element 跟着复用, 也不会重播
+class DanmuEnterAnim extends StatefulWidget {
+  const DanmuEnterAnim({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<DanmuEnterAnim> createState() => _DanmuEnterAnimState();
+}
+
+class _DanmuEnterAnimState extends State<DanmuEnterAnim> with SingleTickerProviderStateMixin {
+  late final AnimationController controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 260),
+  );
+  late final Animation<double> anim = CurvedAnimation(parent: controller, curve: Curves.easeOut);
+
+  @override
+  void initState() {
+    super.initState();
+    controller.forward();
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (BuildContext context, Widget? child) {
+        final double t = anim.value.clamp(0.0, 1.0);
+        return Opacity(
+          opacity: t,
+          // 从下方 8px 滑到原位; 列表同时自动滚到底 -> 视觉上是把上面的内容往上顶
+          child: Transform.translate(
+            offset: Offset(0.0, (1 - t) * 8.0),
+            child: child,
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
 /// 点赞飘心动画
 /// * 位移与缩放 ease-out 跟随, 透明度 0%→20% 淡入、20%→100% 淡出(对齐H5 likeFloat1~4 关键帧)
 /// * 动画结束后回调上层从队列移除, 避免节点堆积
@@ -3150,5 +3249,85 @@ class _DanmuScrollViewState extends State<DanmuScrollView> {
     );
     // 高度交给外层 Expanded(横屏下方聊天区随下半屏撑满), 否则固定高度(竖屏底部弹幕区)
     return widget.expanded ? list : SizedBox(height: widget.height, child: list);
+  }
+}
+
+/// 直播间底部「更多/分享」脉冲图标(输入框右侧第一个按钮用)
+/// * 每 5s 在「更多」(more-copy.png)与「微信分享」(share-wx.png)之间切换一次, 循环往复
+/// * 淡入 + 轻微放大过渡; 两个图标都装进同尺寸 SizedBox, 切换时不会引起按钮抖动
+/// * 两个图标都按素材原色渲染: 不加 color 染色
+/// * 背景: 只有「更多」态有黑半透明圆底; 切成 share-wx.png 时圆底一并隐去
+///   (share-wx.png 自身就是圆形图标, 再套一层黑圆会显得厚重), 用 AnimatedContainer 平滑过渡
+/// * 点击行为由外层 GestureDetector 决定(打开更多框), 这里只管图标与圆底
+class MoreSharePulseIcon extends StatefulWidget {
+  const MoreSharePulseIcon({
+    super.key,
+    this.buttonSize = 38.0,
+    this.iconSize = 27.0,
+    this.interval = const Duration(seconds: 5),
+  });
+
+  /// 按钮尺寸(与外层 GestureDetector 的点击区域一致)
+  final double buttonSize;
+  /// 图标尺寸
+  final double iconSize;
+  /// 切换间隔
+  final Duration interval;
+
+  @override
+  State<MoreSharePulseIcon> createState() => _MoreSharePulseIconState();
+}
+
+class _MoreSharePulseIconState extends State<MoreSharePulseIcon> {
+  Timer? _timer;
+  bool _showShare = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(widget.interval, (_) {
+      if (!mounted) return;
+      setState(() => _showShare = !_showShare);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _timer = null;
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final double iconSize = widget.iconSize;
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+      width: widget.buttonSize,
+      height: widget.buttonSize,
+      // 分享态用白色圆底(视频画面上更亮更醒目), 「更多」态仍是黑半透明圆
+      decoration: BoxDecoration(
+        color: _showShare ? Colors.white : Colors.black26,
+        shape: BoxShape.circle,
+      ),
+      alignment: Alignment.center,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 350),
+        transitionBuilder: (Widget child, Animation<double> animation) => FadeTransition(
+          opacity: animation,
+          child: ScaleTransition(scale: animation, child: child),
+        ),
+        child: Image.asset(
+          _showShare ? 'assets/images/share-wx.png' : 'assets/images/more-copy.png',
+          // key 变化才会触发切换动画
+          key: ValueKey<bool>(_showShare),
+          // 分享态: 黑圆已隐去, 图标放大到与黑圆同尺寸, 视觉大小接上不缩水
+          width: _showShare ? widget.buttonSize : iconSize,
+          height: _showShare ? widget.buttonSize : iconSize,
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
   }
 }

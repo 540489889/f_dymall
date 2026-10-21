@@ -29,13 +29,15 @@ class StoreDetailPage extends StatefulWidget {
 class _StoreDetailPageState extends State<StoreDetailPage> {
   static const Color primary = Color(0xFFFF2C55);
   static const Color bgColor = Color(0xFFF5F6FA);
-  static const Color subColor = Color(0xFF999CA7);
+  // 次要文字(营业时间/地址): 原来的 #999CA7 在白底上对比度只有约 2.8:1, 又浅又小看不清,
+  // 加深到 #6B6F7C(约 5.3:1)保证可读性
+  static const Color subColor = Color(0xFF6B6F7C);
   // 营业中(H5 .store-state)
   static const Color stateColor = Color(0xFF66AD95);
   // 休息中 / 已停业(H5 .store-state.warning)
   static const Color stateWarningColor = Colors.red;
-  // 服务标签(H5 .tag-item)
-  static const Color tagColor = Color(0xFF6F7DAD);
+  // 服务标签(H5 .tag-item): 同步加深一档, 与 subColor 视觉重量接近
+  static const Color tagColor = Color(0xFF5C6A9E);
   static const Color tagBgColor = Color(0xFFF4F5FA);
   static const Color lineColor = Color(0xFFEDEDED);
 
@@ -336,7 +338,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
             ),
             child: Text(
               stateText,
-              style: TextStyle(fontSize: 11.0, color: stateWarning ? stateWarningColor : stateColor),
+              style: TextStyle(fontSize: 12.0, color: stateWarning ? stateWarningColor : stateColor),
             ),
           ),
         ],
@@ -361,7 +363,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
             const SizedBox(height: 6.0),
           ],
           if (openDate.isNotEmpty)
-            Text(openDate, style: const TextStyle(fontSize: 12.0, color: subColor)),
+            Text(openDate, style: const TextStyle(fontSize: 13.0, color: subColor)),
           if (tags.isNotEmpty) ...<Widget>[
             const SizedBox(height: 8.0),
             Wrap(
@@ -371,7 +373,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
                   .map((String e) => Container(
                         padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 4.0),
                         decoration: BoxDecoration(color: tagBgColor, borderRadius: BorderRadius.circular(3.0)),
-                        child: Text(e, style: const TextStyle(fontSize: 11.0, color: tagColor)),
+                        child: Text(e, style: const TextStyle(fontSize: 12.0, color: tagColor)),
                       ))
                   .toList(),
             ),
@@ -394,7 +396,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
           Expanded(
             child: Text(
               address,
-              style: const TextStyle(fontSize: 12.0, color: subColor, height: 1.5),
+              style: const TextStyle(fontSize: 13.0, color: subColor, height: 1.5),
             ),
           ),
           const SizedBox(width: 10.0),
@@ -479,7 +481,7 @@ class _StoreDetailPageState extends State<StoreDetailPage> {
       children: <Widget>[
         const Icon(Icons.location_on_outlined, size: 28.0, color: tagColor),
         const SizedBox(height: 6.0),
-        const Text('门店未配置经纬度，点击按地址搜索', style: TextStyle(fontSize: 12.0, color: tagColor)),
+        const Text('门店未配置经纬度，点击按地址搜索', style: TextStyle(fontSize: 13.0, color: tagColor)),
       ],
     );
   }

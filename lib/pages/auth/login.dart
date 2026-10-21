@@ -116,7 +116,12 @@ class _LoginState extends State<Login> {
     // 等平台配置回来(决定协议是否展示),再决定是否直接拉起
     await loadConfig();
     if (!mounted) return;
-    // 不支持一键登录: 保持默认(验证码登录),什么都不做
+    // 先预检环境(有无 SIM 卡): 决定"本机号码一键登录"入口是否显示,
+    // 预检完成后刷新一次,让入口可见性(showOneKeyEntry)按最新 available 重建
+    await AliOneKey.prefetch();
+    if (!mounted) return;
+    setState(() {});
+    // 预检不可用(无 SIM 卡 / 未配置密钥 / 端上不支持): 不展示入口也不自动拉起
     if (!AliOneKey.available) return;
     // 等首帧绘制完再拉授权页,避免和路由转场动画抢
     await Future<void>.delayed(const Duration(milliseconds: 300));
@@ -228,8 +233,10 @@ class _LoginState extends State<Login> {
           formError = message;
       }
     });
-    // 字段级错误改为 Toast 提示,不在输入框下方展示文字(避免布局被挤占)
-    if (errField != 'agreement') MyDialog.toast(message);
+    // 字段级错误(mobile/dynacode/account/pwd/vercode)只让对应输入框变红,
+    // 不再弹 Toast 文字提示;仅服务端返回且无法归属到具体输入框的错误(formError)
+    // 才用 Toast 提示(如"账号或密码错误")
+    if (errField.isEmpty) MyDialog.toast(message);
   }
 
   /// 清空全部错误提示
@@ -775,7 +782,7 @@ class _LoginState extends State<Login> {
     return Align(
       alignment: Alignment.centerRight,
       child: GestureDetector(
-        onTap: () => MyDialog.toast('忘记密码功能开发中'),
+        onTap: () => Get.toNamed('/forgot_password'),
         child: const Text(
           '忘记密码',
           style: TextStyle(fontSize: 12.5, color: Color(0xFF2C8DFA)),
@@ -1039,7 +1046,7 @@ class _LoginState extends State<Login> {
           borderRadius: BorderRadius.circular(24.0),
           child: InkWell(
             borderRadius: BorderRadius.circular(24.0),
-            onTap: submitting ? null : handleSubmit,
+            onTap: submitting || anySocialBusy ? null : handleSubmit,
             child: Center(
               child: submitting
                   ? const SizedBox(width: 20.0, height: 20.0, child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white))
@@ -1143,6 +1150,10 @@ class _LoginState extends State<Login> {
   /// 是否展示「本机号码一键登录」文字入口(端上支持阿里云一键登录时)
   bool get showOneKeyEntry => AliOneKey.available;
 
+  /// 任一第三方登录入口处于请求中(微信 / 一键登录): 期间禁用其它登录入口,
+  /// 避免并发点击(如点微信登录的同时又去点 Apple / 一键登录 / 主登录按钮)
+  bool get anySocialBusy => wxSubmitting || aliSubmitting;
+
   /// 其他登录方式: 微信授权登录 / Apple登录
   /// * 没装微信就不显示微信;设备不支持 Apple 登录就不显示 Apple;两个都没有则整块不展示
   Widget _buildSocialLogin() {
@@ -1169,7 +1180,7 @@ class _LoginState extends State<Login> {
                   text: '微信授权登录',
                   icon: Icons.wechat,
                   bgColor: const Color(0xFF19C650),
-                  onTap: wxSubmitting ? null : handleWxLogin,
+                  onTap: anySocialBusy ? null : handleWxLogin,
                   loading: wxSubmitting,
                 ),
               ),
@@ -1180,7 +1191,7 @@ class _LoginState extends State<Login> {
                   text: 'Apple登录',
                   icon: Icons.apple,
                   bgColor: const Color(0xFF1C1C1E),
-                  onTap: () => MyDialog.toast('Apple登录功能开发中'),
+                  onTap: anySocialBusy ? null : () => MyDialog.toast('Apple登录功能开发中'),
                   loading: false,
                 ),
               ),
@@ -1197,8 +1208,8 @@ class _LoginState extends State<Login> {
     return Center(
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        // 拉起授权页期间(aliSubmitting)禁用, 避免重复唤起
-        onTap: aliSubmitting ? null : handleAliLogin,
+        // 任一第三方登录入口进行中(含微信)禁用, 避免并发点击
+        onTap: anySocialBusy ? null : handleAliLogin,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 6.0),
           child: Text(

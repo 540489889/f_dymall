@@ -29,11 +29,6 @@ class _SeckillListPageState extends State<SeckillListPage> {
   /// 按钮渐变(马上抢)
   static const Color orangeFrom = Color(0xFFFF8A2B);
   static const Color orangeTo = Color(0xFFFFA62E);
-  /// 顶部渐变背景
-  static const Color headFrom = Color(0xFFFF7C3D);
-  static const Color headTo = Color(0xFFFFB256);
-  /// 倒计时深色条
-  static const Color countdownBar = Color(0xFF35324A);
   /// 页面底色(米白)
   static const Color bgColor = Color(0xFFFFF8F1);
   /// 时间轴未选中灰
@@ -159,21 +154,22 @@ class _SeckillListPageState extends State<SeckillListPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
-        foregroundColor: Colors.white,
+        // 标题/返回箭头改为橙色, 星星金黄色(与截图一致)
+        foregroundColor: const Color(0xFFFF6B2A),
         elevation: 0,
         title: const Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Icon(Icons.auto_awesome, size: 13.0, color: Color(0xFFFFE3A8)),
+            Icon(Icons.auto_awesome, size: 13.0, color: Color(0xFFFFC53D)),
             SizedBox(width: 5.0),
-            Text('限时秒杀', style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600)),
+            Text('限时秒杀', style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w700, color: Color(0xFFFF6B2A))),
             SizedBox(width: 5.0),
-            Icon(Icons.auto_awesome, size: 13.0, color: Color(0xFFFFE3A8)),
+            Icon(Icons.auto_awesome, size: 13.0, color: Color(0xFFFFC53D)),
           ],
         ),
         centerTitle: true,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Colors.white),
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Color(0xFFFF6B2A)),
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
@@ -217,19 +213,13 @@ class _SeckillListPageState extends State<SeckillListPage> {
     );
   }
 
-  /// 秒杀顶部头部：渐变背景向上延伸到状态栏/标题栏，标题栏透明叠加，整体不分层
+  /// 秒杀顶部头部：去掉整块渐变背景(与页面底色融为一体), 仅保留顶部留白容纳标题栏
+  /// * 标题栏透明叠加, 倒计时胶囊自带橙色渐变背景, 保留
   Widget _buildHeader() {
-    // 顶部留白 = 状态栏高度 + 标题栏高度，让渐变从屏幕最顶端开始
-    final double top = MediaQuery.of(context).padding.top + kToolbarHeight;
+    // 顶部留白 = 状态栏 + 标题栏高度 - 4, 上移让倒计时紧贴标题下方, 留一点点间隙
+    final double top = MediaQuery.of(context).padding.top + kToolbarHeight - 4.0;
     return Container(
       padding: EdgeInsets.only(top: top),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: <Color>[headFrom, headTo], begin: Alignment.centerLeft, end: Alignment.centerRight),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(20.0),
-          bottomRight: Radius.circular(20.0),
-        ),
-      ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
@@ -248,25 +238,34 @@ class _SeckillListPageState extends State<SeckillListPage> {
     final String tip = status == 1 ? '本场还剩' : (status == 0 ? '本场已结束' : '距开始还剩');
     final String tail = status == 1 ? '结束' : (status == 0 ? '' : '开始');
     return Container(
-      margin: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 14.0),
-      padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 9.0),
+      margin: const EdgeInsets.fromLTRB(12.0, 0, 12.0, 8.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 11.0),
       decoration: BoxDecoration(
-        color: countdownBar,
-        borderRadius: BorderRadius.circular(20.0),
+        // 橙色渐变大胶囊(左浅右深), 比深色条更醒目
+        gradient: const LinearGradient(
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
+          colors: <Color>[Color(0xFFFFA24E), Color(0xFFFF6B2A)],
+        ),
+        borderRadius: BorderRadius.circular(24.0),
         boxShadow: <BoxShadow>[
-          BoxShadow(color: Colors.black.withValues(alpha: 0.12), blurRadius: 10.0, offset: const Offset(0, 4)),
+          BoxShadow(
+            color: const Color(0xFFFF7A35).withValues(alpha: 0.30),
+            blurRadius: 12.0,
+            offset: const Offset(0, 5),
+          ),
         ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: <Widget>[
-          const Icon(Icons.alarm, color: Color(0xFFFFC24B), size: 16.0),
-          const SizedBox(width: 6.0),
-          Text(tip, style: const TextStyle(color: Colors.white, fontSize: 12.0)),
-          const SizedBox(width: 8.0),
+          const Icon(Icons.alarm_rounded, color: Colors.white, size: 20.0),
+          const SizedBox(width: 7.0),
+          Text(tip, style: const TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 9.0),
           if (status != 0) ..._buildTimeBlocks(remain),
-          if (status != 0) const SizedBox(width: 2.0),
-          Text(tail, style: const TextStyle(color: Colors.white, fontSize: 12.0)),
+          if (status != 0) const SizedBox(width: 3.0),
+          Text(tail, style: const TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700)),
         ],
       ),
     );
@@ -277,7 +276,7 @@ class _SeckillListPageState extends State<SeckillListPage> {
     return SizedBox(
       width: 90.0,
       child: ListView.separated(
-        padding: const EdgeInsets.only(top: 16.0, bottom: 24.0),
+        padding: const EdgeInsets.only(top: 8.0, bottom: 24.0),
         itemCount: timeList.length,
         separatorBuilder: (_, __) => const SizedBox(height: 12.0),
         itemBuilder: (BuildContext context, int index) => _buildRailItem(timeList[index], index),
@@ -374,6 +373,8 @@ class _SeckillListPageState extends State<SeckillListPage> {
                 children: <Widget>[
                   Text(
                     item.startTimeText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: active ? const Color(0xFF3A352F) : (inProgress ? aux : textGray),
                       fontSize: active ? 16.0 : 15.0,
@@ -400,7 +401,7 @@ class _SeckillListPageState extends State<SeckillListPage> {
       child: ListView(
         // 内容不满一屏也可下拉刷新
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(0, 12.0, 12.0, 16.0),
+        padding: const EdgeInsets.fromLTRB(0, 8.0, 12.0, 16.0),
         children: <Widget>[
           if (goodsLoading)
             const Padding(padding: EdgeInsets.all(30.0), child: Center(child: Loading()))
@@ -419,24 +420,24 @@ class _SeckillListPageState extends State<SeckillListPage> {
     final int s = seconds % 60;
     return <Widget>[
       _buildBlock(_pad(h)),
-      const Text(' : ', style: TextStyle(color: Color(0xFFFFC24B), fontSize: 12.0, fontWeight: FontWeight.w700)),
+      const Text(' : ', style: TextStyle(color: Colors.white, fontSize: 15.0, fontWeight: FontWeight.w800)),
       _buildBlock(_pad(m)),
-      const Text(' : ', style: TextStyle(color: Color(0xFFFFC24B), fontSize: 12.0, fontWeight: FontWeight.w700)),
+      const Text(' : ', style: TextStyle(color: Colors.white, fontSize: 15.0, fontWeight: FontWeight.w800)),
       _buildBlock(_pad(s)),
     ];
   }
 
   Widget _buildBlock(String text) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 1.0),
-      padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
+      margin: const EdgeInsets.symmetric(horizontal: 2.0),
+      padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(4.0),
+        borderRadius: BorderRadius.circular(6.0),
       ),
       child: Text(
         text,
-        style: const TextStyle(color: countdownBar, fontSize: 13.0, fontWeight: FontWeight.w700, fontFamily: 'Arial'),
+        style: const TextStyle(color: Color(0xFFFF5B1C), fontSize: 16.0, fontWeight: FontWeight.w800, fontFamily: 'Arial'),
       ),
     );
   }
@@ -494,31 +495,42 @@ class _SeckillListPageState extends State<SeckillListPage> {
                   ),
                   const SizedBox(height: 10.0),
                   // 秒杀价 + 划线原价
+                  // * 两个价格都包 Flexible(宽松 fit): 正常长度时按自身宽度渲染不压缩,
+                  //   放不下时才省略 —— 长原价(如 ¥3082.00)或 Arial 回退成宽字形时也不会把行撑爆
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.baseline,
                     textBaseline: TextBaseline.alphabetic,
                     children: <Widget>[
                       const Text('¥', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w600)),
-                      Text(
-                        _money(price),
-                        style: const TextStyle(
-                          color: primary,
-                          fontSize: 20.0,
-                          fontWeight: FontWeight.w700,
-                          fontFamily: 'Arial',
-                        ),
-                      ),
-                      if (origin > price) ...<Widget>[
-                        const SizedBox(width: 6.0),
-                        Text(
-                          '¥${_money(origin)}',
+                      Flexible(
+                        child: Text(
+                          _money(price),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
-                            color: textGray,
-                            fontSize: 11.0,
-                            decoration: TextDecoration.lineThrough,
+                            color: primary,
+                            fontSize: 20.0,
+                            fontWeight: FontWeight.w700,
+                            fontFamily: 'Arial',
                           ),
                         ),
-                      ],
+                      ),
+                      if (origin > price)
+                        Flexible(
+                          child: Padding(
+                            padding: const EdgeInsets.only(left: 6.0),
+                            child: Text(
+                              '¥${_money(origin)}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: textGray,
+                                fontSize: 11.0,
+                                decoration: TextDecoration.lineThrough,
+                              ),
+                            ),
+                          ),
+                        ),
                     ],
                   ),
                   const SizedBox(height: 6.0),

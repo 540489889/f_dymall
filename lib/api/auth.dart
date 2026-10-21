@@ -69,6 +69,38 @@ class AuthApi {
     return _pickString(res, 'key');
   }
 
+  /// 发送忘记密码验证码(/api/Login/forgotPasswordCode),返回后续校验用的 key
+  /// * [mobile] 手机号
+  static Future<String> forgotPasswordCode({required String mobile}) async {
+    final dynamic res = await Request().post(
+      '/api/Login/forgotPasswordCode',
+      data: <String, dynamic>{'mobile': mobile},
+    );
+    return _pickString(res, 'key');
+  }
+
+  /// 重置密码(/api/Login/forgotPassword)
+  /// * [mobile] 手机号
+  /// * [key] 发送验证码时返回的 key
+  /// * [code] 手机收到的验证码
+  /// * [password] 新密码
+  static Future<void> forgotPassword({
+    required String mobile,
+    required String key,
+    required String code,
+    required String password,
+  }) async {
+    await Request().post(
+      '/api/Login/forgotPassword',
+      data: <String, dynamic>{
+        'mobile': mobile,
+        'key': key,
+        'code': code,
+        'password': password,
+      },
+    );
+  }
+
   /// 用户名注册(/api/register/username)
   static Future<Map<String, dynamic>> registerUsername({
     required String username,

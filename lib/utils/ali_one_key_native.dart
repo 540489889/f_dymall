@@ -38,8 +38,29 @@ class AliOneKey {
       (Platform.isAndroid && Config.aliAndroidSk.trim().isNotEmpty) ||
       (Platform.isIOS && Config.aliIosSk.trim().isNotEmpty);
 
-  /// 是否可以展示入口
-  static bool get available => supported && configured;
+  /// 环境是否可用(已预检: 端上支持 + 已配密钥 + 设备装有 SIM 卡/能取到运营商)
+  /// * 进入登录页时由 prefetch() 异步填充,默认 false(未预检前不展示入口)
+  static bool _envReady = false;
+
+  /// 是否可以展示入口(端上支持 + 已配密钥 + 已预检通过)
+  static bool get available => supported && configured && _envReady;
+
+  /// 预检一键登录环境: 通过运营商名称判断设备是否装有 SIM 卡
+  /// * 阿里云只有在真正拉起授权页时才会返回 600007(未检测到 SIM 卡),
+  ///   为避免"无卡却显示一键登录入口",进入登录页先做一次轻量预检
+  /// * 无 SIM / 取不到运营商名 / 调用异常 都视为不可用,入口不展示
+  static Future<void> prefetch() async {
+    if (!supported || !configured) {
+      _envReady = false;
+      return;
+    }
+    try {
+      final String carrier = await AliAuth.getCurrentCarrierName();
+      _envReady = carrier.trim().isNotEmpty;
+    } catch (_) {
+      _envReady = false;
+    }
+  }
 
   /// 阿里云授权页 UI 配置(对齐 H5 univerifyStyle: 主色 + 协议前置勾选文案)
   static AliAuthModel _config() {

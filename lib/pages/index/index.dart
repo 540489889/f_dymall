@@ -27,13 +27,13 @@ import '../../utils/index.dart';
 import '../../api/goods.dart';
 import '../../api/live.dart';
 import '../../pages/live/index.dart';
+import '../../pages/live/scan.dart';
 import '../../api/seckill.dart';
 import '../../api/cart.dart';
 import '../../controller/auth_store.dart';
 import '../../controller/app_config.dart';
 import '../../controller/my_preload.dart';
 import '../../api/index.dart';
-import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
 import 'package:flutter/services.dart';
 class IndexPage extends StatefulWidget {
   const IndexPage({super.key});
@@ -136,6 +136,10 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   Worker? _goodsFormatWorker;
   // 监听 goods_list_config(商品列表字段开关)的 worker: 配置异步到达后重建商品卡片
   Worker? _goodsListCfgWorker;
+  // 热搜词(/api/goods/hotSearchWords): 在搜索框内轮播展示, 每 10s 换一个
+  List<String> hotWords = <String>[];
+  int hotWordIndex = 0;
+  Timer? _hotWordTimer;
   // 当前页码
   int page = 1;
   // 每页条数
@@ -402,80 +406,6 @@ Future<void> _guard(Future<void> task) async {
   } catch (e) {
     debugPrint('[index]首页刷新异常: $e');
   }
-}
-
-/// 首页扫码: 打开全屏扫码界面,扫到结果后弹窗展示并支持复制
-Future<void> _handleScan(BuildContext context) async {
-  final BarcodeCapture? capture = await showAiBarcodeScanner(
-    context,
-    // 组件文案默认是英文,逐项覆盖为中文
-    labels: const ScannerLabels(
-      galleryButton: '从相册选择',
-      galleryTooltip: '从图片中识别二维码',
-      torchOnTooltip: '关闭闪光灯',
-      torchOffTooltip: '打开闪光灯',
-      torchAutoTooltip: '闪光灯为自动模式',
-      switchCameraTooltip: '切换摄像头',
-      switchLensTooltip: '切换镜头',
-      closeTooltip: '关闭',
-      zoomTooltip: '缩放',
-      resetZoomTooltip: '重置缩放',
-      scanHint: '将二维码放入框内,即可自动扫描',
-      scanHintIdle: '保持稳定,稍微靠近一些',
-      doneButton: '完成',
-      retryButton: '重试',
-      openSettingsButton: '去设置',
-      cameraErrorTitle: '相机启动失败',
-      cameraErrorMessage: '请检查相机权限或稍后重试',
-      permissionDeniedTitle: '未获取相机权限',
-      permissionDeniedMessage: '请在系统设置中开启相机权限后重试',
-      cameraUnsupportedTitle: '无法使用扫码功能',
-      cameraUnsupportedMessage: '当前设备没有可用的摄像头',
-      startingCamera: '正在启动相机…',
-      noBarcodeFoundInImage: '该图片中未找到二维码',
-      galleryUnsupported: '当前平台不支持从相册识别',
-      invalidBarcode: '该二维码无法识别',
-      copiedConfirmation: '已复制',
-    ),
-    // 只接受有内容的码,其余继续扫描
-    validator: (BarcodeCapture capture) => _firstRawValue(capture).isNotEmpty,
-  );
-
-  final String code = _firstRawValue(capture);
-  if (code.isEmpty) return;
-  if (!mounted) return;
-  if (!context.mounted) return;
-  await showDialog(
-    context: context,
-    builder: (BuildContext ctx) => AlertDialog(
-      title: const Text('扫码结果'),
-      content: SelectableText(code, style: const TextStyle(fontSize: 14.0)),
-      actions: <Widget>[
-        TextButton(
-          onPressed: () {
-            Clipboard.setData(ClipboardData(text: code));
-            Navigator.of(ctx).pop();
-            Get.snackbar('提示', '已复制到剪贴板');
-          },
-          child: const Text('复制'),
-        ),
-        TextButton(
-          onPressed: () => Navigator.of(ctx).pop(),
-          child: const Text('关闭'),
-        ),
-      ],
-    ),
-  );
-}
-
-/// 取扫码结果里第一个非空原始值
-String _firstRawValue(BarcodeCapture? capture) {
-  if (capture == null) return '';
-  for (final Barcode barcode in capture.barcodes) {
-    final String raw = (barcode.rawValue ?? '').trim();
-    if (raw.isNotEmpty) return raw;
-  }
-  return '';
 }
 
 // 首页直播信息(无直播间时不展示直播板块): 拿到拉流地址后首页静音预览
@@ -1037,6 +967,8 @@ void initState() {
   handleRefresh();
   // 购物车数量(搜索栏角标)
   loadCartCount();
+  // 热搜词(搜索框内轮播展示)
+  loadHotSearchWords();
   // 秒杀倒计时(每秒局部刷新)
   seckillTimer = Timer.periodic(const Duration(seconds: 1), (_) => _tickSeckill());
 
@@ -1336,6 +1268,32 @@ void initState() {
 
   String _two(int v) => v < 10 ? '0$v' : '$v';
 
+  /// 热搜词(/api/goods/hotSearchWords): 拉到后在搜索框内轮播展示
+  /// * 接口异常 / 返回为空时保持默认占位文案("请输入关键字搜索"), 不展示热搜
+  Future<void> loadHotSearchWords() async {
+    final List<String> words = await GoodsApi.hotSearchWords();
+    if (!mounted || words.isEmpty) return;
+    setState(() {
+      hotWords = words;
+      hotWordIndex = 0;
+    });
+    _startHotWordTimer();
+  }
+
+  /// 热搜词轮播: 每 10s 换一个(只有一个词时没必要轮播)
+  void _startHotWordTimer() {
+    _hotWordTimer?.cancel();
+    if (hotWords.length < 2) return;
+    _hotWordTimer = Timer.periodic(const Duration(seconds: 10), (_) {
+      if (!mounted || hotWords.isEmpty) return;
+      setState(() => hotWordIndex = (hotWordIndex + 1) % hotWords.length);
+    });
+  }
+
+  /// 当前搜索框内展示的热搜词(无热搜时回退默认占位文案)
+  String get _hotWordText =>
+      hotWords.isEmpty ? '请输入关键字搜索' : hotWords[hotWordIndex % hotWords.length];
+
   // 秒杀商品卡(首页板块): 图 + 标题 + 秒杀价 + 原价
   Widget _buildSeckillItem(Map<String, dynamic> item) {
     final String image = '${item['image'] ?? ''}';
@@ -1393,27 +1351,38 @@ void initState() {
               ],
             ),
             SizedBox(height: 5.0),
+            // 标题字号与首页商品列表卡片统一(15sp): 两个板块标题看起来一致
             Text(
               '${item['title'] ?? ''}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontSize: 12.0, color: Colors.black87),
+              style: TextStyle(fontSize: 15.0, height: 1.2, color: Colors.black87),
             ),
             SizedBox(height: 2.0),
+            // 价格行: 卡片只有 104px 宽, 两个价格都包 Flexible + 省略号
+            // * 正常长度按自身宽度渲染不压缩; 长原价 / Arial 回退成宽字形时省略而不是撑爆右侧
             Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
               children: [
                 Text('¥', style: TextStyle(color: Color(0xFFFF2C55), fontSize: 10.0)),
-                Text(
-                  seckillPrice.toStringAsFixed(2),
-                  style: TextStyle(color: Color(0xFFFF2C55), fontSize: 15.0, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                Flexible(
+                  child: Text(
+                    seckillPrice.toStringAsFixed(2),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: Color(0xFFFF2C55), fontSize: 15.0, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
+                  ),
                 ),
                 if (price > seckillPrice) ...[
                   SizedBox(width: 4.0),
-                  Text(
-                    '¥${price.toStringAsFixed(2)}',
-                    style: TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough),
+                  Flexible(
+                    child: Text(
+                      '¥${price.toStringAsFixed(2)}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough),
+                    ),
                   ),
                 ],
               ],
@@ -1557,6 +1526,7 @@ void initState() {
     _connectivitySub?.cancel();
     _goodsFormatWorker?.dispose();
     _goodsListCfgWorker?.dispose();
+    _hotWordTimer?.cancel();
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();
@@ -1704,6 +1674,8 @@ void initState() {
                           final String name = AuthStore.to.storeName;
                           // 已绑定就显示门店名(拿不到名字才回退"内部门店"),未绑定显示"绑定门店"
                           final String label = bound ? (name.isNotEmpty ? name : '内部门店') : '绑定门店';
+                          // 门店名超过 8 个字才省略(取前 8 个字 + 省略号)
+                          final String shown = label.length > 8 ? '${label.substring(0, 8)}…' : label;
                           return Material(
                             color: Colors.transparent,
                             child: InkWell(
@@ -1735,19 +1707,16 @@ void initState() {
                                   children: <Widget>[
                                     const Icon(Icons.store, color: Colors.white, size: 18.0),
                                     const SizedBox(width: 5.0),
-                                    // 门店名可能很长: 限宽 + 单行省略,不把 logo 挤出屏幕
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 96.0),
-                                      child: Text(
-                                        label,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontSize: 14.0,
-                                          fontWeight: FontWeight.w600,
-                                          height: 1.1,
-                                        ),
+                                    // 门店名超过 8 个字才省略(上面已按字数截断)
+                                    Text(
+                                      shown,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 14.0,
+                                        fontWeight: FontWeight.w600,
+                                        height: 1.1,
                                       ),
                                     ),
                                     const SizedBox(width: 2.0),
@@ -1792,17 +1761,37 @@ void initState() {
                                   child: GestureDetector(
                                     behavior: HitTestBehavior.opaque,
                                     onTap: () => Get.toNamed('/search'),
-                                    child: const Align(
+                                    child: Align(
                                       alignment: Alignment.centerLeft,
-                                      child: Text(
-                                        '请输入关键字搜索',
-                                        style: TextStyle(color: Color(0xFFBBBBBB), fontSize: 14.0),
+                                      // 热搜词轮播: 每 10s 换一个, 淡入 + 上滑过渡
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(milliseconds: 400),
+                                        transitionBuilder: (Widget child, Animation<double> animation) =>
+                                            FadeTransition(
+                                          opacity: animation,
+                                          child: SlideTransition(
+                                            position: Tween<Offset>(
+                                              begin: const Offset(0.0, 0.4),
+                                              end: Offset.zero,
+                                            ).animate(animation),
+                                            child: child,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          _hotWordText,
+                                          // key 变化才会触发切换动画
+                                          key: ValueKey<String>(_hotWordText),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(color: Color(0xFFBBBBBB), fontSize: 14.0),
+                                        ),
                                       ),
                                     ),
                                   ),
                                 ),
                                 InkWell(
-                                  onTap: () => _handleScan(context),
+                                  // 与直播页扫一扫一致: 进扫码/直播码入口页(不再直接拉起相机)
+                                  onTap: () => Get.to(() => const LiveScanPage()),
                                   child: Padding(
                                     padding: EdgeInsets.symmetric(horizontal: 8.0),
                                     child: Image.asset('assets/images/icon_sm.png', width: 22.0, height: 22.0, fit: BoxFit.contain, isAntiAlias: true),
@@ -2194,7 +2183,8 @@ void initState() {
                       behavior: HitTestBehavior.opaque,
                       child: Row(
                         children: [
-                          Icon(Icons.bolt, color: Color(0xFFFF2C55), size: 26.0),
+                          Image.asset('assets/images/ms-ico.png',
+                              width: 24.0, height: 24.0, fit: BoxFit.contain, isAntiAlias: true),
                           SizedBox(width: 5.0),
                           Text('限时秒杀', style: TextStyle(color: Colors.black87, fontSize: 18.0, fontWeight: FontWeight.w900)),
                           SizedBox(width: 8.0),

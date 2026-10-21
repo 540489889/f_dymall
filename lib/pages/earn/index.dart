@@ -400,7 +400,13 @@ class _EarnPageState extends State<EarnPage> {
                   style: TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w900),
                 ),
                 const SizedBox(width: 4.0),
-                Icon(Icons.sync, color: Colors.white.withAlpha(230), size: 16.0),
+                // 原图是黑色, 顶部橙底背景上染成白色(透明区域保持透明)
+                Image.asset(
+                  'assets/images/zq-ico.png',
+                  height: 28.0,
+                  color: Colors.white,
+                  colorBlendMode: BlendMode.srcIn,
+                ),
               ],
             ),
           ),
@@ -568,7 +574,7 @@ class _EarnPageState extends State<EarnPage> {
       behavior: HitTestBehavior.opaque,
       onTap: () => Get.toNamed('/my/withdraw'),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 6.0),
+        padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 9.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20.0),
@@ -576,9 +582,10 @@ class _EarnPageState extends State<EarnPage> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: <Widget>[
-            Image.asset('assets/images/make/money_icon_sign_2.png', width: 16.0, height: 16.0, fit: BoxFit.contain),
-            const SizedBox(width: 2.0),
-            const Text('去领取', style: TextStyle(color: primary, fontSize: 12.0, fontWeight: FontWeight.w700)),
+            // 与「我的」门店支付绿条上方图标一致(wxpay.png); 此处按钮是白底,保留原色才能看清,不染白
+            Image.asset('assets/images/wxpay.png', width: 20.0, height: 20.0, fit: BoxFit.contain),
+            const SizedBox(width: 4.0),
+            const Text('去领取', style: TextStyle(color: primary, fontSize: 14.0, fontWeight: FontWeight.w700)),
           ],
         ),
       ),
@@ -685,8 +692,12 @@ class _EarnPageState extends State<EarnPage> {
                           Color.alphaBlend(Colors.black.withAlpha(30), primary),
                         ],
                       ),
-                color: hasSign == 1 ? const Color(0xFFD0D0D0) : null,
+                // 已签到: 柔和完成态(主题色浅底 + 浅描边), 与卡片内已签天格一致, 不再用死灰
+                color: hasSign == 1 ? primary.withAlpha(16) : null,
                 borderRadius: BorderRadius.circular(24.0),
+                border: hasSign == 1
+                    ? Border.all(color: primary.withAlpha(45), width: 1.0)
+                    : null,
                 boxShadow: hasSign == 1
                     ? null
                     : <BoxShadow>[
@@ -701,7 +712,16 @@ class _EarnPageState extends State<EarnPage> {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: <Widget>[
                   hasSign == 1
-                      ? const Icon(Icons.check_circle_outline, color: Colors.white, size: 16.0)
+                      // 已签到: 主题色实心对勾圆, 比灰色描边图标更精神
+                      ? Container(
+                          width: 18.0,
+                          height: 18.0,
+                          decoration: BoxDecoration(
+                            color: primary,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.check, color: Colors.white, size: 13.0),
+                        )
                       : Image.asset(
                           'assets/images/sing-1.png',
                           width: 18.0,
@@ -709,10 +729,14 @@ class _EarnPageState extends State<EarnPage> {
                           color: Colors.white,
                           colorBlendMode: BlendMode.srcIn,
                         ),
-                  const SizedBox(width: 4.0),
+                  const SizedBox(width: 6.0),
                   Text(
                     hasSign == 1 ? '今日已签到' : '签到领$signPointTomorrow积分',
-                    style: const TextStyle(color: Colors.white, fontSize: 14.0, fontWeight: FontWeight.w700),
+                    style: TextStyle(
+                      color: hasSign == 1 ? primary : Colors.white,
+                      fontSize: 14.0,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ],
               ),

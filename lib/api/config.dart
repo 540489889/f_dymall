@@ -18,4 +18,17 @@ class ConfigApi {
       return <String, dynamic>{};
     }
   }
+
+  /// 平台资质(/api/config/qualification)
+  /// * code == 0 时返回业务 data: 可能是证书列表(每项含 图片/标题/描述),
+  ///   也可能是键值对 map(降级为文本行展示)
+  /// * 失败返回 null(不抛异常, 避免阻塞页面)
+  static Future<dynamic> qualification() async {
+    try {
+      return await Request().get('/api/config/qualification');
+    } catch (e) {
+      if (kDebugMode) print('[config] /api/config/qualification 失败: $e');
+      return null;
+    }
+  }
 }

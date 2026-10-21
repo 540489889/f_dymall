@@ -869,6 +869,7 @@ class _CartPageState extends State<CartPage> {
   }
 
   /// 数量步进器
+  /// * 按钮 32x32 / 图标 18: 原来的 22x22 + 13px 图标太小, 单手很难点中
   Widget _buildStepper(CartItem item) {
     final int lower = item.minNum > item.maxNum ? 1 : item.minNum;
     final bool canMinus = item.buyNum > lower;
@@ -879,9 +880,9 @@ class _CartPageState extends State<CartPage> {
         // 减到最小时删除该商品(与 H5 goodsLimit 一致)
         _buildStepButton(Icons.remove, canMinus, canMinus ? () => _changeNum(item, -1) : () => _deleteItem(item)),
         SizedBox(
-          width: 30.0,
+          width: 38.0,
           child: Center(
-            child: Text('${item.buyNum}', style: const TextStyle(fontSize: 13.0, color: Colors.black87)),
+            child: Text('${item.buyNum}', style: const TextStyle(fontSize: 15.0, color: Colors.black87)),
           ),
         ),
         _buildStepButton(
@@ -904,15 +905,15 @@ class _CartPageState extends State<CartPage> {
       behavior: HitTestBehavior.opaque,
       onTap: enabled ? onTap : null,
       child: Container(
-        width: 22.0,
-        height: 22.0,
+        width: 32.0,
+        height: 32.0,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: enabled ? Colors.white : Colors.grey.shade100,
           border: Border.all(color: enabled ? Colors.grey.shade300 : Colors.grey.shade200),
-          borderRadius: BorderRadius.circular(4.0),
+          borderRadius: BorderRadius.circular(6.0),
         ),
-        child: Icon(icon, size: 13.0, color: enabled ? Colors.black87 : Colors.grey.shade400),
+        child: Icon(icon, size: 18.0, color: enabled ? Colors.black87 : Colors.grey.shade400),
       ),
     );
   }
@@ -924,7 +925,8 @@ class _CartPageState extends State<CartPage> {
       color: Colors.white,
       padding: EdgeInsets.only(bottom: bottomInset),
       child: Container(
-        height: 50.0,
+        // 50 -> 56: 给"优惠明细"胶囊让出高度, 并留足余量(中文行高比预估高)
+        height: 56.0,
         color: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
         child: Row(
@@ -959,19 +961,29 @@ class _CartPageState extends State<CartPage> {
                     alignment: Alignment.centerLeft,
                     child: Text(
                       '¥${payMoney.toStringAsFixed(2)}',
-                      style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w700),
+                      // height 1.0: 压缩行高, 否则中文行高(~1.4)会把底部栏撑溢出
+                      style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w700, height: 1.0),
                     ),
                   ),
                   if (hasDiscount)
                     GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: _showDiscountDetail,
-                      child: const Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: <Widget>[
-                          Text('优惠明细', style: TextStyle(fontSize: 10.0, color: Colors.grey)),
-                          Icon(Icons.arrow_drop_up, size: 14.0, color: Colors.grey),
-                        ],
+                      // 淡色胶囊底 + 主题红字 + 内边距撑大点击区域:
+                      // 原来 10sp 灰字 + 14px 图标, 既看不清也点不中(点击区仅约 40x14)
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 3.0),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFF0F2),
+                          borderRadius: BorderRadius.circular(4.0),
+                        ),
+                        child: const Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: <Widget>[
+                            Text('优惠明细', style: TextStyle(fontSize: 11.0, color: primary, height: 1.2)),
+                            Icon(Icons.arrow_drop_up, size: 14.0, color: primary),
+                          ],
+                        ),
                       ),
                     ),
                 ],
