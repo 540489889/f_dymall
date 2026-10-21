@@ -261,55 +261,118 @@ class _MyPageState extends State<MyPage> {
     );
   }
 
-  /// 门店支付板块(参考 H5 diy-payment-qrcode): 付款码 / 扫码付 入口, 放在广告位上方
+  /// 门店支付板块: 合成一个圆角卡片 —— 左边白(提示 + 付款码/扫码付), 右边绿(竖排标签)
+  /// * 绿色是卡片的右半部分, 由外层圆角统一裁出右端圆角(不再是可以单独挪动的独立方块)
+  /// * IntrinsicHeight: 先用两边固有高度算出一个确定高度, 否则 stretch 在
+  ///   ListView(高度无界)里算不出尺寸 -> Row size=MISSING -> 后续 hit test 全崩
+  /// * 显隐由 memberPageConfig.is_pay_code 控制(见 build)
   Widget _buildPaymentQrcode() {
     return Container(
       margin: const EdgeInsets.fromLTRB(12.0, 0.0, 12.0, 12.0),
-      padding: const EdgeInsets.all(14.0),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(14.0),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(color: Color(0x0D000000), blurRadius: 10.0, offset: Offset(0.0, 2.0)),
-        ],
+      child: IntrinsicHeight(
+        child: Container(
+          // 由外层圆角统一裁切: 绿条的右端圆角/越界都裁成卡片圆角
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14.0),
+            boxShadow: const <BoxShadow>[
+              BoxShadow(color: Color(0x0D000000), blurRadius: 10.0, offset: Offset(0.0, 2.0)),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: <Widget>[
+              // 左半: 白底内容
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    // 内容垂直居中: 被绿条撑高后上下留白均匀, 不塌在一侧
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: <Widget>[
+                      const Text('门店消费时使用，支付时点击下方展示付款码',
+                          style: TextStyle(fontSize: 13.0, color: Color(0xFF999999))),
+                      const SizedBox(height: 22.0),
+                      Row(
+                        children: <Widget>[
+                          Expanded(
+                            child: _payActionBtn('付款码', FStyle.primaryColor,
+                                const Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 18.0), _goPaymentQrcode),
+                          ),
+                          const SizedBox(width: 12.0),
+                          Expanded(
+                            child: _payActionBtn(
+                                '扫码付',
+                                const Color(0xFF999999),
+                                Image.asset('assets/images/icon_sm.png',
+                                    width: 18.0, height: 18.0, fit: BoxFit.contain,
+                                    color: Colors.white, colorBlendMode: BlendMode.srcIn),
+                                _scanPay),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              // 右半: 绿色竖排标签(自身不设圆角/投影, 由外层卡片统一裁切)
+              _buildPayTab(),
+            ],
+          ),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Row(
-            children: <Widget>[
-              Icon(Icons.storefront_rounded, color: FStyle.primaryColor, size: 22.0),
-              const SizedBox(width: 8.0),
-              const Text('门店支付',
-                  style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
-              const Spacer(),
-              const Text('付款码 / 扫码付',
-                  style: TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
-            ],
+    );
+  }
+
+  /// 门店支付绿色竖排标签(卡片的右半部分): 微信支付图标 + 竖排"门店支付"文案
+  /// * 与左侧白区等高(Row + stretch), 右端圆角由外层卡片的 clipBehavior 裁出
+  /// * 点击进付款码页(需登录)
+  Widget _buildPayTab() {
+    const String label = '门店支付';
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: _goPaymentQrcode,
+      child: Container(
+        width: 38.0,
+        padding: const EdgeInsets.symmetric(vertical: 10.0),
+        // 主题红渐变(与 App 主色 FStyle.primaryColor 同色系), 不用微信绿
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: <Color>[Color(0xFFFF5470), FStyle.primaryColor],
           ),
-          const SizedBox(height: 8.0),
-          const Text('门店消费时使用，支付时点击下方展示付款码',
-              style: TextStyle(fontSize: 13.0, color: Color(0xFF999999))),
-          const SizedBox(height: 14.0),
-          Row(
-            children: <Widget>[
-              Expanded(
-                child: _payActionBtn('付款码', FStyle.primaryColor,
-                    const Icon(Icons.qr_code_2_rounded, color: Colors.white, size: 18.0), _goPaymentQrcode),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            // 微信支付图标(染白, 与「扫码付」按钮同一套处理)
+            Image.asset(
+              'assets/images/wxpay.png',
+              width: 20.0,
+              height: 20.0,
+              fit: BoxFit.contain,
+              color: Colors.white,
+              colorBlendMode: BlendMode.srcIn,
+            ),
+            const SizedBox(height: 4.0),
+            // 竖排文案: 一字一行
+            for (final String ch in label.split(''))
+              Text(
+                ch,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 12.0,
+                  height: 1.1,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-              const SizedBox(width: 12.0),
-              Expanded(
-                child: _payActionBtn(
-                    '扫码付',
-                    const Color(0xFF999999),
-                    Image.asset('assets/images/icon_sm.png',
-                        width: 18.0, height: 18.0, fit: BoxFit.contain,
-                        color: Colors.white, colorBlendMode: BlendMode.srcIn),
-                    _scanPay),
-              ),
-            ],
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -336,8 +399,6 @@ class _MyPageState extends State<MyPage> {
       ),
     );
   }
-
-
 
   /// 付款码: 跳转付款码页(需登录)
   void _goPaymentQrcode() {
@@ -626,6 +687,12 @@ class _MyPageState extends State<MyPage> {
         // 付款码(门店支付, 需登录): 后台配 {"name":"PAYCODE"}
         case 'PAYCODE':
           Get.toNamed('/my/payment_qrcode');
+          break;
+        // 门店扫码付(需登录): 后台配 {"name":"SCAN_PAY"}
+        // * 门店支付入口改成右侧悬浮绿条后, 扫码付从「我的服务」进
+        case 'SCAN_PAY':
+        case 'SCANPAY':
+          _scanPay();
           break;
         // 内容详情页(关于我们详情 / 各类协议): nav_url 里带 type(后台 aggrement 的类型) 和可选 title
         // * 后台配: {"name":"AGREEMENT","type":"ABOUT","title":"关于我们"}
@@ -1058,9 +1125,9 @@ class _MyPageState extends State<MyPage> {
           final _ = <dynamic>[authStore.authorization.value, authStore.memberInfo.length, authStore.couponNum.value];
           return ListView(
             padding: EdgeInsets.zero,
-            children: [
+            children: <Widget>[
               _buildTopArea(statusTop),
-              // 门店支付(付款码 / 扫码付): 由 memberPageConfig.is_pay_code 控制是否显示
+              // 门店支付(白卡 + 右缘绿色竖排标签): 由 memberPageConfig.is_pay_code 控制是否显示
               // * 结果没拿到(null)时不渲染, 避免先不显示再突然冒出来
               if (payCodeEnabled == true) _buildPaymentQrcode(),
               // 广告位(MEMBER_M): 在「我的订单」上方
