@@ -134,6 +134,8 @@ class _IndexPageState extends State<IndexPage> with SingleTickerProviderStateMix
   bool _goodsFormatApplied = false;
   // 监听 /api/config/init 的 worker(页面销毁时取消, 避免泄漏)
   Worker? _goodsFormatWorker;
+  // 监听 goods_list_config(商品列表字段开关)的 worker: 配置异步到达后重建商品卡片
+  Worker? _goodsListCfgWorker;
   // 当前页码
   int page = 1;
   // 每页条数
@@ -1014,6 +1016,12 @@ void initState() {
   // * 仅首次应用, 之后以用户手动切换布局为准
   _applyGoodsFormat(AppConfig.to.config);
   _goodsFormatWorker = ever(AppConfig.to.data, (_) => _applyGoodsFormat(AppConfig.to.config));
+  // goods_list_config(商品列表字段开关)也是 config 返回后才到位: 到了就重建一次商品卡片
+  // * 首屏渲染时配置还没回, 先按默认(金额/划线价/已售显示)渲染, 配置回来再按配置收敛
+  _goodsListCfgWorker = ever(AppConfig.to.data, (_) {
+    if (!mounted) return;
+    if (AppConfig.to.config.containsKey('goods_list_config')) setState(() {});
+  });
   scrollController.addListener(_onScroll);
 
   // 预拉「我的」页首屏数据(启动时已拉过就跳过, 幂等): 进「我的」时首帧就有内容
@@ -1046,6 +1054,23 @@ void initState() {
   } catch (e) {
     debugPrint('[index] 网络监听注册异常: $e');
   }
+  }
+
+  // 商品列表字段开关(来自 /api/config/init 的 goods_list_config)
+  // * price=1 显示金额 / market_price=1 显示划线价 / stock=1 显示库存 / sale_num=1 显示已售
+  // * 配置未到位前: 金额/划线价/已售按原样显示(兜底 true), 库存默认不显示(兜底 false)
+  bool get _cfgGoodsShowPrice => _goodsCfgFlag('price');
+  bool get _cfgGoodsShowMarketPrice => _goodsCfgFlag('market_price');
+  bool get _cfgGoodsShowStock => _goodsCfgFlag('stock', fallback: false);
+  bool get _cfgGoodsShowSaleNum => _goodsCfgFlag('sale_num');
+
+  bool _goodsCfgFlag(String key, {bool fallback = true}) {
+    final dynamic raw = AppConfig.to.get('goods_list_config');
+    if (raw is! Map || !raw.containsKey(key)) return fallback;
+    final String v = '${raw[key]}'.trim().toLowerCase();
+    if (v == '1' || v == 'true') return true;
+    if (v == '0' || v == 'false' || v.isEmpty) return false;
+    return fallback;
   }
 
   // 根据 /api/config/init 的 goods_format 设置首页商品列表默认排版(仅首次应用)
@@ -1531,6 +1556,7 @@ void initState() {
     _liveResumeTimer?.cancel();
     _connectivitySub?.cancel();
     _goodsFormatWorker?.dispose();
+    _goodsListCfgWorker?.dispose();
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();
@@ -2226,7 +2252,17 @@ void initState() {
                     itemCount: firstLoad && dataList.isEmpty ? 4 : dataList.length,
                     itemBuilder: (BuildContext context, int index) => firstLoad && dataList.isEmpty
                         ? const SkeletonGoodsCard(horizontal: true)
-                        : SizedBox(width: double.infinity, child: CardItem(item: dataList[index], horizontal: true)),
+                        : SizedBox(
+                            width: double.infinity,
+                            child: CardItem(
+                              item: dataList[index],
+                              horizontal: true,
+                              showPrice: _cfgGoodsShowPrice,
+                              showMarketPrice: _cfgGoodsShowMarketPrice,
+                              showStock: _cfgGoodsShowStock,
+                              showSaleNum: _cfgGoodsShowSaleNum,
+                            ),
+                          ),
                     separatorBuilder: (BuildContext context, int index) => const SizedBox(height: 10.0),
                   )
                 : SliverMasonryGrid.count(
@@ -2236,7 +2272,13 @@ void initState() {
                     childCount: firstLoad && dataList.isEmpty ? 4 : dataList.length,
                     itemBuilder: (BuildContext context, int index) => firstLoad && dataList.isEmpty
                         ? const SkeletonGoodsCard()
-                        : CardItem(item: dataList[index]),
+                        : CardItem(
+                            item: dataList[index],
+                            showPrice: _cfgGoodsShowPrice,
+                            showMarketPrice: _cfgGoodsShowMarketPrice,
+                            showStock: _cfgGoodsShowStock,
+                            showSaleNum: _cfgGoodsShowSaleNum,
+                          ),
                   ),
             ),
           SliverToBoxAdapter(
@@ -2365,7 +2407,21 @@ class CardItem extends StatelessWidget {
 final dynamic item;
 // 是否横向布局(左图右文)
 final bool horizontal;
-const CardItem({super.key, required this.item, this.horizontal = false});
+// 商品列表字段开关(来自 /api/config/init 的 goods_list_config, 见 _IndexPageState)
+// * 默认全显示, 与配置未到位时的表现一致
+final bool showPrice;
+final bool showMarketPrice;
+final bool showStock;
+final bool showSaleNum;
+const CardItem({
+  super.key,
+  required this.item,
+  this.horizontal = false,
+  this.showPrice = true,
+  this.showMarketPrice = true,
+  this.showStock = false,
+  this.showSaleNum = true,
+});
 
 @override
 Widget build(BuildContext context) {
@@ -2419,6 +2475,7 @@ Widget build(BuildContext context) {
     final num priceNum = (item['price'] as num);
     final num marketPriceNum = (item['marketPrice'] as num?) ?? 0;
     final int originalPrice = marketPriceNum > 0 ? marketPriceNum.round() : (priceNum * 1.3).round();
+    final num stockNum = (item['stock'] as num?) ?? 0;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2465,6 +2522,7 @@ Widget build(BuildContext context) {
                       crossAxisAlignment: CrossAxisAlignment.baseline,
                       textBaseline: TextBaseline.alphabetic,
                       children: [
+                        if (showPrice)
                         Text.rich(
                           TextSpan(
                             style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0, height: 1.0, fontWeight: FontWeight.w700, fontFamily: 'Arial'),
@@ -2474,8 +2532,32 @@ Widget build(BuildContext context) {
                             ],
                           ),
                         ),
-                        const SizedBox(width: 8.0),
+                        if (showPrice && showMarketPrice) const SizedBox(width: 8.0),
+                        if (showMarketPrice)
                         Text('¥$originalPrice', style: const TextStyle(color: Colors.grey, fontSize: 12.0, height: 1.0, decoration: TextDecoration.lineThrough)),
+                        // 库存/已售: 紧跟金额右侧同一行展示, 不单独换行(宽度不够时省略号兜底)
+                        if (showStock && stockNum > 0) ...<Widget>[
+                          const SizedBox(width: 8.0),
+                          Flexible(
+                            child: Text(
+                              '库存${stockNum.toInt()}件',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.grey, fontSize: 11.0, height: 1.0),
+                            ),
+                          ),
+                        ],
+                        if (showSaleNum) ...<Widget>[
+                          const SizedBox(width: 8.0),
+                          Flexible(
+                            child: Text(
+                              '已售${item['saleNum']}件',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(color: Colors.grey, fontSize: 11.0, height: 1.0),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -2498,8 +2580,15 @@ Widget build(BuildContext context) {
     );
   }
 
-  // 图文信息(标题/价格/销量/店铺)
+  // 图文信息(标题/价格/划线价/销量/店铺)
+  // * 价格/划线价/库存/已售的显隐跟随 /api/config/init 的 goods_list_config
+  // * 双列瀑布流走的也是这里: 划线价原来只有横版大卡有, 竖版卡片一直不展示
   Widget _buildInfo() {
+    final num stockNum = (item['stock'] as num?) ?? 0;
+    // 划线价(后端 market_price 为 0 时按现价上浮兜底, 与横版大卡一致)
+    final num priceNum = (item['price'] as num?) ?? 0;
+    final num marketPriceNum = (item['marketPrice'] as num?) ?? 0;
+    final int originalPrice = marketPriceNum > 0 ? marketPriceNum.round() : (priceNum * 1.3).round();
     return Container(
       padding: EdgeInsets.all(10.0),
       child: Column(
@@ -2510,6 +2599,7 @@ Widget build(BuildContext context) {
       Row(
         spacing: 5.0,
         children: [
+          if (showPrice)
           Text.rich(
             TextSpan(
               style: TextStyle(color: Colors.red, fontSize: 12.0, fontWeight: FontWeight.w700, fontFamily: 'Arial'),
@@ -2519,7 +2609,34 @@ Widget build(BuildContext context) {
               ]
             ),
           ),
-            Text('已售${item['saleNum']}件', style: TextStyle(color: Colors.grey, fontSize: 10.0),),
+            // 划线价(双列卡片宽度窄, 用 Flexible + 省略号防止横向溢出)
+            if (showMarketPrice)
+            Flexible(
+              child: Text(
+                '¥$originalPrice',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey, fontSize: 10.0, decoration: TextDecoration.lineThrough),
+              ),
+            ),
+            if (showSaleNum)
+            Flexible(
+              child: Text(
+                '已售${item['saleNum']}件',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey, fontSize: 10.0),
+              ),
+            ),
+            if (showStock && stockNum > 0)
+            Flexible(
+              child: Text(
+                '库存${stockNum.toInt()}件',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: Colors.grey, fontSize: 10.0),
+              ),
+            ),
           ],
         ),
           // 店铺(接口无店铺名时隐藏)
