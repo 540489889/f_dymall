@@ -220,7 +220,7 @@ class _AboutPageState extends State<AboutPage> {
         Text(
           _name,
           textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 24.0, fontWeight: FontWeight.w700, color: Color(0xFF3A2E24)),
+          style: const TextStyle(fontSize: 20.0, fontWeight: FontWeight.w700, color: Color(0xFF3A2E24)),
         ),
         const SizedBox(height: 8.0),
         Text(
@@ -233,14 +233,14 @@ class _AboutPageState extends State<AboutPage> {
   }
 
   Widget _buildLogo() {
-    const double size = 88.0;
-    final BorderRadius radius = BorderRadius.circular(20.0);
+    const double size = 72.0;
+    final BorderRadius radius = BorderRadius.circular(16.0);
     if (_logo.isEmpty) {
       return Container(
         width: size,
         height: size,
         decoration: BoxDecoration(color: _brandColor, borderRadius: radius),
-        child: const Icon(Icons.shopping_bag, size: 42.0, color: Colors.white),
+        child: const Icon(Icons.shopping_bag, size: 34.0, color: Colors.white),
       );
     }
     return CachedNetworkImage(
@@ -336,12 +336,16 @@ class _AboutPageState extends State<AboutPage> {
     return const Divider(height: 1.0, thickness: 0.5, color: Color(0xFFF2EDE8), indent: 16.0, endIndent: 16.0);
   }
 
-  /// 底部版权: Copyright © 2023-<当前年份> 名称. All Rights Reserved.
+  /// 底部版权: 直接显示后台 copyright.copyright_desc 字段(缺失时兜底文案)
   Widget _copyrightText() {
+    final String desc = _str(_copyright['copyright_desc'], '');
+    final String text = desc.isNotEmpty
+        ? desc
+        : 'Copyright © 2023-${DateTime.now().year} $_name. All Rights Reserved.';
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16.0),
       child: Text(
-        'Copyright © 2023-${DateTime.now().year} $_name. All Rights Reserved.',
+        text,
         textAlign: TextAlign.center,
         style: const TextStyle(fontSize: 12.0, color: Color(0xFFB8AA9C)),
       ),

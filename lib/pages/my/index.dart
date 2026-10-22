@@ -558,19 +558,20 @@ class _MyPageState extends State<MyPage> {
   /// * [image] http(s) 开头走网络图标, 否则按本地资源加载
   /// * [badge] > 0 时在图标右上角显示红色数量角标
   Widget _menuItem({required String label, required String image, required VoidCallback onTap, int badge = 0}) {
+    const double iconSize = 36.0; // 我的订单/我的服务 图标尺寸(略大于默认 32)
     final Widget icon = image.startsWith('http')
         ? CachedNetworkImage(
             imageUrl: image,
-            width: 32.0,
-            height: 32.0,
+            width: iconSize,
+            height: iconSize,
             fit: BoxFit.contain,
-            placeholder: (BuildContext c, String u) => const SizedBox(width: 32.0, height: 32.0),
-            errorWidget: (BuildContext c, String u, Object e) => const SizedBox(width: 32.0, height: 32.0),
+            placeholder: (BuildContext c, String u) => SizedBox(width: iconSize, height: iconSize),
+            errorWidget: (BuildContext c, String u, Object e) => SizedBox(width: iconSize, height: iconSize),
           )
         : image.endsWith('.svg')
-            ? SvgPicture.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain)
-            : Image.asset(image, width: 32.0, height: 32.0, fit: BoxFit.contain,
-                errorBuilder: (_, __, ___) => const SizedBox(width: 32.0, height: 32.0));
+            ? SvgPicture.asset(image, width: iconSize, height: iconSize, fit: BoxFit.contain)
+            : Image.asset(image, width: iconSize, height: iconSize, fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => SizedBox(width: iconSize, height: iconSize));
     return InkWell(
       onTap: onTap,
       child: Padding(
@@ -580,8 +581,8 @@ class _MyPageState extends State<MyPage> {
           children: [
             // 图标: 角标要溢出到图标外面, 用 Stack + clipBehavior.none(默认会裁掉)
             SizedBox(
-              width: 32.0,
-              height: 32.0,
+              width: iconSize,
+              height: iconSize,
               child: Stack(
                 clipBehavior: Clip.none,
                 children: <Widget>[
@@ -779,7 +780,8 @@ class _MyPageState extends State<MyPage> {
                 // 公告(/api/notice/page): 游客也可查看
                 _topIcon('assets/images/me/mine_icon_msg.png', () => Get.toNamed('/notice')),
                 _topIcon('assets/images/me/mine_icon_star.png', () => Get.toNamed('/my/collection')),
-                _topIcon('assets/images/me/mine_icon_video.png', () => Get.snackbar('提示', '功能开发中')),
+                // 第三个图标(视频/功能开发中): 暂未开放, 先隐藏
+                // _topIcon('assets/images/me/mine_icon_video.png', () => Get.snackbar('提示', '功能开发中')),
                 _topIcon('assets/images/me/mine_icon_setting.png', () => authStore.isLogin ? Get.toNamed('/personal_info') : Get.toNamed('/login')),
               ],
             ),
