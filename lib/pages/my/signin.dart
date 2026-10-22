@@ -13,6 +13,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member.dart';
 import '../../api/member_signin.dart';
+import '../../controller/app_config.dart';
 
 class SigninPage extends StatefulWidget {
   const SigninPage({super.key});
@@ -225,7 +226,7 @@ class _SigninPageState extends State<SigninPage> {
                           text: '$point',
                           style: const TextStyle(color: primary, fontSize: 18.0, fontWeight: FontWeight.bold),
                         ),
-                      if (point > 0) const TextSpan(text: ' 积分'),
+                      if (point > 0) TextSpan(text: ' ${AppConfig.to.pointName()}'),
                       if (point > 0 && growth > 0) const TextSpan(text: ' '),
                       if (growth > 0)
                         TextSpan(
@@ -353,7 +354,7 @@ class _SigninPageState extends State<SigninPage> {
                 ),
                 const SizedBox(height: 9.0),
                 Text(
-                  signed ? '今日已签到，明日再来' : '今日签到可获得 $pointTomorrow 积分',
+                  signed ? '今日已签到，明日再来' : '今日签到可获得 $pointTomorrow ${AppConfig.to.pointName()}',
                   style: const TextStyle(fontSize: 12.0, color: Colors.white70),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
@@ -468,7 +469,7 @@ class _SigninPageState extends State<SigninPage> {
               : Image.asset('assets/images/sign-icon.png', width: 22.0, height: 22.0),
         ),
         const SizedBox(height: 6.0),
-        Text('$point积分', style: TextStyle(fontSize: 11.0, color: textColor)),
+        Text('$point${AppConfig.to.pointName()}', style: TextStyle(fontSize: 11.0, color: textColor)),
       ],
     );
   }
@@ -486,7 +487,7 @@ class _SigninPageState extends State<SigninPage> {
           const SizedBox(height: 12.0),
           Row(
             children: <Widget>[
-              _buildSummaryItem('积分：$signPoint', '累计获得积分', const Color(0xFFFFF7E6)),
+              _buildSummaryItem('${AppConfig.to.pointName()}：$signPoint', '累计获得${AppConfig.to.pointName()}', const Color(0xFFFFF7E6)),
               const SizedBox(width: 10.0),
               _buildSummaryItem('成长值：$signGrowth', '累计获得成长值', const Color(0xFFFFEEF2)),
             ],
@@ -546,7 +547,7 @@ class _SigninPageState extends State<SigninPage> {
     } else {
       buffer.write('${index + 1}. 连续签到${item['day']}天额外奖励：');
     }
-    if (point > 0) buffer.write('${point}积分 ');
+    if (point > 0) buffer.write('${point}${AppConfig.to.pointName()} ');
     if (growth > 0) buffer.write('${growth}成长值');
     return buffer.toString();
   }

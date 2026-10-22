@@ -12,6 +12,7 @@ import 'package:get/get.dart';
 
 import '../../api/member_account.dart';
 import '../../api/member_point.dart';
+import '../../controller/app_config.dart';
 import '../../styles/index.dart';
 import '../../utils/index.dart';
 
@@ -202,7 +203,7 @@ class _PointDetailPageState extends State<PointDetailPage> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         foregroundColor: Colors.black87,
-        title: const Text('积分明细', style: TextStyle(fontSize: 17.0)),
+        title: Text('${AppConfig.to.pointName()}明细', style: const TextStyle(fontSize: 17.0)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0),
@@ -302,7 +303,7 @@ class _PointDetailPageState extends State<PointDetailPage> {
           children: <Widget>[
             Image.asset('assets/images/common-empty.png', width: 120.0),
             const SizedBox(height: 12.0),
-            Text(errorMsg.isEmpty ? '暂无积分明细' : errorMsg, style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
+            Text(errorMsg.isEmpty ? '暂无${AppConfig.to.pointName()}明细' : errorMsg, style: const TextStyle(fontSize: 14.0, color: Colors.grey)),
           ],
         ),
       );

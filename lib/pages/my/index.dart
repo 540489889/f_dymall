@@ -534,7 +534,7 @@ class _MyPageState extends State<MyPage> {
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6.0),
-        child: Image.asset(asset, width: 24.0, height: 24.0, fit: BoxFit.contain,
+        child: Image.asset(asset, width: 28.0, height: 28.0, fit: BoxFit.contain,
             errorBuilder: (_, __, ___) => const SizedBox(width: 24.0, height: 24.0)),
       ),
     );
@@ -892,6 +892,11 @@ class _MyPageState extends State<MyPage> {
   // 统计卡: 余额 / 积分 / 优惠券
   Widget _buildStatsCard() {
     final bool isLogin = authStore.isLogin;
+    // 积分标签: 优先取 /api/config/init 的 point_config.name, 缺失兜底「积分」
+    final dynamic pointCfg = AppConfig.to.get('point_config');
+    final String pointName = pointCfg is Map && '${pointCfg['name'] ?? ''}'.isNotEmpty
+        ? '${pointCfg['name']}'
+        : '积分';
     return _whiteCard(
       margin: const EdgeInsets.fromLTRB(12.0, 12.0, 12.0, 12.0),
       child: Row(
@@ -920,7 +925,7 @@ class _MyPageState extends State<MyPage> {
                     Text(isLogin ? authStore.point : '--',
                         style: const TextStyle(fontSize: 20.0, fontWeight: FontWeight.bold, color: Color(0xFF333333))),
                     const SizedBox(height: 4.0),
-                    const Text('积分', style: TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
+                    Text(pointName, style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
                   ],
                 ),
               ),
@@ -1081,7 +1086,7 @@ class _MyPageState extends State<MyPage> {
                           width: itemW,
                           child: _menuItem(
                             image: '${e['nav_image'] ?? ''}',
-                            label: '${e['nav_name'] ?? ''}',
+                            label: '${e['nav_name'] ?? ''}'.replaceAll('积分', AppConfig.to.pointName()),
                             onTap: () => _handleServiceNav(e),
                           ),
                         ))

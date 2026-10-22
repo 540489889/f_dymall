@@ -16,6 +16,7 @@ import '../../api/member_point.dart';
 import '../../api/member_signin.dart';
 import '../../api/member_task.dart';
 import '../../controller/earn_preload.dart';
+import '../../controller/app_config.dart';
 import '../../api/member_withdraw.dart';
 import '../../controller/auth_store.dart';
 import '../../utils/ads.dart';
@@ -319,7 +320,7 @@ class _EarnPageState extends State<EarnPage> {
       final Map<String, dynamic> tip = await MemberSigninApi.signin();
       if (!mounted) return;
       final int point = int.tryParse('${tip['point'] ?? 0}') ?? 0;
-      MyDialog.toast(point > 0 ? '签到成功，获得${point}积分' : '签到成功');
+      MyDialog.toast(point > 0 ? '签到成功，获得${point}${AppConfig.to.pointName()}' : '签到成功');
       // 先本地置为已签(接口返回可能有延迟), 再拉最新规则
       if (mounted) {
         setState(() {
@@ -515,7 +516,7 @@ class _EarnPageState extends State<EarnPage> {
         Row(
           children: <Widget>[
             Flexible(
-              child: Text('我的积分', style: const TextStyle(color: Colors.white70, fontSize: 11.0), maxLines: 1, overflow: TextOverflow.ellipsis),
+              child: Text('我的${AppConfig.to.pointName()}', style: const TextStyle(color: Colors.white70, fontSize: 11.0), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
             const SizedBox(width: 2.0),
             Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
@@ -619,7 +620,7 @@ class _EarnPageState extends State<EarnPage> {
               const SizedBox(width: 8.0),
               const Text('签到领 ', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
               Text('$signPointTomorrow', style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.w800)),
-              const Text(' 积分', style: TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
+              Text(' ${AppConfig.to.pointName()}', style: const TextStyle(color: Colors.black87, fontSize: 16.0, fontWeight: FontWeight.w800)),
               const Spacer(),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 2.0),
@@ -731,7 +732,7 @@ class _EarnPageState extends State<EarnPage> {
                         ),
                   const SizedBox(width: 6.0),
                   Text(
-                    hasSign == 1 ? '今日已签到' : '签到领$signPointTomorrow积分',
+                    hasSign == 1 ? '今日已签到' : '签到领$signPointTomorrow${AppConfig.to.pointName()}',
                     style: TextStyle(
                       color: hasSign == 1 ? primary : Colors.white,
                       fontSize: 14.0,

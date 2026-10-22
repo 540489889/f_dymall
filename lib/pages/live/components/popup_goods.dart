@@ -262,7 +262,17 @@ Widget build(BuildContext context) {
                               // 购物车: 跳购物车页(/cart)
                               GestureDetector(
                                 behavior: HitTestBehavior.opaque,
-                                onTap: () => Get.toNamed('/cart'),
+                                onTap: () => Get.toNamed(
+                                  '/cart',
+                                  arguments: <String, dynamic>{
+                                    // 标记来源: 购物车页据此挂悬浮小窗(房间号为空的演示房间也要挂)
+                                    'fromLive': true,
+                                    'live_roomid': widget.roomSn ?? '',
+                                    'liveCover': widget.liveCover ?? '',
+                                    'liveAnchor': widget.anchorName ?? '',
+                                    'livePullUrl': widget.livePullUrl ?? '',
+                                  },
+                                ),
                                 child: Column(
                                 children: [
                                   // 用本地切图(原 16 的 Icon 偏小,放大到 22 更醒目)

@@ -24,17 +24,17 @@ import '../../utils/live_socket.dart';
 import '../../utils/player_config.dart';
 import '../../utils/request.dart';
 import './components/animation_join.dart';
-// import './components/animation_gift.dart'; // 送礼物消息动效: 已停用, 与下方 AnimationLiveGift 一并恢复
+import './components/animation_gift.dart'; // 送礼物消息动效
 import './components/popup_comment.dart';
 import './components/popup_activity_winner.dart';
 import './components/popup_goods.dart';
 import './components/popup_hongbao.dart';
 import './components/popup_luckybag.dart';
 import './components/popup_sign_stamp.dart';
-// import './components/popup_gift.dart'; // 礼物弹窗: 随底部礼物入口一起停用, 恢复入口时一并放开
+import './components/popup_gift.dart'; // 礼物弹窗
 import './components/popup_more.dart';
 
-// import './components/popup_recharge.dart'; // 充值弹窗: 只被礼物弹窗调用, 随礼物入口一起停用
+import './components/popup_recharge.dart'; // 充值弹窗: 礼物钻石不足时调用
 import './components/popup_redpacket.dart';
 
 // 直播间播放器: 进程内单例, 页面销毁时不释放(只停流, 见 _LiveState.dispose)
@@ -567,6 +567,9 @@ Future<void> _loadRoomDetail(String sn, {int? index, bool updateStatus = true}) 
     await player.stop();
   }
 }
+
+// 关注按钮开关: 按需求暂时隐藏,改为 true 即可恢复直播间关注按钮
+static const bool _kShowFollowButton = false;
 
 // 关注/取消关注主播(/live/api/shop/collectLive, 参数 member_id = 主播会员id)
 // * 接口是切换语义: 未关注调一次变已关注, 再调一次取消
@@ -1649,10 +1652,184 @@ Future<void> _leaveRoom() async {
 }
 
 // 右上角关闭: 停干净再退栈(清理由 _leaveRoom 完成, dispose 再跑一遍是幂等的)
+// * getRoomInfo 下发 award_info.has_award=1 时, 退出前先弹"请留步"挽留弹窗
 Future<void> _onCloseTap() async {
+  final dynamic hasAward = roomInfo?['award_info'] is Map
+      ? (roomInfo!['award_info'] as Map)['has_award']
+      : null;
+  // has_award 兼容 1 / true / '1' 三种下发形态, 不满足则维持原逻辑直接退
+  final bool showAward = hasAward == 1 || hasAward == true || '$hasAward' == '1';
+  if (showAward) {
+    final bool exit = await _showExitAwardDialog();
+    if (!exit) return;
+  }
   await _leaveRoom();
   if (!mounted) return;
   Get.back();
+}
+
+// "请留步"挽留弹窗: live-eit-bg.png 作弹窗底图(机器人+空白面板), 内容叠在面板区
+// * 返回 true 表示用户选了"退出直播", false/null 表示留在直播间(继续观看)
+Future<bool> _showExitAwardDialog() async {
+  final Map<String, dynamic> award =
+      roomInfo?['award_info'] is Map ? (roomInfo!['award_info'] as Map).cast<String, dynamic>() : const {};
+  // 奖励文案: 优先 award_text(如"0.12元现金"), 缺省时拼 award_num + award_type_name
+  String awardText = '${award['award_text'] ?? ''}'.trim();
+  if (awardText.isEmpty) {
+    awardText = '+${award['award_num'] ?? ''}${award['award_type_name'] ?? ''}';
+  } else if (!awardText.startsWith('+')) {
+    awardText = '+$awardText';
+  }
+  // 奖励类型: money(现金) 用绿色钱币图标区分, 其余(金币/积分等)用 sign-icon 金币图
+  final bool isCash = '${award['award_type'] ?? ''}'.trim() == 'money';
+  return await Get.dialog<bool>(
+    Dialog(
+      backgroundColor: Colors.transparent,
+      child: AspectRatio(
+        // 底图 720x1060: 上部约 38% 是机器人, 下方空白面板放弹窗内容
+        aspectRatio: 720.0 / 1060.0,
+        child: LayoutBuilder(builder: (context, box) {
+          final double h = box.maxHeight;
+          return Transform.translate(
+            offset: Offset(0, -h * 0.06),
+            child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Image.asset('assets/images/live-eit-bg.png', fit: BoxFit.fill),
+              Padding(
+                padding: EdgeInsets.fromLTRB(h * 0.06, h * 0.35, h * 0.06, h * 0.03),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 占位: 保留原"请留步"标题所占高度(行高 + 间距), 仅隐藏文字
+                    SizedBox(height: h * 0.14),
+                    Text('继续观看直播，可获得专属奖励', textAlign: TextAlign.center,
+                        style: TextStyle(color: const Color(0xFF9A6B3F), fontSize: h * 0.028, height: 1.5)),
+                    SizedBox(height: h * 0.026),
+                    // 奖励徽标: 自定义金色渐变胶囊(sign-icon 金币图 + 奖励文案), 单行防横向溢出
+                    Center(
+                      child: Container(
+                        constraints: BoxConstraints(maxWidth: h * 0.9),
+                        padding: EdgeInsets.symmetric(horizontal: h * 0.05, vertical: h * 0.018),
+                        decoration: BoxDecoration(
+                          gradient: const LinearGradient(
+                            begin: Alignment.topCenter,
+                            end: Alignment.bottomCenter,
+                            colors: [Color(0xFFFFF3C4), Color(0xFFFFC24D)],
+                          ),
+                          borderRadius: BorderRadius.circular(50.0),
+                          border: Border.all(color: const Color(0xFFFFE0A0), width: 1.5),
+                          boxShadow: const [
+                            BoxShadow(color: Color(0x4DFFB800), blurRadius: 12.0, offset: Offset(0, 4)),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // 自绘奖励图标: 金币=圆环硬币(奶白底+古铜环), 现金=红色红包纸币(奶白圆+¥), 均适配金色徽底
+                            isCash
+                                ? Container(
+                                    width: h * 0.078,
+                                    height: h * 0.05,
+                                    decoration: BoxDecoration(
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [Color(0xFFFF6B6B), Color(0xFFE53935)],
+                                      ),
+                                      borderRadius: BorderRadius.circular(h * 0.008),
+                                      border: Border.all(color: const Color(0xFFFFCDD2), width: 1.5),
+                                    ),
+                                    child: Center(
+                                      child: Container(
+                                        width: h * 0.03,
+                                        height: h * 0.03,
+                                        decoration: BoxDecoration(
+                                          shape: BoxShape.circle,
+                                          color: const Color(0xFFFFEBEE),
+                                          border: Border.all(color: const Color(0xFFE53935), width: 1.2),
+                                        ),
+                                        child: Center(
+                                          child: Text('¥', style: TextStyle(color: const Color(0xFFE53935), fontSize: h * 0.017, fontWeight: FontWeight.w900)),
+                                        ),
+                                      ),
+                                    ),
+                                  )
+                                : Container(
+                                    width: h * 0.052,
+                                    height: h * 0.052,
+                                    decoration: BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      gradient: const LinearGradient(
+                                        begin: Alignment.topCenter,
+                                        end: Alignment.bottomCenter,
+                                        colors: [Color(0xFFFFF8E1), Color(0xFFFFE0A0)],
+                                      ),
+                                      border: Border.all(color: const Color(0xFFC77B00), width: h * 0.004),
+                                      boxShadow: const [
+                                        BoxShadow(color: Color(0x4DFFB300), blurRadius: 4.0, offset: Offset(0, 2)),
+                                      ],
+                                    ),
+                                    child: Center(
+                                      child: Text('¥', style: TextStyle(color: const Color(0xFFC77B00), fontSize: h * 0.03, fontWeight: FontWeight.w900)),
+                                    ),
+                                  ),
+                            const SizedBox(width: 8.0),
+                            Flexible(
+                              child: Text(awardText, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(color: Color(0xFFE53935), fontSize: 21.0, fontWeight: FontWeight.w800)),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: h * 0.045),
+                    // 继续观看: 关闭弹窗留在直播间(放大 + 橙色发光投影)
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(50.0),
+                        onTap: () => Get.back(result: false),
+                        child: Container(
+                          height: h * 0.105,
+                          alignment: Alignment.center,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [Color(0xFFFFB347), Color(0xFFFF5A1F)],
+                            ),
+                            borderRadius: BorderRadius.circular(50.0),
+                            boxShadow: const [
+                              BoxShadow(color: Color(0x80FF6A00), blurRadius: 20.0, offset: Offset(0, 7)),
+                            ],
+                          ),
+                          child: const Text('继续观看', style: TextStyle(color: Colors.white, fontSize: 23.0, fontWeight: FontWeight.w900, letterSpacing: 1.0)),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: h * 0.05),
+                    // 退出直播: 关弹窗并真正离开直播间
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => Get.back(result: true),
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(vertical: h * 0.006),
+                        child: const Text('退出直播', textAlign: TextAlign.center,
+                            style: TextStyle(color: Color(0xFFB08968), fontSize: 15.0)),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          )
+        );
+        }),
+      ),
+    ),
+    barrierDismissible: false,
+  ) == true;
 }
 
 // 被踢出房间: 关闭连接并退出直播间
@@ -2298,7 +2475,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 child: Row(
                                   children: [
                                     Container(
-                                      padding: const EdgeInsets.all(1.0),
+                                      padding: const EdgeInsets.fromLTRB(1.0, 1.0, 10.0, 1.0),
                                   decoration: BoxDecoration(
                                   color: Colors.black12,
                                   borderRadius: BorderRadius.circular(50.0),
@@ -2332,20 +2509,22 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                         ],
                                       ),
                                     ),
-                                    GestureDetector(
-                                      child: Container(
-                                        height: 30.0,
-                                        width: 56.0,
-                                        margin: EdgeInsets.all(2.0),
-                                        alignment: Alignment.center,
-                                        decoration: BoxDecoration(
-                                          color: item['isFollow'] ? Colors.white : Color(0xFFFF2C55),
+                                    // 关注按钮: 按需求暂时隐藏(将 _kShowFollowButton 改为 true 即可恢复)
+                                    if (_kShowFollowButton)
+                                      GestureDetector(
+                                        child: Container(
+                                          height: 30.0,
+                                          width: 56.0,
+                                          margin: EdgeInsets.all(2.0),
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(
+                                            color: item['isFollow'] ? Colors.white : Color(0xFFFF2C55),
                                             borderRadius: BorderRadius.circular(50.0),
                                           ),
-                                          child: Text(item['isFollow'] ? '已关注' : '关注', style: TextStyle(color: item['isFollow'] ? Color(0xFFFF2C55) : Colors.white, fontSize: 13.0),),
+                                          child: Text(item['isFollow'] ? '已关注' : '关注', style: TextStyle(color: item['isFollow'] ? Color(0xFFFF2C55) : Colors.white, fontSize: 13.0)),
                                         ),
                                         onTap: () => _onFollowTap(index, item),
-                                          )
+                                      ),
                                         ],
                                         ),
                                       ),
@@ -2604,8 +2783,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 ],
                                 ),
                               ),
-                              // 送礼物消息动效: 先不播送礼消息, 需要时取消下面整段注释即可
-                              /*
+                              // 送礼物消息动效
                               AnimationLiveGift(
                                 giftQueryList: [
                                 {'label': '小心心', 'gift': 'assets/images/gift/gift1.png', 'user': '岁月如梭', 'avatar': 'assets/images/avatar/img01.jpg', 'num': 6},
@@ -2620,7 +2798,6 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 {'label': '私人飞机', 'gift': 'assets/images/gift/gift16.png', 'user': 'Davi', 'avatar': 'assets/images/avatar/img10.jpg', 'num': 168},
                               ],
                               ),
-                              */
                               // 进场动效: 真实直播间播 socket join 推送, 本地演示房间播内置演示数据
                               AnimationLiveJoin(
                                 joinQueryList: roomSn.isNotEmpty ? null : [
@@ -2870,8 +3047,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                         child: Image.asset('assets/images/icon-aixin.png', width: 27.0,),
                                       ),
                                     ),
-                                    // 底部礼物入口: 先停用(礼物弹窗 + 钻石不足充值弹窗), 需要时取消下面整段注释即可
-                                    /*
+                                    // 底部礼物入口
                                     InkWell(
                                       child: Container(
                                         alignment: Alignment.center,
@@ -2903,7 +3079,6 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                     ));
                                     }
                                   ),
-                                  */
                                     // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
                                     GestureDetector(
                                       behavior: HitTestBehavior.opaque,

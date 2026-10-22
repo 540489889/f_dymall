@@ -13,6 +13,7 @@ import 'package:get/get.dart';
 
 import '../../api/member_point.dart';
 import '../../api/point_exchange.dart';
+import '../../controller/app_config.dart';
 import '../../controller/auth_store.dart';
 
 class PointShopPage extends StatefulWidget {
@@ -183,7 +184,7 @@ class _PointShopPageState extends State<PointShopPage> {
         backgroundColor: Colors.white,
         surfaceTintColor: Colors.white,
         foregroundColor: Colors.black87,
-        title: const Text('积分商城', style: TextStyle(fontSize: 17.0)),
+        title: Text('${AppConfig.to.pointName()}商城', style: const TextStyle(fontSize: 17.0)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0),
@@ -242,7 +243,7 @@ class _PointShopPageState extends State<PointShopPage> {
               children: <Widget>[
                 const Icon(Icons.stars_rounded, color: Colors.white, size: 20.0),
                 const SizedBox(width: 6.0),
-                const Text('我的积分', style: TextStyle(color: Colors.white, fontSize: 13.0)),
+                Text('我的${AppConfig.to.pointName()}', style: const TextStyle(color: Colors.white, fontSize: 13.0)),
                 const SizedBox(width: 8.0),
                 Text(
                   '$point',
@@ -280,7 +281,7 @@ class _PointShopPageState extends State<PointShopPage> {
         children: <Widget>[
           _buildMenuItem(Icons.help_outline, '活动规则', openRule),
           _buildMenuItem(Icons.receipt_long_outlined, '兑换记录', () => redirect('/point/order_list')),
-          _buildMenuItem(Icons.list_alt_outlined, '积分明细', () => redirect('/my/point_detail')),
+          _buildMenuItem(Icons.list_alt_outlined, '${AppConfig.to.pointName()}明细', () => redirect('/my/point_detail')),
         ],
       ),
     );
@@ -561,7 +562,7 @@ class _PointShopPageState extends State<PointShopPage> {
                         style: const TextStyle(color: primary, fontSize: 16.0, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
                       ),
                       const SizedBox(width: 2.0),
-                      const Text('积分', style: TextStyle(color: primary, fontSize: 11.0)),
+                      Text(AppConfig.to.pointName(), style: const TextStyle(color: primary, fontSize: 11.0)),
                       if (price > 0 && payType > 0) ...<Widget>[
                         const SizedBox(width: 3.0),
                         Text('+¥${price.toStringAsFixed(2)}', style: const TextStyle(color: primary, fontSize: 11.0)),

@@ -13,6 +13,7 @@ import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member_point.dart';
+import '../../controller/app_config.dart';
 import '../../styles/index.dart';
 
 class PointPage extends StatefulWidget {
@@ -74,7 +75,7 @@ class _PointPageState extends State<PointPage> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        errorMsg = MemberPointApi.errorMsg(e, '积分加载失败');
+        errorMsg = MemberPointApi.errorMsg(e, '${AppConfig.to.pointName()}加载失败');
         loading = false;
       });
     }
@@ -83,7 +84,7 @@ class _PointPageState extends State<PointPage> {
   /// 积分规则弹窗(H5 uni-popup 底部弹出)
   Future<void> openRule() async {
     if (rule.isEmpty) {
-      MyDialog.toast('暂无积分说明');
+      MyDialog.toast('暂无${AppConfig.to.pointName()}说明');
       return;
     }
     await showModalBottomSheet<void>(
@@ -98,7 +99,7 @@ class _PointPageState extends State<PointPage> {
             children: <Widget>[
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 14.0),
-                child: const Text('积分说明', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
+                child: Text('${AppConfig.to.pointName()}说明', style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
               ),
               const Divider(color: FStyle.dividerColor, height: 1.0, thickness: 0.5),
               Flexible(
@@ -127,7 +128,7 @@ class _PointPageState extends State<PointPage> {
         scrolledUnderElevation: 0,
         systemOverlayStyle: SystemUiOverlayStyle.light,
         foregroundColor: Colors.white,
-        title: const Text('我的积分', style: TextStyle(fontSize: 17.0, color: Colors.white)),
+        title: Text('我的${AppConfig.to.pointName()}', style: const TextStyle(fontSize: 17.0, color: Colors.white)),
         centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Colors.white),
@@ -215,17 +216,17 @@ class _PointPageState extends State<PointPage> {
           const SizedBox(height: 8.0),
           Row(
             children: <Widget>[
-              const Text('当前积分', style: TextStyle(color: Colors.white70, fontSize: 13.0)),
+              Text('当前${AppConfig.to.pointName()}', style: const TextStyle(color: Colors.white70, fontSize: 13.0)),
               const Spacer(),
               InkWell(
                 borderRadius: BorderRadius.circular(12.0),
                 onTap: openRule,
-                child: const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 6.0, vertical: 4.0),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Text('积分规则', style: TextStyle(color: Colors.white, fontSize: 13.0)),
+                      Text('${AppConfig.to.pointName()}规则', style: TextStyle(color: Colors.white, fontSize: 13.0)),
                       Icon(Icons.chevron_right, color: Colors.white, size: 16.0),
                     ],
                   ),
@@ -236,7 +237,7 @@ class _PointPageState extends State<PointPage> {
           const SizedBox(height: 20.0),
           Row(
             children: <Widget>[
-              _buildSubItem('累计积分', totalPoint),
+              _buildSubItem('累计${AppConfig.to.pointName()}', totalPoint),
               Container(width: 0.5, height: 24.0, color: Colors.white30),
               _buildSubItem('累计消费', totalConsume),
               Container(width: 0.5, height: 24.0, color: Colors.white30),
@@ -274,13 +275,13 @@ class _PointPageState extends State<PointPage> {
         children: <Widget>[
           _buildMenu(
             Icons.receipt_long,
-            '积分明细',
+            '${AppConfig.to.pointName()}明细',
             () => Get.toNamed('/my/point_detail'),
             showDivider: true,
           ),
           _buildMenu(
             Icons.storefront_outlined,
-            '积分商城',
+            '${AppConfig.to.pointName()}商城',
             () => Get.toNamed('/point/shop'),
           ),
         ],
@@ -297,19 +298,19 @@ class _PointPageState extends State<PointPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          const Text('做任务赚积分', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
+          Text('做任务赚${AppConfig.to.pointName()}', style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
           const SizedBox(height: 6.0),
           _buildTask(
             Icons.edit_calendar_outlined,
             '每日签到',
-            '连续签到可获得更多积分',
+            '连续签到可获得更多${AppConfig.to.pointName()}',
             '去签到',
             () => Get.toNamed('/my/signin'),
           ),
           _buildTask(
             Icons.shopping_bag_outlined,
             '购买商品',
-            '购买商品可获得积分',
+            '购买商品可获得${AppConfig.to.pointName()}',
             '去下单',
             () => Get.toNamed('/'),
           ),

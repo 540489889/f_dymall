@@ -18,6 +18,14 @@ class AppConfig extends GetxController {
   dynamic get(String key, [dynamic fallback]) =>
       data.value.containsKey(key) ? data.value[key] : fallback;
 
+  /// 虚拟币名称(积分/金币等)
+  /// * 取 /api/config/init 的 point_config.name, 缺失/为空时返回 [fallback]
+  String pointName([String fallback = '积分']) {
+    final dynamic cfg = data.value['point_config'];
+    final String name = cfg is Map ? '${cfg['name'] ?? ''}' : '';
+    return name.isNotEmpty ? name : fallback;
+  }
+
   /// 拉取失败后的最大重试次数
   static const int maxRetry = 3;
 

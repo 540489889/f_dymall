@@ -15,6 +15,7 @@ import 'package:get_storage/get_storage.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member.dart';
+import '../../components/dialog_confirm.dart';
 import '../../components/dialog_logout.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
@@ -297,10 +298,19 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
       child: GestureDetector(
         onTap: loading
             ? null
-            : () {
+            : () async {
                 if (!enabled) {
                   MyDialog.toast('当前环境不支持微信绑定,请在 App 内操作');
                   return;
+                }
+                // 已绑定(点「更换」): 先弹确认框, 避免误触解绑
+                if (bound) {
+                  final bool ok = await showConfirmDialog(
+                    title: '更换微信绑定',
+                    message: '确定要更换当前绑定的微信账号吗？',
+                    confirmText: '更换',
+                  );
+                  if (!ok) return;
                 }
                 _bindWechat();
               },
@@ -311,7 +321,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
           child: Row(
             children: <Widget>[
               Expanded(
-                child: Text('微信', style: const TextStyle(fontSize: 15.0, color: Colors.black87)),
+                child: Text('微信绑定', style: const TextStyle(fontSize: 15.0, color: Colors.black87)),
               ),
               // 已绑定时显示微信名(灰色小字), 与状态文案同行, 不带头像、与「账号资料」区分
               if (bound)
@@ -325,7 +335,7 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
                   ),
                 ),
               Text(
-                !enabled ? '暂不支持' : (bound ? '重新绑定' : '去绑定'),
+                !enabled ? '暂不支持' : (bound ? '更换' : '去绑定'),
                 style: TextStyle(
                   fontSize: 14.0,
                   // 已绑定=微信绿, 未绑定=橙色, 一眼区分两种状态

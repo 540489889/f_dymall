@@ -46,24 +46,13 @@ class _LogoutDialog extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              // 顶部图标: 浅色圆底 + 主色图标
-              Container(
-                width: 56.0,
-                height: 56.0,
-                decoration: BoxDecoration(
-                  color: _brandColor.withAlpha(26),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.logout_rounded, color: _brandColor, size: 28.0),
-              ),
-              const SizedBox(height: 16.0),
               const Text(
                 '退出登录',
                 style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Color(0xFF222222)),
               ),
               const SizedBox(height: 8.0),
               const Text(
-                '退出后将无法查看订单和个人资料,\n需要重新登录才能继续使用',
+                '退出后将无法查看订单和个人资料',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13.0, height: 1.5, color: Color(0xFF999999)),
               ),

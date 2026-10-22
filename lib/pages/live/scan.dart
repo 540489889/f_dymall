@@ -21,6 +21,8 @@ class _LiveScanPageState extends State<LiveScanPage> {
   final TextEditingController codeController = TextEditingController();
   // 进入中: 查房间接口期间锁住两个入口,避免连点重复跳直播间
   bool entering = false;
+  // 直播码为空提交时的错误态: 输入框变红提示(替代弹 toast)
+  bool _codeError = false;
 
   @override
   void dispose() {
@@ -34,9 +36,11 @@ class _LiveScanPageState extends State<LiveScanPage> {
     FocusManager.instance.primaryFocus?.unfocus();
     final String code = codeController.text.trim();
     if (code.isEmpty) {
-      Get.snackbar('提示', '请输入直播码');
+      // 不再弹 toast: 让输入框变红作为提示
+      if (mounted) setState(() => _codeError = true);
       return;
     }
+    if (mounted) setState(() => _codeError = false);
     await _enterRoom(code);
   }
 
@@ -450,19 +454,27 @@ class _LiveScanPageState extends State<LiveScanPage> {
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 14.0),
       decoration: BoxDecoration(
-        color: const Color(0xFFF6F6F6),
+        color: _codeError ? const Color(0xFFFDECEA) : const Color(0xFFF6F6F6),
         borderRadius: BorderRadius.circular(24.0),
-        border: Border.all(color: const Color(0xFFEDEDED)),
+        border: Border.all(
+          color: _codeError ? const Color(0xFFFF4E2A) : const Color(0xFFEDEDED),
+          width: _codeError ? 1.5 : 1.0,
+        ),
       ),
       child: Row(
         children: <Widget>[
-          const Icon(Icons.keyboard_rounded, size: 20.0, color: Color(0xFFBBBBBB)),
+          Icon(Icons.keyboard_rounded, size: 20.0, color: _codeError ? const Color(0xFFFF4E2A) : const Color(0xFFBBBBBB)),
           const SizedBox(width: 8.0),
           Expanded(
             child: TextField(
               controller: codeController,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => enterByCode(),
+              onChanged: (String v) {
+                if (_codeError && v.trim().isNotEmpty && mounted) {
+                  setState(() => _codeError = false);
+                }
+              },
               cursorColor: const Color(0xFFFF4E2A),
               style: const TextStyle(fontSize: 14.0, color: Color(0xFF333333)),
               decoration: const InputDecoration(

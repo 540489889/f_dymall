@@ -14,6 +14,7 @@ import '../../api/goods.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
 import '../../components/dialog_confirm.dart';
+import '../../components/live_float_window.dart';
 import '../../styles/index.dart';
 
 /// 购物车条目
@@ -145,6 +146,31 @@ class _CartPageState extends State<CartPage> {
   void initState() {
     super.initState();
     loadCart();
+    // 从直播间进来: 等首帧布局完再挂悬浮小窗(小窗继续播直播画面,点它回直播间)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final Map<String, dynamic> args = Get.arguments is Map
+          ? Map<String, dynamic>.from(Get.arguments as Map)
+          : const <String, dynamic>{};
+      final dynamic fromLive = args['fromLive'];
+      // 直播间在栈里,点小窗退栈就能回去,所以没有 sn 也要挂
+      if (fromLive == true || '$fromLive' == 'true') {
+        LiveFloatWindow.instance.show(
+          context: context,
+          roomSn: '${args['live_roomid'] ?? ''}'.trim(),
+          cover: '${args['liveCover'] ?? ''}'.trim(),
+          anchorName: '${args['liveAnchor'] ?? ''}'.trim(),
+          pullUrl: '${args['livePullUrl'] ?? ''}'.trim(),
+        );
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    // 离开购物车收起直播间悬浮小窗(返回直播间时也是走这里)
+    LiveFloatWindow.instance.hide();
+    super.dispose();
   }
 
   /// 加载购物车列表

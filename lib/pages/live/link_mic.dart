@@ -149,9 +149,8 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
     }
     final String code = codeController.text.trim();
     if (code.isEmpty) {
-      // 不置灰按钮: 改为输入框红色警告 + 居中 toast(与直播间提示一致)
+      // 不置灰按钮: 改为输入框红色警告(不再弹任何提示)
       if (mounted) setState(() => codeError = true);
-      MyDialog.toast('请输入连麦码');
       return;
     }
     setState(() {
@@ -555,7 +554,7 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
             child: Text('申请连麦', style: const TextStyle(fontSize: 17.0, fontWeight: FontWeight.w700, color: Colors.black87)),
           ),
         ),
-        const SizedBox(height: 16.0),
+        const SizedBox(height: 32.0),
         // 主卡片: 把头部插图与表单放进同一张白卡, 图标和内容视觉统一、不再各占一块
         Container(
           padding: const EdgeInsets.fromLTRB(20.0, 28.0, 20.0, 20.0),
@@ -584,7 +583,13 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
               ),
               const SizedBox(height: 16.0),
               const Text(
-                '输入主播给你的连麦码，申请通过后即可与主播同屏',
+                '输入主播给你的连麦码',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 14.0, height: 1.5, color: kLinkTextSub, fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 4.0),
+              const Text(
+                '申请通过后即可与主播同屏',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13.0, height: 1.5, color: kLinkTextSub),
               ),
@@ -633,11 +638,6 @@ class _LinkMicPageState extends State<LinkMicPage> with SingleTickerProviderStat
                       ),
                     ),
                   ),
-                  if (codeError)
-                    const Padding(
-                      padding: EdgeInsets.only(left: 16.0, top: 6.0),
-                      child: Text('请输入连麦码', style: TextStyle(fontSize: 12.0, color: Color(0xFFFF3B30))),
-                    ),
                 ],
               ),
               const SizedBox(height: 16.0),

@@ -16,6 +16,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/member_point.dart';
 import '../../api/point_exchange.dart';
+import '../../controller/app_config.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
 
@@ -550,7 +551,7 @@ class _PointGoodsDetailPageState extends State<PointGoodsDetailPage> {
                 style: const TextStyle(color: primary, fontSize: 24.0, fontWeight: FontWeight.bold, fontFamily: 'Arial'),
               ),
               const SizedBox(width: 3.0),
-              const Text('积分', style: TextStyle(color: primary, fontSize: 13.0)),
+              Text(AppConfig.to.pointName(), style: const TextStyle(color: primary, fontSize: 13.0)),
               if (exchangePrice > 0 && payType > 0) ...<Widget>[
                 const SizedBox(width: 6.0),
                 Text(
@@ -584,7 +585,7 @@ class _PointGoodsDetailPageState extends State<PointGoodsDetailPage> {
               const SizedBox(width: 14.0),
               Text('已兑:$saleNum', style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
               const Spacer(),
-              Text('我的积分:$memberPoint', style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
+              Text('我的${AppConfig.to.pointName()}:$memberPoint', style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
             ],
           ),
         ],

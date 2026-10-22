@@ -199,7 +199,7 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
                             textInputAction: TextInputAction.search,
                             decoration: const InputDecoration(
                               isDense: true,
-                              hintText: '直播间标题/主播昵称',
+                              hintText: '直播间标题',
                               hintStyle: TextStyle(color: Color(0xFFBBBBBB), fontSize: 13.0),
                               contentPadding: EdgeInsets.zero,
                               border: InputBorder.none,

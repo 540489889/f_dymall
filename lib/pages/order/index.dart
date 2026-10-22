@@ -18,6 +18,7 @@ import '../../api/order.dart';
 import '../../utils/order_status.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/popup_pay.dart';
+import '../../components/dialog_confirm.dart';
 
 class Order extends StatefulWidget {
   const Order({super.key});
@@ -188,7 +189,20 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
         await confirmAction('您确定已经收到货物了吗？', () => OrderApi.takeDelivery(orderId));
         break;
       case 'orderDelete':
-        await confirmAction('您确定要删除该订单吗？', () => OrderApi.delete(orderId));
+        final bool ok = await showConfirmDialog(
+          title: '删除订单',
+          message: '您确定要删除该订单吗？',
+          confirmText: '删除',
+          brandColor: const Color(0xFFFF4D5F),
+        );
+        if (!ok) break;
+        try {
+          await OrderApi.delete(orderId);
+          MyDialog.toast('删除成功');
+          await load(refresh: true);
+        } catch (e) {
+          MyDialog.toast(OrderApi.errorMsg(e, '删除失败'));
+        }
         break;
       case 'memberOrderEvaluation':
         Get.toNamed('/order/evaluate', arguments: <String, dynamic>{'order_id': orderId})?.then((dynamic value) {
@@ -269,7 +283,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
           'assets/images/common-empty.png',
           width: 120.0,
         ),
-        const Text('还没有相关订单~', style: TextStyle(color: Colors.grey, fontSize: 12.0)),
+        const Text('还没有相关订单~', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
       ],
     );
   }
@@ -291,7 +305,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
             decoration: InputDecoration(
               isDense: true,
               hintText: '搜索订单',
-              hintStyle: const TextStyle(color: Colors.black38, fontSize: 14.0),
+              hintStyle: const TextStyle(color: Colors.black38, fontSize: 15.0),
               prefixIcon: const Icon(Icons.search, color: Colors.black38, size: 21.0),
               contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 10.0),
               border: OutlineInputBorder(borderSide: BorderSide.none, borderRadius: BorderRadius.circular(30.0)),
@@ -373,7 +387,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
           if (i >= list.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 12.0),
-              child: Center(child: Text('加载中...', style: TextStyle(fontSize: 12.0, color: Colors.grey))),
+              child: Center(child: Text('加载中...', style: TextStyle(fontSize: 13.0, color: Colors.grey))),
             );
           }
           return _buildItem(list[i]);
@@ -409,7 +423,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
                     '订单号：${item['order_no'] ?? ''}',
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12.0, color: Color(0xFF888888)),
+                    style: const TextStyle(fontSize: 13.0, color: Color(0xFF888888)),
                   ),
                 ),
                 if ('${item['order_type_name'] ?? ''}'.isNotEmpty) ...<Widget>[
@@ -417,11 +431,11 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 5.0, vertical: 1.0),
                     decoration: BoxDecoration(color: primary.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(3.0)),
-                    child: Text('${item['order_type_name']}', style: const TextStyle(fontSize: 10.0, color: primary)),
+                    child: Text('${item['order_type_name']}', style: const TextStyle(fontSize: 11.0, color: primary)),
                   ),
                 ],
                 const SizedBox(width: 6.0),
-                Text('${item['order_status_name'] ?? ''}', style: TextStyle(fontSize: 13.0, color: OrderStatusStyle.meta('${item['order_status'] ?? ''}').color)),
+                Text('${item['order_status_name'] ?? ''}', style: TextStyle(fontSize: 14.0, color: OrderStatusStyle.meta('${item['order_status'] ?? ''}').color)),
               ],
             ),
             const SizedBox(height: 10.0),
@@ -440,7 +454,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
                       '剩余时间：$leftText',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 12.0, color: Color(0xFFFF4644)),
+                      style: const TextStyle(fontSize: 13.0, color: Color(0xFFFF4644)),
                     ),
                   ),
                   const Spacer(),
@@ -454,7 +468,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
                         style: const TextStyle(color: primary, fontWeight: FontWeight.w600),
                       ),
                     ],
-                    style: const TextStyle(fontSize: 13.0, color: Color(0xFF333333)),
+                    style: const TextStyle(fontSize: 14.0, color: Color(0xFF333333)),
                   ),
                 ),
               ],
@@ -504,19 +518,19 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
                   '${goods['sku_name'] ?? ''}',
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 13.0),
+                  style: const TextStyle(fontSize: 14.0),
                 ),
                 if (spec.isNotEmpty)
                   Padding(
                     padding: const EdgeInsets.only(top: 2.0),
-                    child: Text(spec, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11.0, color: Colors.grey)),
+                    child: Text(spec, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.0, color: Colors.grey)),
                   ),
                 Row(
                   children: <Widget>[
                     Text('¥${OrderApi.moneyOf(goods['price']).toStringAsFixed(2)}',
-                        style: const TextStyle(color: primary, fontSize: 13.0, fontWeight: FontWeight.w600)),
+                        style: const TextStyle(color: primary, fontSize: 14.0, fontWeight: FontWeight.w600)),
                     const Spacer(),
-                    Text('x${goods['num'] ?? 1}', style: const TextStyle(color: Colors.grey, fontSize: 12.0)),
+                    Text('x${goods['num'] ?? 1}', style: const TextStyle(color: Colors.grey, fontSize: 13.0)),
                   ],
                 ),
               ],
@@ -560,7 +574,7 @@ class _OrderState extends State<Order> with SingleTickerProviderStateMixin {
           padding: const EdgeInsets.symmetric(horizontal: 12.0),
         ),
         onPressed: onTap,
-        child: Text(text, style: const TextStyle(fontSize: 12.0)),
+        child: Text(text, style: const TextStyle(fontSize: 13.0)),
       ),
     );
   }

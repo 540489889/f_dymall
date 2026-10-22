@@ -816,6 +816,8 @@ Widget _buildPriceBlock() {
           ),
         Row(
         spacing: 5.0,
+        crossAxisAlignment: CrossAxisAlignment.baseline,
+        textBaseline: TextBaseline.alphabetic,
         children: [
           Text('¥${money(price)}', style: TextStyle(color: Colors.white, fontSize: 22.0, fontWeight: FontWeight.w700),),
           // 券后价
@@ -828,19 +830,14 @@ Widget _buildPriceBlock() {
               ),
               child: Text('券后价¥${money(couponPrice)}', style: const TextStyle(color: Color(0xFFFF2C55), fontSize: 12.0, fontWeight: FontWeight.w600)),
             ),
-        ],
-      ),
-      Row(
-        spacing: 8.0,
-        children: [
           // 划线价
           if (showMarketPrice)
             Text('¥${money(marketPrice)}', style: TextStyle(color: Colors.white70, fontSize: 13.0, decoration: TextDecoration.lineThrough),),
-          // 卖点/副标题
-          if (introduction.isNotEmpty)
-            Expanded(child: Text(introduction, style: TextStyle(color: Colors.white, fontSize: 12.0), maxLines: 1, overflow: TextOverflow.ellipsis,)),
         ],
       ),
+      // 卖点/副标题
+      if (introduction.isNotEmpty)
+        Text(introduction, style: TextStyle(color: Colors.white, fontSize: 12.0), maxLines: 1, overflow: TextOverflow.ellipsis,),
       // 库存 / 销量
       if (showStock || showSale)
         Row(

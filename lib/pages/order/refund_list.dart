@@ -131,7 +131,7 @@ class _RefundListState extends State<RefundList> {
         children: <Widget>[
           Image.asset('assets/images/common-empty.png', width: 120.0),
           const SizedBox(height: 8.0),
-          const Text('还没有售后记录~', style: TextStyle(color: Colors.grey, fontSize: 12.0)),
+          const Text('还没有售后记录~', style: TextStyle(color: Colors.grey, fontSize: 13.0)),
         ],
       );
 
@@ -177,7 +177,7 @@ class _RefundListState extends State<RefundList> {
           if (i >= list.length) {
             return const Padding(
               padding: EdgeInsets.symmetric(vertical: 12.0),
-              child: Center(child: Text('加载中...', style: TextStyle(fontSize: 12.0, color: Colors.grey))),
+              child: Center(child: Text('加载中...', style: TextStyle(fontSize: 13.0, color: Colors.grey))),
             );
           }
           return _buildItem(list[i]);
@@ -213,10 +213,10 @@ class _RefundListState extends State<RefundList> {
                   '订单号：${item['order_no'] ?? ''}',
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12.0, color: Color(0xFF888888)),
+                  style: const TextStyle(fontSize: 13.0, color: Color(0xFF888888)),
                 ),
               ),
-              Text(statusName, style: TextStyle(fontSize: 13.0, color: statusColor)),
+              Text(statusName, style: TextStyle(fontSize: 14.0, color: statusColor)),
             ],
           ),
           const SizedBox(height: 10.0),
@@ -240,15 +240,15 @@ class _RefundListState extends State<RefundList> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
-                    Text('${item['sku_name'] ?? ''}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13.0)),
+                    Text('${item['sku_name'] ?? ''}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.0)),
                     const SizedBox(height: 6.0),
-                    Text(statusName, style: TextStyle(fontSize: 12.0, color: statusColor)),
+                    Text(statusName, style: TextStyle(fontSize: 13.0, color: statusColor)),
                     const SizedBox(height: 6.0),
                     Row(
                       children: <Widget>[
-                        Text('¥${num.tryParse('${item['price'] ?? 0}') ?? 0}', style: const TextStyle(color: primary, fontSize: 13.0, fontWeight: FontWeight.w600)),
+                        Text('¥${num.tryParse('${item['price'] ?? 0}') ?? 0}', style: const TextStyle(color: primary, fontSize: 14.0, fontWeight: FontWeight.w600)),
                         const Spacer(),
-                        Text('x${item['num'] ?? 1}', style: const TextStyle(color: Colors.grey, fontSize: 12.0)),
+                        Text('x${item['num'] ?? 1}', style: const TextStyle(color: Colors.grey, fontSize: 13.0)),
                       ],
                     ),
                   ],
@@ -260,8 +260,8 @@ class _RefundListState extends State<RefundList> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: <Widget>[
-              Text('共${item['num'] ?? 1}件商品', style: const TextStyle(fontSize: 12.0, color: Colors.grey)),
-              Text('退款：¥${refundMoneyText(item)}', style: const TextStyle(fontSize: 12.0, color: primary, fontWeight: FontWeight.w600)),
+              Text('共${item['num'] ?? 1}件商品', style: const TextStyle(fontSize: 13.0, color: Colors.grey)),
+              Text('退款：¥${refundMoneyText(item)}', style: const TextStyle(fontSize: 13.0, color: primary, fontWeight: FontWeight.w600)),
             ],
           ),
           const SizedBox(height: 8.0),
@@ -292,7 +292,7 @@ class _RefundListState extends State<RefundList> {
           padding: const EdgeInsets.symmetric(horizontal: 12.0),
         ),
         onPressed: onTap,
-        child: Text(text, style: const TextStyle(fontSize: 12.0)),
+        child: Text(text, style: const TextStyle(fontSize: 13.0)),
       ),
     );
   }
