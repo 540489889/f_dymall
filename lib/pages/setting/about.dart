@@ -84,9 +84,9 @@ class _AboutPageState extends State<AboutPage> {
   String get _company =>
       _str(_copyright['company_name'] ?? _site['company_name'], '重楼数字科技重庆有限公司');
 
-  /// 平台官网(未配置时点击提示)
+  /// 平台官网(优先取 copyright.web_url, 未配置时点击提示)
   String get _officialUrl =>
-      _str(_site['site_url'] ?? _site['website'] ?? _copyright['site_url'], '');
+      _str(_copyright['web_url'] ?? _site['site_url'] ?? _site['website'], '');
 
   /// ICP 备案号
   String get _icpNo => _str(_copyright['icp'] ?? _copyright['copyright_desc'], '—');
@@ -118,9 +118,24 @@ class _AboutPageState extends State<AboutPage> {
       ),
       child: Scaffold(
         backgroundColor: const Color(0xFFFFF6EE),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
+        body: Stack(
+          // 撑满整屏: 否则 Stack 高度会被内容撑小,背景图只盖住部分区域
+          fit: StackFit.expand,
+          children: <Widget>[
+            // 通用背景图(bg-c.png)铺满整页
+            Positioned.fill(
+              child: Container(
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/images/bg-c.png'),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
             // 顶栏(仅占位, 无单独背景色, 与页面暖色背景融为一体)
             Container(
               padding: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
@@ -187,6 +202,8 @@ class _AboutPageState extends State<AboutPage> {
                 },
               ),
             ),
+          ],
+        ),
           ],
         ),
       ),

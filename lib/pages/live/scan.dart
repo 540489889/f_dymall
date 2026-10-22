@@ -182,43 +182,41 @@ class _LiveScanPageState extends State<LiveScanPage> {
           shadowColor: Colors.transparent,
           surfaceTintColor: Colors.transparent,
           centerTitle: true,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back_ios_rounded, size: 18.0, color: Colors.black87),
-            // 返回前先收键盘: 直接返回时输入框还占着焦点, iOS 上键盘会留在直播间页面上
-            onPressed: () {
-              FocusManager.instance.primaryFocus?.unfocus();
-              Get.back<void>();
-            },
+          leading: Center(
+            child: GestureDetector(
+              // 返回前先收键盘: 直接返回时输入框还占着焦点, iOS 上键盘会留在直播间页面上
+              onTap: () {
+                FocusManager.instance.primaryFocus?.unfocus();
+                Get.back<void>();
+              },
+              child: Container(
+                width: 34.0,
+                height: 34.0,
+                decoration: const BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: LinearGradient(colors: <Color>[Color(0xFFFFA63C), Color(0xFFFF4E2A)]),
+                ),
+                child: const Icon(Icons.arrow_back_ios_new_rounded, size: 16.0, color: Colors.white),
+              ),
+            ),
           ),
           title: const Text(
-            '扫一扫',
-            style: TextStyle(fontSize: 17.0, fontWeight: FontWeight.w600, color: Colors.black87),
+            '扫码',
+            style: TextStyle(fontSize: 18.0, fontWeight: FontWeight.w700, color: Color(0xFF333333)),
           ),
         ),
         body: Stack(
+          // 撑满整屏: 否则 Stack 高度会被内容(卡片)撑小,背景图只盖住卡片那一段
+          fit: StackFit.expand,
           children: <Widget>[
-            // 背景装饰圆(与绑定门店页同一套暖色装饰,避免整页空白)
-            Positioned(
-              top: -70.0,
-              right: -60.0,
+            // 背景图(bg-c.png)铺满整页(extendBodyBehindAppBar 下会延伸到状态栏后)
+            Positioned.fill(
               child: Container(
-                width: 190.0,
-                height: 190.0,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFFF2C55).withValues(alpha: 0.06),
-                ),
-              ),
-            ),
-            Positioned(
-              top: 150.0,
-              left: -50.0,
-              child: Container(
-                width: 120.0,
-                height: 120.0,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFFF7A52).withValues(alpha: 0.06),
+                decoration: const BoxDecoration(
+                  image: DecorationImage(
+                    image: AssetImage('assets/images/bg-c.png'),
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
             ),
@@ -227,21 +225,8 @@ class _LiveScanPageState extends State<LiveScanPage> {
                 // iOS 上滑动页面时收起软键盘(默认 manual: 只有 Android 的返回键能收, iOS 没返回键)
                 keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
                 // 顶部让出一个导航栏高度: extendBodyBehindAppBar 后 body 从状态栏下就开始布局
-                padding: const EdgeInsets.fromLTRB(20.0, kToolbarHeight + 8.0, 20.0, 24.0),
-                child: Column(
-                  children: <Widget>[
-                    _buildCodeCard(),
-                    const SizedBox(height: 18.0),
-                    _buildDivider(),
-                    const SizedBox(height: 18.0),
-                    _buildScanEntry(),
-                    const SizedBox(height: 22.0),
-                    const Text(
-                      '扫码或输入直播码,即可进入直播间',
-                      style: TextStyle(fontSize: 12.0, color: Colors.black26),
-                    ),
-                  ],
-                ),
+                padding: const EdgeInsets.fromLTRB(16.0, kToolbarHeight - 32.0, 16.0, 24.0),
+                child: _buildMainCard(),
               ),
             ),
           ],
@@ -250,159 +235,246 @@ class _LiveScanPageState extends State<LiveScanPage> {
     );
   }
 
-  /// 输入直播码板块: 标题 + 输入框 + 进入直播间
-  Widget _buildCodeCard() {
+  /// 主体白卡: 扫码插画 + 扫一扫 + 输入直播码 + 进直播间(对齐设计稿)
+  Widget _buildMainCard() {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(18.0, 18.0, 18.0, 18.0),
+      padding: const EdgeInsets.fromLTRB(20.0, 26.0, 20.0, 24.0),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16.0),
+        borderRadius: BorderRadius.circular(28.0),
         boxShadow: <BoxShadow>[
-          BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16.0, offset: const Offset(0.0, 4.0)),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 20.0, offset: const Offset(0.0, 6.0)),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Row(
-            children: <Widget>[
-              const Icon(Icons.qr_code_2_rounded, size: 18.0, color: Color(0xFFFF2C55)),
-              const SizedBox(width: 6.0),
-              const Text(
-                '输入直播码',
-                style: TextStyle(fontSize: 16.0, fontWeight: FontWeight.w700, color: Colors.black87),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4.0),
-          const Text(
-            '看精彩直播,输入主播给你的直播码即可直达直播间',
-            style: TextStyle(fontSize: 12.0, color: Colors.black45),
-          ),
+          _buildScanHero(),
+          const SizedBox(height: 14.0),
+          const Text('扫直播间二维码 / 用户分享码', style: TextStyle(fontSize: 13.0, color: Color(0xFF999999))),
+          const SizedBox(height: 20.0),
+          _buildGradientButton('扫一扫', scan),
+          const SizedBox(height: 22.0),
+          _buildOrDivider(),
+          const SizedBox(height: 22.0),
+          const Text('输入直播码', style: TextStyle(fontSize: 20.0, fontWeight: FontWeight.w700, color: Color(0xFF333333))),
           const SizedBox(height: 16.0),
-          Container(
-            width: double.infinity,
-            height: 46.0,
-            // 不给 alignment 时 child 贴左上, hint 会浮在输入框上半部分
-            alignment: Alignment.centerLeft,
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7F4EF),
-              borderRadius: BorderRadius.circular(23.0),
+          _buildCodeField(),
+          const SizedBox(height: 16.0),
+          _buildGradientButton('进入直播间', enterByCode, loading: entering),
+          const SizedBox(height: 18.0),
+          const Text('没有二维码？输入直播码也能进直播间', style: TextStyle(fontSize: 12.0, color: Color(0xFFBBBBBB))),
+        ],
+      ),
+    );
+  }
+
+  /// 扫码插画: 中间取景框 + 周边直播/商城小元素
+  Widget _buildScanHero() {
+    return SizedBox(
+      width: double.infinity,
+      height: 160.0,
+      child: Stack(
+        alignment: Alignment.center,
+        children: <Widget>[
+          Positioned(
+            top: 0.0,
+            left: 22.0,
+            child: Transform.rotate(
+              angle: -0.12,
+              child: const Icon(Icons.video_camera_front_rounded, size: 38.0, color: Color(0xFFFF8A5B)),
             ),
+          ),
+          Positioned(
+            top: 2.0,
+            right: 26.0,
+            child: Transform.rotate(
+              angle: 0.1,
+              child: const Icon(Icons.storefront_rounded, size: 36.0, color: Color(0xFFFFB27A)),
+            ),
+          ),
+          Positioned(
+            top: 62.0,
+            left: 4.0,
+            child: Transform.rotate(
+              angle: -0.08,
+              child: const Icon(Icons.shopping_bag_rounded, size: 32.0, color: Color(0xFFFF6B81)),
+            ),
+          ),
+          Positioned(
+            top: 66.0,
+            right: 6.0,
+            child: Transform.rotate(
+              angle: 0.08,
+              child: const Icon(Icons.shopping_cart_rounded, size: 32.0, color: Color(0xFFFFA63C)),
+            ),
+          ),
+          Positioned(
+            bottom: 0.0,
+            left: 34.0,
+            child: Transform.rotate(
+              angle: 0.1,
+              child: const Icon(Icons.card_giftcard_rounded, size: 30.0, color: Color(0xFFFFC46B)),
+            ),
+          ),
+          Positioned(
+            bottom: 2.0,
+            right: 38.0,
+            child: Transform.rotate(
+              angle: -0.1,
+              child: const Icon(Icons.paid_rounded, size: 30.0, color: Color(0xFFFFB27A)),
+            ),
+          ),
+          _buildQrFrame(),
+        ],
+      ),
+    );
+  }
+
+  /// 扫码取景框: 四角括号 + 中间扫描线
+  Widget _buildQrFrame() {
+    const BorderSide bs = BorderSide(color: Color(0xFFFF5A2C), width: 5.0);
+    return SizedBox(
+      width: 110.0,
+      height: 110.0,
+      child: Stack(
+        children: <Widget>[
+          Positioned(
+            top: 0.0,
+            left: 0.0,
+            child: Container(
+              width: 30.0,
+              height: 30.0,
+              decoration: BoxDecoration(
+                border: const Border(top: bs, left: bs),
+                borderRadius: const BorderRadius.only(topLeft: Radius.circular(10.0)),
+              ),
+            ),
+          ),
+          Positioned(
+            top: 0.0,
+            right: 0.0,
+            child: Container(
+              width: 30.0,
+              height: 30.0,
+              decoration: BoxDecoration(
+                border: const Border(top: bs, right: bs),
+                borderRadius: const BorderRadius.only(topRight: Radius.circular(10.0)),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 0.0,
+            left: 0.0,
+            child: Container(
+              width: 30.0,
+              height: 30.0,
+              decoration: BoxDecoration(
+                border: const Border(bottom: bs, left: bs),
+                borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(10.0)),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: 0.0,
+            right: 0.0,
+            child: Container(
+              width: 30.0,
+              height: 30.0,
+              decoration: BoxDecoration(
+                border: const Border(bottom: bs, right: bs),
+                borderRadius: const BorderRadius.only(bottomRight: Radius.circular(10.0)),
+              ),
+            ),
+          ),
+          Center(
+            child: Container(
+              width: 54.0,
+              height: 6.0,
+              decoration: BoxDecoration(color: const Color(0xFFFF5A2C), borderRadius: BorderRadius.circular(3.0)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 橙色渐变胶囊按钮
+  Widget _buildGradientButton(String text, VoidCallback onTap, {bool loading = false}) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: loading ? null : onTap,
+      child: Container(
+        width: double.infinity,
+        height: 48.0,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24.0),
+          gradient: const LinearGradient(colors: <Color>[Color(0xFFFFA63C), Color(0xFFFF4E2A)]),
+          boxShadow: <BoxShadow>[
+            BoxShadow(color: const Color(0xFFFF6B35).withValues(alpha: 0.30), blurRadius: 12.0, offset: const Offset(0.0, 5.0)),
+          ],
+        ),
+        child: Center(
+          child: loading
+              ? const SizedBox(
+                  width: 18.0,
+                  height: 18.0,
+                  child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                )
+              : Text(text, style: const TextStyle(fontSize: 16.0, fontWeight: FontWeight.w600, color: Colors.white)),
+        ),
+      ),
+    );
+  }
+
+  /// OR 分隔
+  Widget _buildOrDivider() {
+    return Row(
+      children: <Widget>[
+        Expanded(child: Container(height: 1.0, color: const Color(0xFFEDEDED))),
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 12.0),
+          child: Text('OR', style: TextStyle(fontSize: 12.0, color: Color(0xFFBBBBBB), fontWeight: FontWeight.w600)),
+        ),
+        Expanded(child: Container(height: 1.0, color: const Color(0xFFEDEDED))),
+      ],
+    );
+  }
+
+  /// 直播码输入框: 左侧小图标 + 灰底圆角
+  Widget _buildCodeField() {
+    return Container(
+      width: double.infinity,
+      height: 48.0,
+      // 不给 alignment 时 child 贴左上, hint 会浮在输入框上半部分
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 14.0),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF6F6F6),
+        borderRadius: BorderRadius.circular(24.0),
+        border: Border.all(color: const Color(0xFFEDEDED)),
+      ),
+      child: Row(
+        children: <Widget>[
+          const Icon(Icons.keyboard_rounded, size: 20.0, color: Color(0xFFBBBBBB)),
+          const SizedBox(width: 8.0),
+          Expanded(
             child: TextField(
               controller: codeController,
               textInputAction: TextInputAction.done,
               onSubmitted: (_) => enterByCode(),
-              cursorColor: const Color(0xFFFF2C55),
-              style: const TextStyle(fontSize: 14.0, color: Colors.black87),
+              cursorColor: const Color(0xFFFF4E2A),
+              style: const TextStyle(fontSize: 14.0, color: Color(0xFF333333)),
               decoration: const InputDecoration(
-                hintText: '请输入直播码 / 房间号',
-                hintStyle: TextStyle(fontSize: 13.0, color: Colors.black26),
+                hintText: '请输入直播间6位数字码',
+                hintStyle: TextStyle(fontSize: 14.0, color: Color(0xFFBBBBBB)),
                 border: InputBorder.none,
                 isCollapsed: true,
                 contentPadding: EdgeInsets.zero,
               ),
             ),
           ),
-          const SizedBox(height: 14.0),
-          _buildPrimaryButton(),
         ],
-      ),
-    );
-  }
-
-  /// 主按钮: 进入直播间(查询中显示小圈,避免连点)
-  Widget _buildPrimaryButton() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: entering ? null : enterByCode,
-      child: Container(
-        width: double.infinity,
-        height: 46.0,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(23.0),
-          gradient: const LinearGradient(
-            colors: <Color>[Color(0xFFFF2C55), Color(0xFFFF7A52)],
-          ),
-          boxShadow: <BoxShadow>[
-            BoxShadow(color: const Color(0xFFFF2C55).withValues(alpha: 0.25), blurRadius: 10.0, offset: const Offset(0.0, 4.0)),
-          ],
-        ),
-        child: Center(
-          child: entering
-              ? const SizedBox(
-                  width: 18.0,
-                  height: 18.0,
-                  child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
-                )
-              : const Text(
-                  '进入直播间',
-                  style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600, color: Colors.white),
-                ),
-        ),
-      ),
-    );
-  }
-
-  /// 中间"或"分隔
-  Widget _buildDivider() {
-    return Row(
-      children: <Widget>[
-        Expanded(child: Container(height: 1.0, color: const Color(0xFFE8E0D4))),
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 12.0),
-          child: Text('或', style: TextStyle(fontSize: 12.0, color: Colors.black38)),
-        ),
-        Expanded(child: Container(height: 1.0, color: const Color(0xFFE8E0D4))),
-      ],
-    );
-  }
-
-  /// 扫一扫入口: 整个卡片可点,点开全屏扫码
-  Widget _buildScanEntry() {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: scan,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(vertical: 24.0),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16.0),
-          boxShadow: <BoxShadow>[
-            BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 16.0, offset: const Offset(0.0, 4.0)),
-          ],
-        ),
-        child: Column(
-          children: <Widget>[
-            Container(
-              width: 76.0,
-              height: 76.0,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: const LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: <Color>[Color(0xFFFFFFFF), Color(0xFFFFF1F4)],
-                ),
-                border: Border.all(color: const Color(0xFFFF2C55).withValues(alpha: 0.28), width: 1.0),
-              ),
-              child: const Icon(Icons.qr_code_scanner_rounded, size: 34.0, color: Color(0xFFFF2C55)),
-            ),
-            const SizedBox(height: 12.0),
-            const Text(
-              '扫一扫',
-              style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600, color: Colors.black87),
-            ),
-            const SizedBox(height: 4.0),
-            const Text(
-              '对准直播二维码,即可自动识别',
-              style: TextStyle(fontSize: 12.0, color: Colors.black38),
-            ),
-          ],
-        ),
       ),
     );
   }

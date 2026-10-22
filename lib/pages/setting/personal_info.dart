@@ -8,7 +8,6 @@ library;
 
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -286,9 +285,9 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
     );
   }
 
-  /// 微信绑定项: 左侧头像 + 两行文本(微信 / 昵称), 右侧徽章与动作文案
-  /// * 已绑定时第二行显示微信昵称, 未绑定时只有一行(高度自适应, 不与相邻行打架)
-  /// * 当前端不支持微信授权(web/桌面端 或 未配置 AppID)时整项置灰,文案改「暂不支持」
+  /// 微信绑定项(纯行式, 不带头像: 与上方「账号资料」(头像+昵称) 区分开)
+  /// * 右侧用颜色区分状态: 已绑定=微信绿"重新绑定", 未绑定=橙色"去绑定", 不支持=灰色"暂不支持"
+  /// * 当前端不支持微信授权(web/桌面端 或 未配置 AppID)时整项置灰
   Widget _wxItem() {
     final bool bound = auth.wxBound;
     final bool enabled = WxAuth.supported && WxAuth.configured;
@@ -308,112 +307,39 @@ class _PersonalInfoPageState extends State<PersonalInfoPage> {
         behavior: HitTestBehavior.opaque,
         child: Container(
           color: Colors.white,
-          // 纵向 14: 未绑定时(单行)高度与相邻行一致, 已绑定时(两行)自然变高
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 14.0),
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 16.0),
           child: Row(
             children: <Widget>[
-              _wxAvatar(bound),
-              const SizedBox(width: 12.0),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: <Widget>[
-                    const Text('微信', style: TextStyle(fontSize: 15.0, color: Colors.black87)),
-                    // 昵称作为副标题: 主标题保持「微信」, 与上下相邻行的视觉层级一致
-                    if (bound) ...<Widget>[
-                      const SizedBox(height: 3.0),
-                      Text(
-                        auth.wxNickname.isEmpty ? '微信用户' : auth.wxNickname,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 12.5, color: Color(0xFF999999)),
-                      ),
-                    ],
-                  ],
-                ),
+                child: Text('微信', style: const TextStyle(fontSize: 15.0, color: Colors.black87)),
               ),
-              // 已绑定时不再挂「已绑定」徽章: 头像 + 昵称已经是状态本身, 加徽章属于重复表达
-              if (!bound) _unboundBadge(),
+              // 已绑定时显示微信名(灰色小字), 与状态文案同行, 不带头像、与「账号资料」区分
+              if (bound)
+                Padding(
+                  padding: const EdgeInsets.only(right: 8.0),
+                  child: Text(
+                    auth.wxNickname.isEmpty ? '微信用户' : auth.wxNickname,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 13.0, color: Color(0xFF999999)),
+                  ),
+                ),
               Text(
                 !enabled ? '暂不支持' : (bound ? '重新绑定' : '去绑定'),
                 style: TextStyle(
                   fontSize: 14.0,
+                  // 已绑定=微信绿, 未绑定=橙色, 一眼区分两种状态
                   color: !enabled
                       ? const Color(0xFFBBBBBB)
-                      : (bound ? const Color(0xFF666666) : FStyle.primaryColor),
+                      : (bound ? const Color(0xFF19C650) : const Color(0xFFFF8C00)),
                 ),
               ),
+              const SizedBox(width: 4.0),
               const Icon(Icons.chevron_right, size: 18.0, color: Colors.black26),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  /// 微信头像(来自 /api/member/info 的 wx_headimg)
-  /// * 未绑定 / 接口没下发 / 加载失败: 用微信图标占位(已绑定为绿色, 未绑定为灰色)
-  Widget _wxAvatar(bool bound) {
-    const Color wechatGreen = Color(0xFF19C650);
-    final String url = auth.wxHeadimg;
-    if (url.isEmpty) {
-      return Container(
-        width: 40.0,
-        height: 40.0,
-        decoration: BoxDecoration(
-          color: bound ? wechatGreen.withValues(alpha: 0.12) : const Color(0xFFF2F2F2),
-          shape: BoxShape.circle,
-        ),
-        child: Icon(Icons.wechat, size: 22.0, color: bound ? wechatGreen : const Color(0xFFBBBBBB)),
-      );
-    }
-    return ClipOval(
-      child: CachedNetworkImage(
-        imageUrl: url,
-        width: 40.0,
-        height: 40.0,
-        fit: BoxFit.cover,
-        placeholder: (BuildContext c, String u) =>
-            Container(width: 40.0, height: 40.0, color: const Color(0xFFF2F2F2)),
-        errorWidget: (BuildContext c, String u, Object e) => Container(
-          width: 40.0,
-          height: 40.0,
-          color: wechatGreen.withValues(alpha: 0.12),
-          child: const Icon(Icons.wechat, size: 22.0, color: wechatGreen),
-        ),
-      ),
-    );
-  }
-
-  /// 未绑定徽章(灰色叹号)
-  /// * 只在未绑定时出现: 那种情况下没有头像/昵称可表达状态, 需要显式说明
-  Widget _unboundBadge() {
-    const Color color = Color(0xFF999999);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 3.0),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.10),
-            borderRadius: BorderRadius.circular(10.0),
-            border: Border.all(color: color.withValues(alpha: 0.35), width: 0.5),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.error_outline, size: 12.0, color: color),
-              SizedBox(width: 3.0),
-              Text(
-                '未绑定',
-                style: TextStyle(fontSize: 11.5, color: color, fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(width: 8.0),
-      ],
     );
   }
 

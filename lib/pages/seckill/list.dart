@@ -9,6 +9,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../api/seckill.dart';
@@ -154,6 +155,8 @@ class _SeckillListPageState extends State<SeckillListPage> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         surfaceTintColor: Colors.transparent,
+        // 状态栏(时间/信号/电池)图标改为黑色
+        systemOverlayStyle: SystemUiOverlayStyle.dark,
         // 标题/返回箭头改为橙色, 星星金黄色(与截图一致)
         foregroundColor: const Color(0xFFFF6B2A),
         elevation: 0,
