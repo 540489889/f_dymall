@@ -60,6 +60,12 @@ dependencies:
   fluwx: ^6.0.4
   # 阿里云号码认证: APP 一键登录(需 Config.aliAndroidSk / aliIosSk)
   ali_auth: ^1.3.9
+  # 极光推送(离线推送): 通知栏消息 / 透传消息, 按 alias(会员id)精准推送
+  # * 需在 lib/config/index.dart 填 Config.jpushAppKey(极光控制台按包名创建的应用)
+  # * 接入后还需: Android 无额外配置; iOS 需在 Xcode 开 Push Notifications + APNs Key
+  jpush_flutter: ^3.5.9
+  # 极光推送 bind 接口要上报厂商/机型/系统版本(后台用来判断走哪家厂商通道)
+  device_info_plus: ^11.5.0
   # 网络可用性监听: iOS 首启网络授权后可触发首页重刷
   connectivity_plus: ^6.1.0
   # 关于我们: 读取 APP 版本号(对齐 H5 plus.runtime.getProperty)

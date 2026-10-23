@@ -50,6 +50,19 @@ class Config {
   /// iOS 密钥(同上,取 iOS 端的方案密钥;iOS 端还需配置 BundleId)
   static const String aliIosSk = '';
 
+  // ===== 极光推送(离线推送) =====
+  /// 极光控制台 AppKey(按包名 com.chongloutech.lehui 创建的应用 -> 「设置」里复制)
+  /// * 留空表示未接入: PushService 直接跳过初始化, 不申请通知权限, 不影响其他功能
+  /// * Android 侧还有一份必须一致: android/app/build.gradle.kts 的 manifestPlaceholders
+  ///   JPUSH_APPKEY(JPush SDK 的 AAR manifest 用它做占位符替换, 不给会直接构建失败)
+  static const String jpushAppKey = '132b4c51c2600ead1a158888';
+  /// 统计渠道(极光后台「渠道统计」里展示, 保持默认即可)
+  static const String jpushChannel = 'developer-default';
+  /// 是否生产环境: true=线上(收真实推送) / false=开发(只能收控制台「测试」发送的消息)
+  /// * 必须与服务端 .env 的 APNS_PRODUCTION 一致, 否则 iOS 收不到
+  /// * 调试期设 false, 上线发版前改 true
+  static const bool jpushProduction = false;
+
   /// 请求超时时间(秒)
   static const int connectTimeout = 15;
   static const int receiveTimeout = 15;

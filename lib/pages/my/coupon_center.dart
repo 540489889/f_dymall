@@ -127,15 +127,6 @@ class _CouponCenterPageState extends State<CouponCenterPage> {
     }
   }
 
-  /// 金额/折扣文案(H5: 满减券 money, 折扣券 discount)
-  String amountText(Map<String, dynamic> item) {
-    final String type = '${item['type'] ?? ''}';
-    final double discount = double.tryParse('${item['discount'] ?? ''}') ?? 0;
-    if (type == 'discount' && discount > 0) return '${_trim(discount)}折';
-    final double money = double.tryParse('${item['money'] ?? ''}') ?? 0;
-    return '¥${_trim(money)}';
-  }
-
   /// 门槛文案
   String conditionText(Map<String, dynamic> item) {
     final double atLeast = double.tryParse('${item['at_least'] ?? ''}') ?? 0;
@@ -337,110 +328,156 @@ class _CouponCenterPageState extends State<CouponCenterPage> {
     );
   }
 
-  /// 券卡(对齐 H5 coupon-listone item)
+  /// 券卡: 做成票券样式(左侧红渐变金额区 + 中间虚线 + 上下半圆缺口)
   Widget _buildCouponCard(Map<String, dynamic> item, int index) {
     final int us = int.tryParse('${item['useState'] ?? 0}') ?? 0;
     final bool disabled = us != 0 && us != 1;
     final String goodsType = '${item['goods_type_name'] ?? ''}'.trim();
     final String channel = '${item['use_channel_name'] ?? ''}'.trim();
     final List<String> extra = scopeTexts(item);
+    const double dividerX = 104.0; // 金额区宽度
+    const double notchR = 7.0; // 半圆缺口半径
+    const Color bg = Color(0xFFF5F5F5); // 与页面背景同色,模拟打孔
+    final Color dashColor = disabled ? const Color(0xFFD8D8D8) : const Color(0xFFFFC2CB);
     return Container(
       margin: const EdgeInsets.only(bottom: 12.0),
       constraints: const BoxConstraints(minHeight: 112.0),
       decoration: BoxDecoration(
-        color: disabled ? const Color(0xFFF2F2F2) : Colors.white,
         borderRadius: BorderRadius.circular(10.0),
         boxShadow: <BoxShadow>[
           BoxShadow(color: Colors.black.withAlpha(15), blurRadius: 6.0, offset: const Offset(0, 2)),
         ],
       ),
       clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Stack(
         children: <Widget>[
-          // 左侧金额区(不可用置灰)
-          Container(
-            width: 104.0,
-            padding: const EdgeInsets.symmetric(vertical: 22.0),
-            decoration: BoxDecoration(
-              gradient: disabled
-                  ? null
-                  : const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: <Color>[Color(0xFFFF7A52), Color(0xFFFF2C55)],
-                    ),
-              color: disabled ? const Color(0xFFE0E0E0) : null,
-            ),
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: <Widget>[
-                Text(
-                  amountText(item),
-                  style: TextStyle(
-                    fontSize: 24.0,
-                    fontWeight: FontWeight.bold,
-                    color: disabled ? Colors.white70 : Colors.white,
+                // 左侧金额区(不可用置灰)
+                Container(
+                  width: dividerX,
+                  decoration: BoxDecoration(
+                    gradient: disabled
+                        ? null
+                        : const LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: <Color>[Color(0xFFFF7A52), Color(0xFFFF2C55)],
+                          ),
+                    color: disabled ? const Color(0xFFE0E0E0) : null,
                   ),
+                  alignment: Alignment.center,
+                  child: _buildAmount(item, disabled),
                 ),
-                const SizedBox(height: 6.0),
-                Text(
-                  conditionText(item),
-                  style: TextStyle(fontSize: 11.0, color: disabled ? Colors.white70 : Colors.white),
+                // 右侧信息区
+                Expanded(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: disabled ? const Color(0xFFF2F2F2) : Colors.white,
+                    ),
+                    padding: const EdgeInsets.fromLTRB(14.0, 12.0, 8.0, 12.0),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: <Widget>[
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: <Widget>[
+                              Text(
+                                '${item['coupon_name'] ?? '优惠券'}',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  fontSize: 15.0,
+                                  fontWeight: FontWeight.w600,
+                                  color: disabled ? const Color(0xFF999999) : const Color(0xFF333333),
+                                ),
+                              ),
+                              _scopeRow('适用商品', goodsType, disabled),
+                              _scopeRow('使用渠道', channel, disabled),
+                              if (extra.isNotEmpty) ...<Widget>[
+                                const SizedBox(height: 6.0),
+                                Text(
+                                  extra.join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
+                                ),
+                              ],
+                              const SizedBox(height: 6.0),
+                              Text(
+                                timeText(item),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
+                              ),
+                            ],
+                          ),
+                        ),
+                        // 状态按钮区
+                        SizedBox(
+                          width: 64.0,
+                          child: Center(child: _buildAction(item, us, index)),
+                        ),
+                      ],
+                    ),
+                  ),
                 ),
               ],
             ),
           ),
-          // 右侧信息区
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12.0, 12.0, 8.0, 12.0),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: <Widget>[
-                  Text(
-                    '${item['coupon_name'] ?? '优惠券'}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 15.0,
-                      fontWeight: FontWeight.w600,
-                      color: disabled ? const Color(0xFF999999) : const Color(0xFF333333),
-                    ),
-                  ),
-                  _scopeRow('适用商品', goodsType, disabled),
-                  _scopeRow('使用渠道', channel, disabled),
-                  if (extra.isNotEmpty) ...<Widget>[
-                    const SizedBox(height: 6.0),
-                    Text(
-                      extra.join(' · '),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
-                    ),
-                  ],
-                  const SizedBox(height: 6.0),
-                  Text(
-                    timeText(item),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 11.0, color: Color(0xFF999999)),
-                  ),
-                ],
-              ),
-            ),
+          // 中间虚线分隔(票根切口)
+          Positioned(
+            left: dividerX,
+            top: notchR,
+            bottom: notchR,
+            child: _VerticalDashedLine(dashColor),
           ),
-          // 状态按钮区
-          SizedBox(
-            width: 72.0,
-            child: Center(child: _buildAction(item, us, index)),
-          ),
+          // 上下半圆缺口
+          Positioned(left: dividerX - notchR, top: -notchR, child: _CouponNotch(bg, notchR)),
+          Positioned(left: dividerX - notchR, bottom: -notchR, child: _CouponNotch(bg, notchR)),
         ],
       ),
-      ),
+    );
+  }
+
+  /// 左侧金额区内容: ¥小字 + 大数字(满减) / 大数字 + 折(折扣),下方门槛文案
+  Widget _buildAmount(Map<String, dynamic> item, bool disabled) {
+    final String type = '${item['type'] ?? ''}';
+    final double discount = double.tryParse('${item['discount'] ?? ''}') ?? 0;
+    final double money = double.tryParse('${item['money'] ?? ''}') ?? 0;
+    final Color big = disabled ? Colors.white70 : Colors.white;
+    final Color small = disabled ? Colors.white70 : Colors.white;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        if (type == 'discount' && discount > 0)
+          RichText(
+            text: TextSpan(
+              children: <TextSpan>[
+                TextSpan(text: _trim(discount), style: TextStyle(fontSize: 28.0, fontWeight: FontWeight.bold, color: big)),
+                TextSpan(text: '折', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.w500, color: small)),
+              ],
+            ),
+          )
+        else
+          RichText(
+            text: TextSpan(
+              children: <TextSpan>[
+                TextSpan(text: '¥', style: TextStyle(fontSize: 14.0, fontWeight: FontWeight.bold, color: small)),
+                TextSpan(text: _trim(money), style: TextStyle(fontSize: 28.0, fontWeight: FontWeight.bold, color: big)),
+              ],
+            ),
+          ),
+        const SizedBox(height: 6.0),
+        Text(
+          conditionText(item),
+          style: TextStyle(fontSize: 11.0, color: disabled ? Colors.white70 : Colors.white),
+        ),
+      ],
     );
   }
 
@@ -477,4 +514,54 @@ class _CouponCenterPageState extends State<CouponCenterPage> {
     )),
     );
   }
+}
+
+/// 票券中间竖向虚线(票根切口)
+class _VerticalDashedLine extends StatelessWidget {
+  final Color color;
+  const _VerticalDashedLine(this.color);
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (BuildContext context, BoxConstraints constraints) => CustomPaint(
+        size: Size(1.0, constraints.maxHeight),
+        painter: _DashedPainter(color),
+      ),
+    );
+  }
+}
+
+class _DashedPainter extends CustomPainter {
+  final Color color;
+  const _DashedPainter(this.color);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final Paint paint = Paint()..color = color..strokeWidth = 1.0;
+    const double dash = 4.0;
+    const double gap = 4.0;
+    double y = 0.0;
+    while (y < size.height) {
+      canvas.drawLine(Offset(0.0, y), Offset(0.0, y + dash), paint);
+      y += dash + gap;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedPainter old) => old.color != color;
+}
+
+/// 票券上下半圆缺口(与页面背景同色,模拟打孔)
+class _CouponNotch extends StatelessWidget {
+  final Color color;
+  final double radius;
+  const _CouponNotch(this.color, this.radius);
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: radius * 2,
+        height: radius * 2,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
 }

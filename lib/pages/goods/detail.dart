@@ -93,6 +93,97 @@ class _PromoSheet extends StatelessWidget {
   );
 }
 
+/// 商品弹幕(飘屏): 头像 + 文案 的胶囊样式, 在轮播图顶部循环淡入淡出
+/// * 对齐 H5 pengpai-fadein-out: 每条停留后切换, 透明度做进出场过渡
+class _GoodsBarrage extends StatefulWidget {
+  final List<Map<String, dynamic>> items;
+  const _GoodsBarrage({required this.items});
+
+  @override
+  State<_GoodsBarrage> createState() => _GoodsBarrageState();
+}
+
+class _GoodsBarrageState extends State<_GoodsBarrage> {
+  int _index = 0;
+  bool _visible = true;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // 切换间隔 ≈ 进场 1.6s + 停留 1.9s(H5 duration+wait)
+    _timer = Timer.periodic(const Duration(milliseconds: 3500), (_) {
+      if (!mounted || widget.items.isEmpty) return;
+      setState(() {
+        _index = (_index + 1) % widget.items.length;
+        _visible = true;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.items.isEmpty) return const SizedBox.shrink();
+    final Map<String, dynamic> item = widget.items[_index % widget.items.length];
+    final String img = '${item['img'] ?? ''}';
+    final String title = '${item['title'] ?? ''}';
+    return Positioned(
+      top: 44.0,
+      left: 12.0,
+      child: IgnorePointer(
+        child: AnimatedOpacity(
+          opacity: _visible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 600),
+          onEnd: () {
+            // 进场后停留一会儿再淡出, 形成"出现 -> 停留 -> 消失"循环
+            if (_visible && mounted) {
+              Future<void>.delayed(const Duration(milliseconds: 2400), () {
+                if (mounted) setState(() => _visible = false);
+              });
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 4.0, vertical: 4.0),
+            decoration: BoxDecoration(
+              color: Colors.black54,
+              borderRadius: BorderRadius.circular(30.0),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: <Widget>[
+                img.isNotEmpty
+                    ? CircleAvatar(backgroundImage: CachedNetworkImageProvider(img), radius: 14.0)
+                    : const CircleAvatar(
+                        radius: 14.0,
+                        backgroundColor: Colors.white24,
+                        child: Icon(Icons.person, size: 16.0, color: Colors.white),
+                      ),
+                const SizedBox(width: 8.0),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 180.0),
+                  child: Text(
+                    title,
+                    style: const TextStyle(color: Colors.white, fontSize: 12.0),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 10.0),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class Goods extends StatefulWidget {
   const Goods({
     super.key,
@@ -151,6 +242,8 @@ String storeAddress = '';
 bool evaluateShow = false;
 int evaluateCount = 0;
 List<Map<String, dynamic>> evaluateList = <Map<String, dynamic>>[];
+// 商品弹幕(飘屏)列表, 非空且 barrageShow 时悬浮展示
+List<Map<String, dynamic>> barrageList = <Map<String, dynamic>>[];
 // 商品视频(media_kit 播放器)
 Player? _player;
 VideoController? _videoController;
@@ -232,6 +325,17 @@ Future<void> loadEvaluate() async {
   }
 }
 
+/// 加载商品弹幕(飘屏), 非关键信息: 失败静默
+Future<void> loadBarrage() async {
+  try {
+    final List<Map<String, dynamic>> list = await GoodsApi.goodsBarrage(goodsId);
+    if (!mounted) return;
+    setState(() => barrageList = list);
+  } catch (_) {
+    // 忽略: 弹幕非关键展示项
+  }
+}
+
 @override
 void dispose() {
   // 离开详情页收起直播间悬浮小窗(返回直播间时也是走这里)
@@ -284,6 +388,8 @@ Future<void> loadDetail() async {
     });
     // 有视频时初始化播放器(视频地址在详情返回后才确定)
     _initVideo();
+    // 弹幕(飘屏)非关键信息, 失败静默
+    loadBarrage();
   } catch (e) {
     if (!mounted) return;
     setState(() {
@@ -706,6 +812,8 @@ Widget _buildMedia() {
             ),
           ),
         ),
+      // 商品弹幕(飘屏): 覆盖在轮播图顶部, 与 H5 pengpai-fadein-out 一致
+      if (barrageList.isNotEmpty) _GoodsBarrage(items: barrageList),
     ],
   );
 }

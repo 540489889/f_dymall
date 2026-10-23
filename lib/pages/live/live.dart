@@ -25,6 +25,7 @@ import '../../utils/player_config.dart';
 import '../../utils/request.dart';
 import './components/animation_join.dart';
 import './components/animation_gift.dart'; // 送礼物消息动效
+import './components/animation_fullscreen_gift.dart'; // 全屏礼物 gif 动效(full_screen=1)
 import './components/popup_comment.dart';
 import './components/popup_activity_winner.dart';
 import './components/popup_goods.dart';
@@ -174,6 +175,8 @@ int _joinTryIndex = 0;
 Timer? _joinWatchdog;
 // 是否被禁言: socket 下发 mute/unmute, 禁言时不能发评论
 bool userMuted = false;
+// 礼物是否正在赠送(请求在途): 防连点重复扣费, 见 _sendGift
+bool _giftSending = false;
 // 在线人数 / 本场点赞数: socket room 消息下发 {online, zan}(与H5 onLine, zanNum 一致), 未下发为 0
 int roomOnline = 0;
 int roomZan = 0;
@@ -203,6 +206,9 @@ static const Duration _danmuRevealInterval = Duration(milliseconds: 320);
 String sysMessage = '';
 // 进场消息(join): {user:{nickname}, msg}, 交给进场动效按顺序播放(与H5 merber_join 一致)
 final ValueNotifier<List<Map<String, dynamic>>> joinMessages = ValueNotifier<List<Map<String, dynamic>>>(const <Map<String, dynamic>>[]);
+// 送礼物消息(gift): data 为 {user, avatar, label, gift, num}, 交给送礼动效按顺序播放
+// * 自己送的也算一份: 服务端广播是全房间的(含送礼者本人), 所以「赠送」成功后不需要本地补一条
+final ValueNotifier<List<Map<String, dynamic>>> giftMessages = ValueNotifier<List<Map<String, dynamic>>>(const <Map<String, dynamic>>[]);
 // 活动列表(activity): 福袋/红包/签到/集章等, 每条为 LiveApi.activityItem 归一化结果
 // * 只在真实直播间展示(socket 下发); 剩余时间每秒本地递减(与H5 initCountdown 一致)
 final ValueNotifier<List<Map<String, dynamic>>> activityList = ValueNotifier<List<Map<String, dynamic>>>(const <Map<String, dynamic>>[]);
@@ -468,6 +474,9 @@ Map<String, dynamic> _mergeRoomDetail(Map<String, dynamic> item, Map<String, dyn
   if (followed != null) merged['isFollow'] = followed;
   final String memberId = LiveApi.anchorMemberIdOf(room);
   if (memberId.isNotEmpty) merged['anchor_member_id'] = memberId;
+  // 输入框上方快捷短语(getRoomInfo 的 chat_preset), 非空时一并合并到列表, 供评论输入框读取
+  final dynamic preset = room['chat_preset'];
+  if (preset is List && preset.isNotEmpty) merged['chat_preset'] = preset;
   return merged;
 }
 
@@ -907,6 +916,8 @@ Future<void> _switchRoom(int index) async {
     _stopDanmuReveal();
     activityList.value = const <Map<String, dynamic>>[];
     joinMessages.value = const <Map<String, dynamic>>[];
+    // 送礼队列也清掉: 不能把上一个房间的送礼记录带进新房间
+    giftMessages.value = const <Map<String, dynamic>>[];
     roomOnline = 0;
     roomZan = 0;
     localZanExtra = 0;
@@ -1114,6 +1125,11 @@ void _onSocketMessage(Map<String, dynamic> msg) {
     // 用户进场: data 为 {user:{nickname}, msg}(与H5 merber_join 一致)
     case 'join':
       _addJoinMessage(data);
+      break;
+    // 送礼物: data 为 {user, avatar, label, gift, num}(服务端广播, 全房间可见)
+    // * 自己送礼也会收到这一条, 所以「赠送」接口成功后不需要本地补播动效
+    case 'gift':
+      _addGiftMessage(data);
       break;
     // 讲解中商品: data 为当前讲解的商品(与H5 livepull.nvue: msgGoods = msg.data 一致)
     case 'goods':
@@ -1565,6 +1581,119 @@ void _addJoinMessage(dynamic data) {
   joinMessages.value = <Map<String, dynamic>>[...joinMessages.value, item];
 }
 
+// 送礼物(gift): data 实际字段(见后端 socket 报文)
+// * {gift_id, gift_name, gift_image(小图), gift_big_image(全屏gif), full_screen, msg, num, user:{nickname, heading}}
+// * 追加进取礼队列, 由 AnimationLiveGift(小横幅) 与 AnimationFullScreenGift(全屏gif) 按顺序播放
+void _addGiftMessage(dynamic data) {
+  // 容错: 服务端可能一次推多条(批量送礼/连击), 逐条入队
+  if (data is List) {
+    for (final dynamic one in data) {
+      _addGiftMessage(one);
+    }
+    return;
+  }
+  if (data is! Map) return;
+  final Map<String, dynamic> src = data.cast<String, dynamic>();
+  // 送礼人: 实际是 user:{nickname}(兼容 member / 平铺 nickname)
+  String user = '';
+  for (final String key in const <String>['user', 'member', 'member_info']) {
+    final dynamic v = src[key];
+    if (v is Map) {
+      user = '${v['nickname'] ?? v['name'] ?? v['username'] ?? ''}'.trim();
+      if (user.isNotEmpty) break;
+    }
+  }
+  if (user.isEmpty) user = '${src['nickname'] ?? src['name'] ?? src['username'] ?? ''}'.trim();
+  // 礼物名: 实际是 gift_name(兼容 label / giftName 等旧命名)
+  final String label = _firstText(src, const <String>['gift_name', 'label', 'giftName']);
+  // 礼物小图: 实际是 gift_image
+  final String giftImg = LiveApi.imageOf(_firstText(src, const <String>['gift_image', 'gift', 'gift_img', 'image']));
+  // 头像: 实际字段是 heading
+  final String avatar = LiveApi.imageOf(_firstText(src, const <String>['heading', 'avatar', 'headimg', 'head_img']));
+  // 全屏礼物: full_screen=1 时播 gift_big_image(gif)
+  final bool fullScreen = '${src['full_screen'] ?? ''}'.trim() == '1' || src['full_screen'] == true;
+  final String bigImage = LiveApi.imageOf(_firstText(src, const <String>['gift_big_image', 'big_image', 'bigImage']));
+  // 送礼文案: 服务端已拼好(msg), 优先直接用
+  final String msg = '${src['msg'] ?? ''}'.trim();
+  final num count = src['num'] is num ? src['num'] as num : (num.tryParse('${src['num'] ?? ''}') ?? 1);
+  // 一条有用的信息都没有就不播(避免空条占位)
+  if (user.isEmpty && label.isEmpty && giftImg.isEmpty) return;
+  giftMessages.value = <Map<String, dynamic>>[
+    ...giftMessages.value,
+    <String, dynamic>{
+      'user': user.isEmpty ? '观众' : user,
+      'avatar': avatar,
+      'label': label.isEmpty ? '礼物' : label,
+      'gift': giftImg,
+      'num': count,
+      // 全屏礼物专用: fullScreen=true 时由 AnimationFullScreenGift 播 bigImage
+      'fullScreen': fullScreen,
+      'bigImage': bigImage,
+      // 单条停留时长(秒, 可选): 服务端没下发就用组件默认值(见 AnimationFullScreenGift.holdDuration)
+      'duration': src['duration'] ?? src['play_time'] ?? src['seconds'],
+      'msg': msg,
+    },
+  ];
+}
+
+// 按候选 key 顺序取第一个非空文本(空串 / "null" 都算没取到)
+String _firstText(Map<String, dynamic> src, List<String> keys) {
+  for (final String key in keys) {
+    final String val = '${src[key] ?? ''}'.trim();
+    if (val.isNotEmpty && val != 'null') return val;
+  }
+  return '';
+}
+
+// 赠送礼物(礼物弹窗「赠送」按钮): 调 /live/api/gift/give
+// * [gift] 弹窗里选中的那条(含 id / name / coins)
+// * 成功: 只关弹窗, **不弹「赠送成功」toast** —— 反馈由 socket 广播的送礼动效承担
+//   (小横幅 AnimationLiveGift + 全屏 gif AnimationFullScreenGift)
+//   - 弹窗是压在最上层的路由, 不关掉动效会被它盖住; 关掉后两类动效都能看见
+//   - 服务端广播是全房间的(含送礼者本人), 所以不需要本地补播一条, 否则自己这条放两遍
+// * 失败: 提示服务端文案并弹充值弹窗
+//   —— 送礼场景失败绝大多数是余额不足; 网络等其它异常时用户下滑关掉充值弹窗即可
+// * [_giftSending] 防连点: 请求在途时再点直接忽略, 避免同一礼物被重复扣费
+Future<void> _sendGift(Map<String, dynamic> gift) async {
+  if (_giftSending) return;
+  final String giftId = '${gift['id'] ?? ''}'.trim();
+  if (giftId.isEmpty || giftId == '0') {
+    _toast('礼物信息异常，请重试');
+    return;
+  }
+  if (roomSn.isEmpty) {
+    _toast('房间信息异常，请重试');
+    return;
+  }
+  // 送礼要扣余额, 未登录先去登录(与 H5 一致)
+  if (!AuthStore.to.isLogin) {
+    _toast('请先登录');
+    Get.toNamed('/login');
+    return;
+  }
+  _giftSending = true;
+  try {
+    final Map<String, dynamic> res = await LiveApi.giftGive(giftId: giftId, no: roomSn);
+    if (res['ok'] == true) {
+      // 关掉弹窗让动效完整可见; 不再弹「赠送成功」(动效本身就是反馈)
+      if (navigator?.canPop() ?? false) navigator?.pop();
+      return;
+    }
+    _toast('${res['message'] ?? '赠送失败'}');
+    navigator?.push(FadeRoute(
+      effect: 'bottom',
+      child: PopupRecharge(
+        onChanged: (value) {
+          // 充值成功: 通知下面压着的礼物弹窗刷新金币余额
+          PopupGift.notifyBalanceChanged();
+        },
+      ),
+    ));
+  } finally {
+    _giftSending = false;
+  }
+}
+
 // 从接口/socket 数据中取整型字段: data 可能是 Map(带 key) 或数字本身
 int _dataInt(dynamic data, String key) {
   if (data is Map) {
@@ -1940,13 +2069,29 @@ void _removeLikeHeart(int id) {
 // 打开评论输入框: 禁言时不弹输入框(与H5 sendLiveMsg 一致)
 // * [prefill] 预填内容(如福袋参与口令, 用户直接发送即可参与)
 void _openCommentInput({String prefill = ''}) {
+  // status_comment=0: 底部输入条照常展示(占位), 但禁止输入 —— 点击不弹输入框
+  // * 只拦输入, 不隐藏输入条, 避免底部工具栏布局跳动
+  if (LiveApi.commentReadonlyOf(roomInfo)) {
+    _toast('当前直播间已关闭评论');
+    return;
+  }
   if (userMuted) {
     _toast('你已被禁言');
     return;
   }
+  // 输入框上方快捷短语: 取当前直播间 getRoomInfo 的 chat_preset(接口没下发则为 null -> 弹窗回落内置默认)
+  final dynamic preset = _roomItem(liveIndexNotifier.value)['chat_preset'];
+  final List<String>? chatPreset = preset is List
+      ? preset
+          .where((dynamic e) => '$e'.trim().isNotEmpty)
+          .map((dynamic e) => '$e'.trim())
+          .cast<String>()
+          .toList()
+      : null;
   navigator?.push(FadeRoute(
     child: PopupComment(
       prefill: prefill,
+      chatPreset: chatPreset,
       onChanged: (value) => _sendComment('$value'),
     ),
   ));
@@ -2021,6 +2166,7 @@ bool _isDemoRoom(int index) => false;
   likeHearts.dispose();
   danmuMessages.dispose();
   joinMessages.dispose();
+  giftMessages.dispose();
   activityList.dispose();
   endedActivityIds.clear();
   liveReconnector.dispose();
@@ -2783,9 +2929,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 ],
                                 ),
                               ),
-                              // 送礼物消息动效
+                              // 送礼物消息动效: 真实直播间播 socket gift 推送, 本地演示房间播内置演示数据
                               AnimationLiveGift(
-                                giftQueryList: [
+                                giftQueryList: roomSn.isNotEmpty ? null : [
                                 {'label': '小心心', 'gift': 'assets/images/gift/gift1.png', 'user': '岁月如梭', 'avatar': 'assets/images/avatar/img01.jpg', 'num': 6},
                                 {'label': '棒棒糖', 'gift': 'assets/images/gift/gift2.png', 'user': 'Andy', 'avatar': 'assets/images/avatar/img02.jpg', 'num': 75},
                                 {'label': '大啤酒', 'gift': 'assets/images/gift/gift3.png', 'user': '白昼流星', 'avatar': 'assets/images/avatar/img03.jpg', 'num': 211},
@@ -2797,6 +2943,7 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                 {'label': '玫瑰', 'gift': 'assets/images/gift/gift12.png', 'user': '颜如玉', 'avatar': 'assets/images/avatar/img09.jpg', 'num': 2},
                                 {'label': '私人飞机', 'gift': 'assets/images/gift/gift16.png', 'user': 'Davi', 'avatar': 'assets/images/avatar/img10.jpg', 'num': 168},
                               ],
+                                giftMessages: giftMessages,
                               ),
                               // 进场动效: 真实直播间播 socket join 推送, 本地演示房间播内置演示数据
                               AnimationLiveJoin(
@@ -3031,6 +3178,35 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                       ));
                                     }
                                   ),
+                                    // 底部礼物入口: 由 getRoomInfo 的 status_gift 控制显隐(0 隐藏, 未下发默认展示)
+                                    if (LiveApi.showGiftOf(roomInfo))
+                                    InkWell(
+                                      child: Container(
+                                        alignment: Alignment.center,
+                                      height: 38.0,
+                                      width: 38.0,
+                                      decoration: BoxDecoration(
+                                        color: Colors.black26,
+                                        borderRadius: BorderRadius.circular(50.0),
+                                      ),
+                                      child: Image.asset('assets/images/icon-gift.png', width: 27.0,),
+                                    ),
+                                    onTap: () {
+                                      // 礼物弹窗不要黑色遮罩: 后面的直播间要一直可见(能看动效/弹幕)
+                                      // * FadeRoute 默认 backgroundColor 是 Colors.black54, 这里显式改成透明
+                                      navigator?.push(FadeRoute(
+                                      backgroundColor: Colors.transparent,
+                                      effect: 'bottom',
+                                      child: PopupGift(
+                                      // 赠送: 调 /live/api/gift/give, 成功后 socket 会广播 gift 消息播动效
+                                      // * 失败(多为余额不足)时弹充值弹窗
+                                      onChanged: (value) async {
+                                        await _sendGift(value);
+                                      },
+                                      )
+                                    ));
+                                    }
+                                  ),
                                         // 点赞: 从按钮位置飘心并上行
                                         // * GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
                                         GestureDetector(
@@ -3047,39 +3223,9 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                                         child: Image.asset('assets/images/icon-aixin.png', width: 27.0,),
                                       ),
                                     ),
-                                    // 底部礼物入口
-                                    InkWell(
-                                      child: Container(
-                                        alignment: Alignment.center,
-                                      height: 35.0,
-                                      width: 35.0,
-                                      decoration: BoxDecoration(
-                                        color: Colors.black26,
-                                        borderRadius: BorderRadius.circular(50.0),
-                                      ),
-                                      child: Image.asset('assets/images/icon-gift.png', width: 20.0,),
-                                    ),
-                                    onTap: () {
-                                      navigator?.push(FadeRoute(
-                                      effect: 'bottom',
-                                      child: PopupGift(
-                                      onChanged: (value) {
-                                        // debugPrint('coins ---$value');
-                                      // 钻石不足充值弹窗
-                                      navigator?.push(FadeRoute(
-                                        effect: 'bottom',
-                                        child: PopupRecharge(
-                                          onChanged: (value) {
-                                            // debugPrint('recharge ---$value');
-                                          },
-                                        )
-                                      ));
-                                      },
-                                      )
-                                    ));
-                                    }
-                                  ),
-                                    // GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                    // 底部商品入口: 由 getRoomInfo 的 status_goods 控制显隐(0 隐藏, 未下发默认展示)
+                                    // * GestureDetector 替代 InkWell: 去掉点击时的水波纹/高亮背景效果
+                                    if (LiveApi.showGoodsOf(roomInfo))
                                     GestureDetector(
                                       behavior: HitTestBehavior.opaque,
                                       child: Container(
@@ -3145,6 +3291,16 @@ List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
                     ],
                   );
                 },
+              ),
+              // 全屏礼物动效: socket gift 的 full_screen=1 时播 gift_big_image(gif)
+              // * 必须放在最外层这个 Stack(视频 + 顶部/底部工具栏的公共父级), 而不是某个房间页里:
+              //   只有这里铺开才是"全屏"; 放进房间页的 Column 会跟弹幕/工具栏抢布局
+              // * Positioned.fill 由组件内部自己包; IgnorePointer 保证不拦截点赞/清屏手势
+              // holdDuration: gif 停留时长(默认 2s), 想整体调长/调短改这里
+              // * 单条礼物还可在 socket 报文里带 duration(秒) 覆盖, 见 _addGiftMessage
+              AnimationFullScreenGift(
+                giftMessages: giftMessages,
+                holdDuration: const Duration(seconds: 1),
               ),
               // 点击屏幕点赞: 只覆盖视频中部空白区(避开顶部工具栏/榜单/红包、右侧货卡、底部工具栏, 与H5 touch-layer 定位一致)
               // * 只在直播中(1)挂载: 这层在预告卡片之上, 预告/暂停/已结束时它会吞掉"预约直播"等按钮的点击(变成点赞)

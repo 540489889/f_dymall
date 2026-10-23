@@ -6,7 +6,8 @@ class PopupComment extends StatefulWidget {
   const PopupComment({
     super.key,
     this.onChanged,
-    this.prefill
+    this.prefill,
+    this.chatPreset,
   });
 
   // 输入框值改变
@@ -15,12 +16,38 @@ class PopupComment extends StatefulWidget {
   // 输入框初始内容(福袋参与口令等需要预填并直接发送的场景)
   final String? prefill;
 
+  // 输入框上方快捷短语: 优先用直播间 getRoomInfo 下发的 chat_preset, 为空回落到内置默认
+  final List<String>? chatPreset;
+
   @override
   State<PopupComment> createState() => _PopupCommentState();
 }
 
 class _PopupCommentState extends State<PopupComment> {
-  List commentTags = ['这个好棒啊🔥', '根本抢不到', '这个多少钱', '怎么买最便宜', '太划算了👍', '好想要~', '已下单回购', '期待值拉满😎'];
+  // 内置默认快捷短语(接口没下发 chat_preset 时回落用)
+  static const List<String> _defaultTags = [
+    '这个好棒啊🔥',
+    '根本抢不到',
+    '这个多少钱',
+    '怎么买最便宜',
+    '太划算了👍',
+    '好想要~',
+    '已下单回购',
+    '期待值拉满😎',
+  ];
+
+  // 实际展示的快捷短语: 接口下发的非空, 否则用内置默认
+  List<String> get _tags {
+    final List<String>? preset = widget.chatPreset;
+    if (preset != null && preset.isNotEmpty) {
+      return preset
+          .where((String e) => e.trim().isNotEmpty)
+          .map((String e) => e.trim())
+          .toList();
+    }
+    return _defaultTags;
+  }
+
   final TextEditingController textEditingController = TextEditingController();
   // 输入框焦点: 点击快捷短语后保持输入框聚焦
   final FocusNode commentFocusNode = FocusNode();
@@ -93,13 +120,13 @@ class _PopupCommentState extends State<PopupComment> {
         child: ListView.builder(
           shrinkWrap: true,
             scrollDirection: Axis.horizontal,
-          itemCount: commentTags.length,
+          itemCount: _tags.length,
           itemBuilder: (context, index) {
         return UnconstrainedBox(
           child: GestureDetector(
           // 点击快捷短语: 填入输入框(样式保持不变)
           onTap: () {
-            _fillComment('${commentTags[index]}');
+            _fillComment('${_tags[index]}');
           },
           child: Container(
             alignment: Alignment.center,
@@ -110,7 +137,7 @@ class _PopupCommentState extends State<PopupComment> {
             color: Colors.grey[100],
             borderRadius: BorderRadius.circular(20.0),
           ),
-          child: Text('${commentTags[index]}', style: const TextStyle(fontSize: 12.0),),
+          child: Text('${_tags[index]}', style: const TextStyle(fontSize: 12.0),),
           ),
           ),
         );

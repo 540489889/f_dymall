@@ -186,7 +186,8 @@ class LiveApi {
   /// * 返回字段: sn(房间号) / name(标题) / feeds_img(封面) / anchor_img(主播头像)
   ///   anchor_name(主播名) / status(1直播中) status_name(状态文案) / live_bg(背景图,相对路径)
   ///   type / push_type / site_id / start_time / share_href(分享链接)
-  ///   status_like / status_goods / status_comment / status_record(功能开关) / subscribe 订阅
+  ///   status_like / status_record(功能开关) / status_goods 底部商品按钮 / status_gift 底部礼物按钮
+  ///   status_comment 底部评论(1 允许输入 / 0 禁止输入, 输入条始终展示) / subscribe 订阅
   /// * 注意: 该接口不返回拉流地址(无 push_link),拉流地址请另行调 [pullUrl] 获取
   /// * 查询失败返回 null,由页面回落到传入的 push_link / 本地数据
   static Future<Map<String, dynamic>?> roomInfo(String no) async {
@@ -479,11 +480,130 @@ class LiveApi {
   static bool isHorizontalRoom(Map<String, dynamic>? room) =>
       '${room?['type'] ?? ''}'.trim().toLowerCase() == 'horizontal';
 
+  /// 直播间功能开关(getRoomInfo 的 status_* 系列, 如 status_like / status_goods / status_comment / status_record / status_gift)
+  /// * 后端下发的开关值写法不统一: 1 / "1" / true 都算开启, 0 / "0" / false 算关闭
+  /// * [def] 字段没下发时的默认值: 新增的开关(如 status_gift)老房间可能还没有该字段,
+  ///   默认按开启处理, 避免历史直播间功能凭空消失; 后端明确下发 0/false 才隐藏
+  static bool switchOn(Map<String, dynamic>? room, String key, {bool def = true}) {
+    final dynamic raw = room?[key];
+    if (raw == null) return def;
+    if (raw is bool) return raw;
+    if (raw is num) return raw != 0;
+    final String text = '$raw'.trim().toLowerCase();
+    if (text == '1' || text == 'true') return true;
+    if (text == '0' || text == 'false') return false;
+    return def;
+  }
+
+  /// 是否展示底部悬浮礼物按钮(getRoomInfo 的 status_gift)
+  /// * 1 展示 / 0 隐藏; 字段未下发时默认展示(兼容老房间)
+  static bool showGiftOf(Map<String, dynamic>? room) => switchOn(room, 'status_gift');
+
+  /// 是否展示底部悬浮商品按钮(getRoomInfo 的 status_goods)
+  /// * 1 展示 / 0 隐藏; 字段未下发时默认展示(兼容老房间)
+  static bool showGoodsOf(Map<String, dynamic>? room) => switchOn(room, 'status_goods');
+
+  /// 底部评论是否禁止输入(getRoomInfo 的 status_comment)
+  /// * 0 表示禁止输入: 底部输入条照常展示(占位, 与「隐藏」区分), 但点击不弹输入框
+  /// * 1 / 字段未下发 表示允许正常输入(与其它 status_* 开关一致, 默认开启)
+  static bool commentReadonlyOf(Map<String, dynamic>? room) =>
+      !switchOn(room, 'status_comment', def: true);
+
   /// 从接口返回的 data 中取拉流地址: 字段 url(兼容直接返回字符串)
   static String pullUrlOf(dynamic data) {
     if (data is String) return data.trim();
     if (data is Map) return '${data['url'] ?? ''}'.trim();
     return '';
+  }
+
+  /// 直播间礼物列表(/live/api/gift/lists)
+  /// * 底部悬浮礼物按钮点开时拉取(见 PopupGift), 一次拉全量不分页
+  /// * 元素已按 [giftItem] 归一化: id / name(名称) / image(图标) / coins(虚拟币价, 单位见 point_config.name)
+  /// * 查询失败或无数据返回 null, 由弹窗展示空态
+  static Future<List<Map<String, dynamic>>?> giftLists() async {
+    try {
+      final Map<String, dynamic> res = await Request().getRaw('/live/api/gift/lists');
+      if ('${res['code']}' != '0') {
+        debugPrint('[live]礼物列表返回异常: ${res['code']} ${res['message']}');
+        return null;
+      }
+      final dynamic data = res['data'];
+      // 兼容三种外形: 直接是数组 / {list:[]} / {lists:[]}
+      final dynamic list = data is Map ? (data['list'] ?? data['lists'] ?? data['data']) : data;
+      if (list is! List) return null;
+      // 排查字段用: 后端字段名不确定, 打一条原始 item 方便对照归一化结果
+      if (list.isNotEmpty) debugPrint('[live]礼物首条原始字段: ${list.first}');
+      final List<Map<String, dynamic>> out = <Map<String, dynamic>>[];
+      for (final dynamic one in list) {
+        final Map<String, dynamic>? item = giftItem(one);
+        if (item != null) out.add(item);
+      }
+      return out;
+    } catch (e) {
+      debugPrint('[live]礼物列表加载失败: $e');
+      return null;
+    }
+  }
+
+  /// 赠送礼物(/live/api/gift/give)
+  /// * [giftId] 礼物 id(取 [giftLists] 下发元素里的 id)
+  /// * [no] 直播房间号 sn(与 getRoomInfo 同一个参数)
+  /// * 返回 {ok: 是否成功, message: 提示文案}
+  /// * 赠送成功后服务端会通过 socket 向全房间广播 type=gift 消息, 由直播间播送礼物动效
+  /// * 失败多为余额不足, message 是服务端文案, 页面直接提示并可引导去充值
+  static Future<Map<String, dynamic>> giftGive({required String giftId, required String no}) async {
+    final String id = '$giftId'.trim();
+    final String roomNo = no.trim();
+    if (id.isEmpty || roomNo.isEmpty) {
+      return <String, dynamic>{'ok': false, 'message': '缺少礼物或房间信息'};
+    }
+    try {
+      final Map<String, dynamic> res = await Request().postRaw(
+        '/live/api/gift/give',
+        data: <String, dynamic>{'gift_id': id, 'no': roomNo},
+      );
+      final bool ok = '${res['code']}' == '0';
+      // 提示文案优先取 data(接口可能直接下发字符串), 取不到再回落 message
+      String message = '${res['message'] ?? ''}'.trim();
+      final dynamic data = res['data'];
+      if (data is String && data.trim().isNotEmpty) message = data.trim();
+      if (message.isEmpty) message = ok ? '赠送成功' : '赠送失败，请稍后再试';
+      if (!ok) debugPrint('[live]赠送礼物返回异常: ${res['code']} $message');
+      return <String, dynamic>{'ok': ok, 'message': message};
+    } catch (e) {
+      debugPrint('[live]赠送礼物失败: $e');
+      return <String, dynamic>{'ok': false, 'message': '赠送失败，请检查网络'};
+    }
+  }
+
+  /// 礼物单条归一化(/live/api/gift/lists)
+  /// * 名称/图标/价格字段名各端不统一, 逐个候选取第一个非空值
+  /// * 名称与图标都取不到视为脏数据, 直接丢弃
+  static Map<String, dynamic>? giftItem(dynamic raw) {
+    if (raw is! Map) return null;
+    String text(List<String> keys) {
+      for (final String key in keys) {
+        final String val = '${raw[key] ?? ''}'.trim();
+        if (val.isEmpty || val == 'null') continue;
+        return val;
+      }
+      return '';
+    }
+    final String name = text(const <String>['gift_name', 'name', 'title', 'goods_name']);
+    final String image = imageOf(text(const <String>['gift_image', 'gift_img', 'image', 'img', 'pic', 'picture']));
+    // 价格: 接口实际字段是 amount("1.00" 这类字符串), 同时兼容 price / coins 等其它命名
+    // * 用 double 解析保留小数, 展示时再去 ".0" 尾巴(见 PopupGift._coinText)
+    final dynamic priceRaw = raw['amount'] ?? raw['price'] ?? raw['gift_price'] ?? raw['coins'] ?? raw['money'] ?? raw['point'];
+    final num coins = priceRaw is num ? priceRaw : (double.tryParse('${priceRaw ?? ''}'.trim()) ?? 0);
+    if (name.isEmpty && image.isEmpty) return null;
+    return <String, dynamic>{
+      'id': intOf(raw['id'] ?? raw['gift_id']),
+      'name': name,
+      'image': image,
+      // 大图(gif, 接口字段 big_image): 送礼动效/飘屏用, 列表先存下来备用
+      'bigImage': imageOf(text(const <String>['big_image', 'bigimage', 'big_img', 'bigImage'])),
+      'coins': coins,
+    };
   }
 
   /// 直播间带货商品(/live/api/shop/onlineGoods)

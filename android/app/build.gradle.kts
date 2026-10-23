@@ -38,6 +38,18 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // ===== 极光推送(离线推送) =====
+        // JPush SDK 的 AAR manifest 里声明了带占位符的 meta-data(JPUSH_APPKEY / JPUSH_CHANNEL),
+        // 不提供替换值会在 processDebugMainManifest 阶段直接构建失败:
+        //   "Attribute meta-data#JPUSH_APPKEY@value requires a placeholder substitution"
+        // * AGP 里 manifestPlaceholders 是 val MutableMap<String, Any>: 只能往里面塞, 不能整体赋值
+        //   (写成 manifestPlaceholders = mapOf(...) 会报 Val cannot be reassigned + 类型不匹配)
+        // * Dart 侧 jpush.setup(appKey: Config.jpushAppKey) 也会传一份, 两处必须保持一致;
+        //   换 AppKey 时这里和 lib/config/index.dart 的 Config.jpushAppKey 都要改
+        manifestPlaceholders["JPUSH_PKGNAME"] = "com.chongloutech.lehui"
+        manifestPlaceholders["JPUSH_APPKEY"] = "132b4c51c2600ead1a158888"
+        manifestPlaceholders["JPUSH_CHANNEL"] = "developer-default"
     }
 
     signingConfigs {

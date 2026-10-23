@@ -195,49 +195,31 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
 
   @override
   Widget build(BuildContext context) {
-    final double statusTop = MediaQuery.of(context).padding.top;
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7F9),
+      backgroundColor: const Color(0xFFF5F5F5),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        surfaceTintColor: Colors.white,
+        foregroundColor: const Color(0xFF222222),
+        elevation: 0,
+        centerTitle: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_rounded, size: 18, color: Color(0xFF222222)),
+          onPressed: () => Get.back(),
+        ),
+        title: const Text('学习中心',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Color(0xFF222222))),
+      ),
       body: Column(
         children: <Widget>[
-          // 顶部渐变 Hero
+          // 搜索 + 分类(白底, 与首页/我的等页面风格统一)
           Container(
-            padding: EdgeInsets.only(
-                top: statusTop + 12, bottom: 20, left: 14, right: 14),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: <Color>[primary, Color(0xFFFF5C7A)],
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(22),
-                bottomRight: Radius.circular(22),
-              ),
-            ),
+            color: Colors.white,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                Row(
-                  children: <Widget>[
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back_ios_new,
-                          color: Colors.white, size: 20),
-                      onPressed: () => Get.back(),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(),
-                    ),
-                    const SizedBox(width: 6),
-                    const Text('学习中心',
-                        style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w700)),
-                  ],
-                ),
-                const SizedBox(height: 12),
                 _searchBox(),
-                const SizedBox(height: 14),
+                const SizedBox(height: 12),
                 _categoryBar(),
               ],
             ),
@@ -292,19 +274,15 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
 
   Widget _searchBox() {
     return Container(
-      height: 42,
+      height: 40,
       padding: const EdgeInsets.only(left: 14),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(22),
-        boxShadow: const <BoxShadow>[
-          BoxShadow(
-              color: Color(0x1A000000), blurRadius: 8, offset: Offset(0, 2)),
-        ],
+        color: const Color(0xFFF5F5F5),
+        borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
         children: <Widget>[
-          const Icon(Icons.search, color: primary, size: 20),
+          const Icon(Icons.search, color: primary, size: 18),
           const SizedBox(width: 8),
           Expanded(
             child: TextField(
@@ -324,7 +302,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
                   gradient: const LinearGradient(
                     colors: <Color>[primary, Color(0xFFFF5C7A)],
                   ),
-                  borderRadius: BorderRadius.circular(18)),
+                  borderRadius: BorderRadius.circular(16)),
               child: const Center(
                   child: Text('搜索',
                       style: TextStyle(color: Colors.white, fontSize: 13))),
@@ -336,7 +314,7 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
   }
 
   Widget _categoryBar() {
-    // 融合进顶部渐变区: 选中=实心白底+主题色字, 未选=半透明白底+白字
+    // 选中=浅红底+主题色字, 未选=灰底+灰字(对齐领券中心 tab 风格)
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       child: Row(
@@ -349,14 +327,14 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
               padding:
                   const EdgeInsets.symmetric(horizontal: 16, vertical: 7),
               decoration: BoxDecoration(
-                color: active ? Colors.white : Colors.white.withOpacity(0.22),
+                color: active ? const Color(0xFFFFF1F2) : const Color(0xFFF5F5F5),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: Text('${item['title'] ?? ''}',
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-                      color: active ? primary : Colors.white)),
+                      color: active ? primary : const Color(0xFF666666))),
             ),
           );
         }).toList(),
@@ -439,12 +417,12 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
             width: cardW,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: const <BoxShadow>[
                 BoxShadow(
-                    color: Color(0x0D000000),
+                    color: Color(0x14000000),
                     blurRadius: 10,
-                    offset: Offset(0, 2)),
+                    offset: Offset(0, 3)),
               ],
             ),
             clipBehavior: Clip.antiAlias,
@@ -523,12 +501,12 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: const <BoxShadow>[
                 BoxShadow(
-                    color: Color(0x0D000000),
+                    color: Color(0x14000000),
                     blurRadius: 10,
-                    offset: Offset(0, 2)),
+                    offset: Offset(0, 3)),
               ],
             ),
             child: Row(
@@ -596,12 +574,12 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
             width: cardW,
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(8),
+              borderRadius: BorderRadius.circular(12),
               boxShadow: const <BoxShadow>[
                 BoxShadow(
-                    color: Color(0x0D000000),
+                    color: Color(0x14000000),
                     blurRadius: 10,
-                    offset: Offset(0, 2)),
+                    offset: Offset(0, 3)),
               ],
             ),
             clipBehavior: Clip.antiAlias,
@@ -623,8 +601,8 @@ class _StudyIndexPageState extends State<StudyIndexPage> {
                               horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
                             color: (isVideo
-                                    ? Colors.orange
-                                    : Colors.green)
+                                    ? primary
+                                    : const Color(0xFF999999))
                                 .withOpacity(0.9),
                             borderRadius: const BorderRadius.only(
                                 topRight: Radius.circular(8)),

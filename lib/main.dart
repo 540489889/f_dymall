@@ -25,6 +25,8 @@ import 'router/index.dart';
 import 'components/splash_cover.dart';
 import 'utils/app_splash.dart';
 import 'utils/privacy_agreement.dart';
+// 极光推送(离线推送)
+import 'utils/push.dart';
 
 void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
@@ -123,6 +125,14 @@ Future<void> _initSdks() async {
   // } catch (e) {
   //   debugPrint('[main] Content.init 异常(已忽略): $e');
   // }
+
+  // 极光推送(离线推送): 内部按 Config.jpushAppKey 是否为空自动跳过
+  // * 要等长连接建立才拿得到 RegistrationID, 所以放在后台初始化里, 不占启动时间
+  try {
+    await PushService.to.init();
+  } catch (e) {
+    debugPrint('[main] 极光推送初始化异常(已忽略, 不影响启动): $e');
+  }
 }
 
 class MyApp extends StatelessWidget {

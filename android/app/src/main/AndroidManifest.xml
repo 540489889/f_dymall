@@ -26,6 +26,14 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+            <!-- 极光推送(离线推送): 关掉 Flutter 3.29+ 默认开启的 deeplinking。
+                 Flutter 会把 Activity intent 里的 URI 当深链接解析, 而厂商通道(华为/小米/OPPO/vivo)
+                 点击拉起 App 时 intent 正带着 URI -> 解析到不存在的路由 -> 白屏。
+                 本 App 没有深链接需求(没有任何 BROWSABLE/autoVerify 的 intent-filter), 直接关掉。
+                 * 另一处等价的改法是 MainActivity 里重写 shouldHandleDeeplinking() 返回 false -->
+            <meta-data
+              android:name="flutter_deeplinking_enabled"
+              android:value="false" />
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -93,6 +101,8 @@
       Internet access permissions.
       -->
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+ 通知栏运行时权限: 不声明时 JPush 申请通知权限会被系统直接拒, 离线推送全收不到 -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 扫码绑定门店 + 直播连麦需要相机权限 -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />

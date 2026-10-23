@@ -215,7 +215,40 @@ class GoodsApi {
       'maxBuy': _toNum(detail['max_buy']),
       'minBuy': _toNum(detail['min_buy']),
       'purchasedNum': _toNum(detail['purchased_num']),
+      // 是否展示商品弹幕(飘屏)
+      'barrageShow': detail['barrage_show'] == 1,
     };
+  }
+
+  /// 商品弹幕(飘屏)列表(/api/goods/goodsbarrage)
+  /// * [goodsId] 商品id
+  /// * 返回 [{img: 头像, title: 文案}], 接口异常/无数据返回空列表(页面不展示)
+  static Future<List<Map<String, dynamic>>> goodsBarrage(int goodsId) async {
+    try {
+      final dynamic res = await Request().post(
+        '/api/goods/goodsbarrage',
+        data: <String, dynamic>{'goods_id': goodsId},
+        // 该后端部分接口只认 query 参数(与 goodssku/detail 同理),
+        // 同时传 query + body 兜底, 保证 goods_id 一定被读到
+        queryParameters: <String, dynamic>{'goods_id': goodsId},
+      );
+      if (res is Map) {
+        final dynamic data = res['data'];
+        final dynamic raw = data is Map ? (data['list'] ?? data['data']) : data;
+        if (raw is List) {
+          return raw.whereType<Map<dynamic, dynamic>>().map((Map<dynamic, dynamic> e) {
+            final Map<String, dynamic> m = e.cast<String, dynamic>();
+            return <String, dynamic>{
+              'img': _fixImage('${m['img'] ?? m['member_headimg'] ?? m['headimg'] ?? ''}'),
+              'title': '${m['title'] ?? m['content'] ?? m['barrage_content'] ?? ''}'.trim(),
+            };
+          }).where((Map<String, dynamic> e) => '${e['title']}'.isNotEmpty).toList();
+        }
+      }
+    } catch (e) {
+      debugPrint('[goods]商品弹幕获取失败: $e');
+    }
+    return const <Map<String, dynamic>>[];
   }
 
   /// 收藏商品(/api/goodscollect/add)

@@ -183,7 +183,7 @@ class _CollectionPageState extends State<CollectionPage> {
     );
   }
 
-  /// 单条收藏: 左图 + 名称/价格 + 右侧取消收藏
+  /// 单条收藏: 左图 + 名称/价格 + 右侧「取消收藏」文字按钮
   Widget _buildCard(Map<String, dynamic> item) {
     final int goodsId = (item['goodsId'] as num?)?.toInt() ?? 0;
     final String image = '${item['image'] ?? ''}';
@@ -194,48 +194,48 @@ class _CollectionPageState extends State<CollectionPage> {
       onTap: () => openDetail(item),
       child: Container(
         margin: const EdgeInsets.only(bottom: 12.0),
-        padding: const EdgeInsets.all(10.0),
+        padding: const EdgeInsets.all(12.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12.0),
           boxShadow: const [BoxShadow(color: Color(0x14000000), blurRadius: 10.0, offset: Offset(0, 3))],
         ),
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
             ClipRRect(
               borderRadius: BorderRadius.circular(8.0),
               child: image.isEmpty
                   ? Container(
-                      width: 92.0,
-                      height: 92.0,
+                      width: 88.0,
+                      height: 88.0,
                       color: const Color(0xFFF5F5F5),
                       alignment: Alignment.center,
                       child: const Icon(Icons.image_outlined, size: 30.0, color: Color(0xFFDDDDDD)),
                     )
                   : CachedNetworkImage(
                       imageUrl: image,
-                      width: 92.0,
-                      height: 92.0,
+                      width: 88.0,
+                      height: 88.0,
                       fit: BoxFit.cover,
                       placeholder: (BuildContext c, String u) => Container(
-                        width: 92.0,
-                        height: 92.0,
+                        width: 88.0,
+                        height: 88.0,
                         color: const Color(0xFFF5F5F5),
                       ),
                       errorWidget: (BuildContext c, String u, Object e) => Container(
-                        width: 92.0,
-                        height: 92.0,
+                        width: 88.0,
+                        height: 88.0,
                         color: const Color(0xFFF5F5F5),
                         alignment: Alignment.center,
                         child: const Icon(Icons.image_outlined, size: 30.0, color: Color(0xFFDDDDDD)),
                       ),
                     ),
             ),
-            const SizedBox(width: 10.0),
+            const SizedBox(width: 12.0),
             Expanded(
               child: SizedBox(
-                height: 92.0,
+                height: 88.0,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: <Widget>[
@@ -247,8 +247,9 @@ class _CollectionPageState extends State<CollectionPage> {
                     ),
                     const Spacer(),
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: <Widget>[
+                        // 价格: ¥ 小字 + 金额
                         Expanded(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.baseline,
@@ -263,7 +264,7 @@ class _CollectionPageState extends State<CollectionPage> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                  fontSize: 16.0,
+                                  fontSize: 17.0,
                                   color: Color(0xFFFF2C55),
                                   fontWeight: FontWeight.w600,
                                 ),
@@ -271,21 +272,8 @@ class _CollectionPageState extends State<CollectionPage> {
                             ],
                           ),
                         ),
-                        // 取消收藏: 请求中显示小菊花,避免连点
-                        GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: removing ? null : () => removeItem(item),
-                          child: Padding(
-                            padding: const EdgeInsets.only(left: 6.0, bottom: 2.0),
-                            child: removing
-                                ? const SizedBox(
-                                    width: 16.0,
-                                    height: 16.0,
-                                    child: CircularProgressIndicator(strokeWidth: 1.6, color: Color(0xFFBBBBBB)),
-                                  )
-                                : const Icon(Icons.delete_outline, size: 20.0, color: Color(0xFF999999)),
-                          ),
-                        ),
+                        // 取消收藏: 文字按钮(替代原删除图标),请求中显示小菊花,避免连点
+                        _buildCancelButton(item, removing),
                       ],
                     ),
                   ],
@@ -294,6 +282,33 @@ class _CollectionPageState extends State<CollectionPage> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// 取消收藏文字按钮: 灰色描边胶囊,点击调用 [removeItem]
+  Widget _buildCancelButton(Map<String, dynamic> item, bool removing) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: removing ? null : () => removeItem(item),
+      child: Container(
+        height: 28.0,
+        padding: const EdgeInsets.symmetric(horizontal: 12.0),
+        decoration: BoxDecoration(
+          border: Border.all(color: const Color(0xFFE0E0E0)),
+          borderRadius: BorderRadius.circular(14.0),
+        ),
+        alignment: Alignment.center,
+        child: removing
+            ? const SizedBox(
+                width: 14.0,
+                height: 14.0,
+                child: CircularProgressIndicator(strokeWidth: 1.6, color: Color(0xFFBBBBBB)),
+              )
+            : const Text(
+                '取消收藏',
+                style: TextStyle(fontSize: 12.0, color: Color(0xFF666666)),
+              ),
       ),
     );
   }

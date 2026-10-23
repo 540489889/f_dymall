@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../behavior/custom_scroll_behavior.dart';
+import '../../../controller/app_config.dart';
 
 class PopupRecharge extends StatefulWidget {
   const PopupRecharge({
@@ -62,7 +63,7 @@ Widget build(BuildContext context) {
         Container(
           alignment: Alignment.centerLeft,
           padding: EdgeInsets.only(left: 15.0),
-          child: Text('余额: 0钻 (还差1钻)', style: TextStyle(color: Colors.grey, fontSize: 14.0),),
+          child: Text('余额: 0${AppConfig.to.pointName()} (还差1${AppConfig.to.pointName()})', style: TextStyle(color: Colors.grey, fontSize: 14.0),),
         ),
         Container(
           height: 150.0,
@@ -93,7 +94,7 @@ Widget build(BuildContext context) {
               mainAxisAlignment: MainAxisAlignment.center,
               spacing: 3.0,
               children: [
-                Text('${item['label']}钻', style: TextStyle(color: Colors.black, fontSize: 16.0),),
+                Text('${item['label']}${AppConfig.to.pointName()}', style: TextStyle(color: Colors.black, fontSize: 16.0),),
                 Text('${item['money']}元', style: TextStyle(color: Colors.grey, fontSize: 12.0),),
               ],
             ),
