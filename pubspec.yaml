@@ -119,23 +119,19 @@ flutter:
   uses-material-design: true
 
   assets:
-    # 穿山甲内容SDK配置(SDK_Setting_*.json 放这里, 文件名同步改 lib/utils/content.dart 的 configPath)
+    # 整个 assets/ 递归打包 —— 只列这一条就够, 不要再单独列它的子目录。
+    # * 以前同时列了 assets/ + assets/images/ + 各子目录(avatar/gift/emotion/audio...),
+    #   这些条目互相重叠, 同一个文件会被复制两遍; Windows 上第二次复制直接构建失败:
+    #   "Cannot copy file to ...flutter_assets..., OS Error: 当文件已存在时, 无法创建该文件(errno 183)"
+    # * 新增子目录/文件时不用改这里, 放进去就会被打包(键名仍是完整路径, 如 assets/images/gift/gift1.png)
+    # * 目录内容(按用途找文件时看这里):
+    #   assets/audio/                      连麦呼叫提示音(link_mic.dart 循环播放)
+    #   assets/images/                     散图: 图标/背景/logo/支付方式图等
+    #   assets/images/newico|make|me|svg   分类图标 / 制作素材 / 我的页 / svg
+    #   assets/images/avatar|emotion|gift  头像 / 表情 / 礼物
+    # * 穿山甲内容SDK配置(SDK_Setting_*.json)放 assets/ 根目录,
+    #   文件名同步改 lib/utils/content.dart 的 configPath
     - assets/
-    - assets/images/
-    - assets/images/newico/
-    - assets/images/make/
-    - assets/images/me/
-    - assets/images/avatar/
-    - assets/images/svg/
-    # 连麦呼叫提示音(link_mic.dart: 申请连麦后循环播放, 主播同意/拒绝即停)
-    - assets/audio/
-    # gift list
-    - assets/images/gift/
-    # emoj list
-    - assets/images/emotion/face02/
-    - assets/images/emotion/face03/
-    - assets/images/emotion/face04/
-    - assets/images/emotion/face05/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
