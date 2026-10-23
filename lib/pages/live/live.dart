@@ -66,7 +66,7 @@ class Live extends StatefulWidget {
   State<Live> createState() => _LiveState();
 }
 
-class _LiveState extends State<Live> {
+class _LiveState extends State<Live> with WidgetsBindingObserver {
   // 接收参数
 dynamic arguments = Get.arguments;
 // 本页面的进房会话号: dispose 时用它判断播放器是否已经归新房间用了(见 dispose 里的停流)
@@ -223,6 +223,8 @@ final Set<String> endedActivityIds = <String>{};
   @override
   void initState() {
   super.initState();
+  // 前后台切换: 回到前台时修复被系统挂起的播放/socket(见 didChangeAppLifecycleState)
+  WidgetsBinding.instance.addObserver(this);
   // 看直播期间保持常亮: 长时间不操作也不熄屏(离开页面在 dispose 里恢复)
   WakelockPlus.enable();
   // 停掉首页的直播预览: 那是另一路硬解, 两台同时开会抢解码器(部分机型第二路直接开不出来,
@@ -2138,8 +2140,46 @@ bool _isDemoRoom(int index) => false;
     }
   }
 
+  // ===== 前后台切换 =====
+  // 切到后台再回前台时画面卡住不动(停在最后一帧), 根因是两条链路都被系统挂起了:
+  // 1. 播放器: media_kit 在 Android 上用 SurfaceProducer 出图, Activity 走到 onStop 后
+  //    系统会回收 Surface, 纹理不再出帧; 回前台时 Video 控件虽然还在, 但底层已经没有画面源
+  // 2. WebSocket: 后台期间连接被系统掐断, Dart 侧重连定时器同样被挂起, 不会自己恢复
+  // 另外 Dart Timer 在后台也会被挂起(见 popup_pay 的同类处理), 弹幕/倒计时/看门狗都会停摆,
+  // 所以统一在 resumed 时主动恢复一遍。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    if (!mounted) return;
+    debugPrint('[live]回到前台, 恢复直播流与 socket');
+    _onAppResumed();
+  }
+
+  Future<void> _onAppResumed() async {
+    if (!mounted || roomSn.isEmpty) return;
+    // 只有"直播中"的房间需要恢复: 预告/暂停/已结束时画面本来就不动, 别去重连
+    if (liveStatus != 1) return;
+
+    // 1. socket: 强制断开重连(connected 只能判断 channel 对象还在, 连接实际可能已经死了,
+    //    不能靠它判断; 重连成功后 onConnected 会重新发进房消息)
+    _joinWatchdog?.cancel();
+    _joinTryIndex = 0;
+    unawaited(liveSocket.reconnect());
+
+    // 2. 播放器: 没有视频轨或已经停了 -> 重新开流( Surface 会随之重建)
+    //    * 还在正常播就不动它, 否则用户会看到画面重新加载一次
+    if (!liveReconnector.hasVideo || !liveReconnector.isPlaying) {
+      // 重连期间画面是空的, 先把封面露出来, 避免看着最后一帧卡在那儿
+      _onReconnecting();
+      await liveReconnector.reconnectNow();
+    }
+  }
+
   @override
   void dispose() {
+  // 解除生命周期监听
+  WidgetsBinding.instance.removeObserver(this);
   // 离开直播间恢复系统息屏策略(不还原的话回到其它页面也一直亮着, 白耗电)
   WakelockPlus.disable();
   // 解除首页直播预览的挂起: 回首页后按卡片可见性自动恢复播放

@@ -321,6 +321,21 @@ class LiveReconnector {
     await _reconnect(seq);
   }
 
+  /// 当前是否还有视频轨(出过帧且未丢失)
+  bool get hasVideo => _hadVideo;
+
+  /// 是否正在播放
+  bool get isPlaying => player.state.playing;
+
+  /// 立即重连(供前后台切换等场景主动触发)
+  /// * 没有地址(房间未起播/已结束)时什么都不做
+  Future<void> reconnectNow() async {
+    if (src.isEmpty) return;
+    _retries = 0;
+    debugPrint('[live]主动重连直播流: $src');
+    await _reconnect(_openSeq);
+  }
+
   /// 重连: 优先用 srcProvider 刷新地址(auth_key 有时效)
   Future<void> _reconnect(int seq) async {
     // 通知上层: 接下来画面会空一段时间(封面重新显示, 避免白板/黑屏)

@@ -136,49 +136,23 @@ class _AnimationFullScreenGiftState extends State<AnimationFullScreenGift>
     // 没有全屏礼物时什么都不占(不拦截手势)
     if (item == null) return const SizedBox.shrink();
 
-    final String user = '${item['user'] ?? ''}';
-    final String label = '${item['label'] ?? '礼物'}';
-    // 注意别用 num 作变量名: 会遮蔽 dart:core 的 num 类型, 后面 is num / as num 全部失效
-    final Object? countRaw = item['num'];
-    final num count = countRaw is num ? countRaw : (num.tryParse('$countRaw') ?? 1);
-
     return Positioned.fill(
       // 动效期间不吃手势: 底层直播间的点击(点赞/清屏)照常能用
       child: IgnorePointer(
         child: FadeTransition(
           opacity: anim,
           child: Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // gif 大图: 缩放进场(Flutter 的 Image.network 原生支持动图)
-                // * 尺寸固定 260x260: 试过按屏幕比例放大(宽 86% / 高 72%), 实际偏大压画面, 改回原值
-                ScaleTransition(
-                  scale: Tween<double>(begin: 0.6, end: 1.0).animate(anim),
-                  child: Image.network(
-                    '${item['bigImage']}',
-                    width: 260.0,
-                    height: 260.0,
-                    fit: BoxFit.contain,
-                    // 加载失败/地址为空: 留空即可, 不影响送礼文案
-                    errorBuilder: (_, __, ___) => const SizedBox(width: 260.0, height: 260.0),
-                  ),
-                ),
-                const SizedBox(height: 16.0),
-                // 送礼文案: 有服务端下发的 msg 就直接用, 否则自己拼
-                Text(
-                  '${item['msg'] ?? ''}'.trim().isNotEmpty ? '${item['msg']}' : '$user 送出 $label x$count',
-                  textAlign: TextAlign.center,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 16.0,
-                    fontWeight: FontWeight.w600,
-                    shadows: <Shadow>[Shadow(color: Colors.black54, blurRadius: 6.0)],
-                  ),
-                ),
-              ],
+            // 只播 gif, 不放送礼文案: 文案会盖住画面, 且左上角小横幅已经在播同一条信息
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.6, end: 1.0).animate(anim),
+              child: Image.network(
+                '${item['bigImage']}',
+                width: 260.0,
+                height: 260.0,
+                fit: BoxFit.contain,
+                // 加载失败/地址为空: 留空即可, 不影响动效
+                errorBuilder: (_, __, ___) => const SizedBox(width: 260.0, height: 260.0),
+              ),
             ),
           ),
         ),
