@@ -119,19 +119,26 @@ flutter:
   uses-material-design: true
 
   assets:
-    # 整个 assets/ 递归打包 —— 只列这一条就够, 不要再单独列它的子目录。
-    # * 以前同时列了 assets/ + assets/images/ + 各子目录(avatar/gift/emotion/audio...),
-    #   这些条目互相重叠, 同一个文件会被复制两遍; Windows 上第二次复制直接构建失败:
-    #   "Cannot copy file to ...flutter_assets..., OS Error: 当文件已存在时, 无法创建该文件(errno 183)"
-    # * 新增子目录/文件时不用改这里, 放进去就会被打包(键名仍是完整路径, 如 assets/images/gift/gift1.png)
-    # * 目录内容(按用途找文件时看这里):
-    #   assets/audio/                      连麦呼叫提示音(link_mic.dart 循环播放)
-    #   assets/images/                     散图: 图标/背景/logo/支付方式图等
-    #   assets/images/newico|make|me|svg   分类图标 / 制作素材 / 我的页 / svg
-    #   assets/images/avatar|emotion|gift  头像 / 表情 / 礼物
-    # * 穿山甲内容SDK配置(SDK_Setting_*.json)放 assets/ 根目录,
-    #   文件名同步改 lib/utils/content.dart 的 configPath
-    - assets/
+    # 注意: Flutter 的目录条目只收录该目录下的直接文件, 不会递归进子目录!
+    # 因此 images 下每个子目录都必须单独列一条, 新增子目录时记得在这里补。
+    # * 各条目之间不能有包含关系(如同时列 assets/ 根), 否则同一文件被复制两次,
+    #   Windows 上 Gradle 会报 errno 183(当文件已存在时无法创建)。
+    # * assets/audio/ 连麦呼叫提示音(link_mic.dart 循环播放)。
+    # * 穿山甲内容SDK配置(SDK_Setting_*.json)如启用, 需在 assets/ 根下并在此单独列文件。
+    - assets/audio/
+    - assets/images/
+    - assets/images/avatar/
+    - assets/images/emotion/
+    - assets/images/emotion/face01/
+    - assets/images/emotion/face02/
+    - assets/images/emotion/face03/
+    - assets/images/emotion/face04/
+    - assets/images/emotion/face05/
+    - assets/images/gift/
+    - assets/images/make/
+    - assets/images/me/
+    - assets/images/newico/
+    - assets/images/svg/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
