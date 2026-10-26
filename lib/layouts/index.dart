@@ -8,6 +8,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import '../controller/video_store.dart';
 import '../controller/app_config.dart';
 import '../controller/auth_store.dart';
+import '../controller/main_tab.dart';
 import '../components/keepalive_wrapper.dart';
 import '../utils/player_config.dart';
 // 引入pages页面
@@ -37,6 +38,27 @@ class _LayoutState extends State<Layout> {
     // 拿不到 diy 配置就只能显示默认导航(只有文字没有图标)
     AppConfig.to.fetchIfEmpty();
     _syncHomeTabActive();
+    // 把「按 type 切 tab」的方法注册给主框架控制器, 供推送/深链(如任务中心)调用
+    try {
+      Get.find<MainTabController>().register(_switchToType);
+    } catch (_) {}
+  }
+
+  @override
+  void dispose() {
+    // 解注册, 避免切 tab 回调指向已销毁的 State
+    try {
+      Get.find<MainTabController>().unregister(_switchToType);
+    } catch (_) {}
+    super.dispose();
+  }
+
+  /// 外部(推送/深链)按 type 切底部 tab('home'/'video'/'live'/'earn'/'mine'/diy type)
+  /// * 复用 onNavTap: 切 tab 时一并触发视频暂停、各 tab 刷新等原有逻辑
+  void _switchToType(String type) {
+    final int idx = _pageTypes.indexOf(type);
+    if (idx < 0 || idx >= _pages.length) return;
+    onNavTap(idx);
   }
 
   /// 首页 tab 是否正在展示(切到其它 tab 为 false)

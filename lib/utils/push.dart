@@ -6,6 +6,7 @@
 library;
 
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -20,6 +21,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import '../api/push.dart';
 import '../config/index.dart';
 import '../controller/auth_store.dart';
+import '../controller/main_tab.dart';
 import 'index.dart';
 import 'platform.dart';
 
@@ -236,7 +238,7 @@ class PushService {
     final String target = _targetOf(payload);
     debugPrint('[push] 点击通知: ${payload['title']} | 跳转 $target');
     await _clearBadge();
-    if (target.isNotEmpty) await Utils.openAppLink(target);
+    await _dispatchTarget(target);
     return null;
   }
 
@@ -267,42 +269,48 @@ class PushService {
 
   // ===== 跳转 =====
 
-  /// 按 extras 里的 type / id 生成跳转路径(与后端文档第五节一致)
-  /// * order  订单      -> /order/detail?order_id=
-  /// * refund 退款      -> /order/refund_detail?order_goods_id=
-  /// * coupon 优惠券    -> /my/coupon
-  /// * live   直播      -> /live?sn=(直播间进房要的是房间号 sn, 不是数据库 id)
-  /// * system 系统公告  -> /notice/detail(有 title/content 时直接展示, 否则 /notice)
+  /// 把 extras 规整成 Map: 兼容极光安卓回传的 JSON 字符串 与 iOS 直接给的 Map
+  /// * 安卓把 extras 序列化成字符串(如 '{"id":"hushenghuo...","type":"live"}'),
+  ///   旧逻辑只认 Map, 解析失败 -> type/id 全空 -> 全部误跳 /notice
+  Map<String, dynamic> _parseExtras(dynamic extras) {
+    if (extras is Map) return extras.cast<String, dynamic>();
+    if (extras is String && extras.trim().isNotEmpty) {
+      try {
+        final dynamic decoded = jsonDecode(extras);
+        if (decoded is Map) return Map<String, dynamic>.from(decoded);
+      } catch (_) {}
+    }
+    return <String, dynamic>{};
+  }
+
+  /// 按 extras 里的 type / id 生成跳转路径(对齐后台《APP推送接口文档》类型表)
+  /// * 规则: 有 id 跳对应详情页, id 为空跳列表/兜底页
+  /// * task 返回哨兵 '/tab/<type>', 由 _dispatchTarget 转成「切主框架底部 tab」(不走页面跳转)
+  /// * order  订单      -> /order/detail?order_id= (无 id -> /order)
+  /// * live   直播间    -> /live?sn= (进房要房间号 sn, 后台发的 id 即字符串房间号; 无 id -> /live/list)
+  /// * task   任务中心  -> /tab/earn (切底部「赚钱」tab)
+  /// * seckill 秒杀     -> /seckill/detail?id= (无 id -> /seckill)
+  /// * system 系统公告  -> /notice/detail(有 title/content) / /notice(列表)
   /// * 其他/缺省         -> /notice
   String _targetOf(Map<String, dynamic> payload) {
-    final Map<String, dynamic> extras = payload['extras'] is Map
-        ? (payload['extras'] as Map).cast<String, dynamic>()
-        : <String, dynamic>{};
+    final Map<String, dynamic> extras = _parseExtras(payload['extras']);
     final String type = _text(extras['type']);
     final String id = _text(extras['id']);
     final String Function(String) q = Uri.encodeQueryComponent;
+    debugPrint('[push] 解析 extras: type=$type id=$id');
 
     switch (type) {
       case 'order':
-        final String orderId = id.isNotEmpty ? id : _text(extras['order_id']);
-        return orderId.isEmpty ? '/order' : '/order/detail?order_id=${q(orderId)}';
-      case 'refund':
-        final String refundId = id.isNotEmpty ? id : _text(extras['order_goods_id']);
-        return refundId.isEmpty
-            ? '/order/refund_list'
-            : '/order/refund_detail?order_goods_id=${q(refundId)}';
-      case 'coupon':
-        return '/my/coupon';
+        return id.isEmpty ? '/order' : '/order/detail?order_id=${q(id)}';
       case 'live':
-        // 直播间进房要「房间号 sn」(见 live.dart 的 arguments['sn']);
-        // 后台按文档发的是 id, 优先用 sn, 没有 sn 时才拿 id 顶一下
-        final String sn = _text(extras['sn']);
-        if (sn.isEmpty && id.isEmpty) return '/live/list';
-        return '/live?sn=${q(sn.isNotEmpty ? sn : id)}';
+        return id.isEmpty ? '/live/list' : '/live?sn=${q(id)}';
+      case 'task':
+        return '/tab/earn'; // 任务中心: 切底部「赚钱」tab
+      case 'seckill':
+        return id.isEmpty ? '/seckill' : '/seckill/detail?id=${q(id)}';
       case 'system':
         final String title = _text(extras['title']);
         final String content = _text(extras['content']);
-        // 公告详情页直接用 title/content, 不单独请求详情接口
         if (title.isNotEmpty || content.isNotEmpty) {
           return '/notice/detail?title=${q(title)}&content=${q(content)}';
         }
@@ -310,6 +318,24 @@ class PushService {
       default:
         return '/notice';
     }
+  }
+
+  /// 按目标路径分发跳转
+  /// * '/tab/<type>' 哨兵: 切主框架底部 tab(若在子页面则先回到根路由露出底层页)
+  /// * 其余: 交给 Utils.openAppLink 走内部路由/外链
+  Future<void> _dispatchTarget(String target) async {
+    if (target.startsWith('/tab/')) {
+      final String type = target.substring('/tab/'.length);
+      if (Get.isRegistered<MainTabController>()) {
+        Get.find<MainTabController>().switchTo(type);
+      }
+      // 若当前停留在子页面(如商品详情), 回到根路由让底层 Layout 露出来
+      try {
+        Get.until((r) => r.isFirst);
+      } catch (_) {}
+      return;
+    }
+    if (target.isNotEmpty) await Utils.openAppLink(target);
   }
 
   // ===== 工具 =====
@@ -345,7 +371,7 @@ class PushService {
       if (target.isEmpty) return;
       // 等首帧与路由表就绪再跳(此刻可能还在启动图 / 隐私协议页)
       await Future<void>.delayed(const Duration(milliseconds: 800));
-      await Utils.openAppLink(target);
+      await _dispatchTarget(target);
     } catch (_) {}
   }
 

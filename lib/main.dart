@@ -15,6 +15,7 @@ import 'config/index.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
 import 'controller/app_config.dart';
+import 'controller/main_tab.dart';
 import 'controller/my_preload.dart';
 import 'controller/earn_preload.dart';
 // 开发调试: 暂时注释穿山甲相关 import(恢复广告时与本文件里的 Ads.init / Content.init 一起解开)
@@ -52,6 +53,7 @@ void main() async {
     Get.put(AuthStore());
     Get.put(VideoStore());
     Get.put(AppConfig()); // 进入 App 即拉取 /api/config/init 全局配置
+    Get.put(MainTabController()); // 主框架底部 tab 切换(推送/深链用)
   } catch (e) {
     debugPrint('[main] Get.put 异常: $e');
     // 配置控制器没起来就没人通知启动图, 这里补一个放行信号(否则只能等启动图 6s 兜底超时)
