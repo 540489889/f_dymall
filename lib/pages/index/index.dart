@@ -324,22 +324,16 @@ void _onTabTap(int index) {
   if(categoryId == currentCategoryId) return;
   // 分类变了: 丢弃在途请求 + 重置分页
   requestSeq += 1;
-  final int seq = requestSeq;
   setState(() {
     currentCategoryId = categoryId;
-    dataList = [];
     page = 1;
     hasMore = true;
     isLoading = false;
-    // 切分类等同于一次首屏加载: 同样先用骨架屏占位
-    firstLoad = true;
+    // 关键: 不清空 dataList(保留旧商品撑住滚动高度), 否则列表骤缩会被框架 clamp 回顶部;
+    // 也不进入 firstLoad 骨架屏, 切换分类只静默替换商品, 无"刷新界面"观感
   });
-  // 首屏数据回来后再滚到 tab 吸顶位置: 列表清空瞬间滚动范围变小,
-  // 此时滚动会被 clamp, tab 栏会掉出吸顶态(甚至看不见)
-  loadMoreData().whenComplete(() {
-    if(!mounted || seq != requestSeq) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToStickyTabs());
-  });
+  // refresh=true: 新数据回来后整体替换旧列表(旧商品一直留在屏幕上, 直到新数据到位)
+  loadMoreData(refresh: true);
 }
 
 // 滚动到 tab 吸顶位置: 让分类栏正好落在吸顶 AppBar 正下方,且首个商品完整露出
