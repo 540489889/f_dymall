@@ -414,7 +414,7 @@ class CardItem extends StatelessWidget {
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(13.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12.0),
@@ -429,13 +429,13 @@ class CardItem extends StatelessWidget {
                 children: [
                   CachedNetworkImage(
                     imageUrl: cover,
-                    width: 130.0,
-                    height: 90.0,
+                    width: 134.0,
+                    height: 94.0,
                     fit: BoxFit.cover,
-                    placeholder: (BuildContext context, String url) => Container(width: 130.0, height: 100.0, color: Colors.grey[200]),
+                    placeholder: (BuildContext context, String url) => Container(width: 134.0, height: 94.0, color: Colors.grey[200]),
                     errorWidget: (BuildContext context, String url, Object error) => Container(
-                      width: 130.0,
-                      height: 90.0,
+                      width: 134.0,
+                      height: 94.0,
                       color: Colors.grey[200],
                       alignment: Alignment.center,
                       child: const Icon(Icons.image, color: Colors.grey),
@@ -456,12 +456,12 @@ class CardItem extends StatelessWidget {
                         children: [
                           // 直播中: 用跳动均衡器条代替静态图标(与首页直播卡片一致); 预告状态保留原图标
                           isLive
-                              ? LivePlayingBars(color: const Color(0xFFFF5A4D), height: 10.0)
-                              : const Icon(Icons.wifi_tethering, color: Color(0xFFFF5A4D), size: 10.0),
+                              ? LivePlayingBars(color: const Color(0xFFFF5A4D), height: 11.0)
+                              : const Icon(Icons.wifi_tethering, color: Color(0xFFFF5A4D), size: 11.0),
                           const SizedBox(width: 3.0),
                           Text(
                             LiveApi.statusName(room),
-                            style: const TextStyle(color: Color(0xFFFF5A4D), fontSize: 10.0, fontWeight: FontWeight.w600),
+                            style: const TextStyle(color: Color(0xFFFF5A4D), fontSize: 11.0, fontWeight: FontWeight.w600),
                           ),
                         ],
                       ),
@@ -481,9 +481,9 @@ class CardItem extends StatelessWidget {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.person, color: Colors.white, size: 10.0),
+                            const Icon(Icons.person, color: Colors.white, size: 11.0),
                             const SizedBox(width: 2.0),
-                            Text(_viewers, style: const TextStyle(color: Colors.white, fontSize: 10.0)),
+                            Text(_viewers, style: const TextStyle(color: Colors.white, fontSize: 11.0)),
                           ],
                         ),
                       ),
@@ -499,7 +499,7 @@ class CardItem extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.w700, color: Color(0xFF222222), height: 1.3),
+                    style: const TextStyle(fontSize: 15.0, fontWeight: FontWeight.w700, color: Color(0xFF222222), height: 1.3),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -509,8 +509,8 @@ class CardItem extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Container(
-                        width: 32.0,
-                        height: 32.0,
+                        width: 34.0,
+                        height: 34.0,
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           border: Border.all(color: Colors.grey[300]!, width: 1.0),
@@ -518,10 +518,10 @@ class CardItem extends StatelessWidget {
                         child: ClipOval(
                           child: CachedNetworkImage(
                             imageUrl: avatar,
-                            width: 32.0,
-                            height: 32.0,
+                            width: 34.0,
+                            height: 34.0,
                             fit: BoxFit.cover,
-                            errorWidget: (BuildContext context, String url, Object error) => Container(color: Colors.grey[200], width: 32.0, height: 32.0),
+                            errorWidget: (BuildContext context, String url, Object error) => Container(color: Colors.grey[200], width: 34.0, height: 34.0),
                           ),
                         ),
                       ),
@@ -552,20 +552,26 @@ class CardItem extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 6.0),
+                  const SizedBox(height: 8.0),
                   // 标签(最多2个, 单行)
+                  // * 字号放大后长标签可能撑破右侧这一列, 这里给单个标签限宽 + 单行省略,
+                  //   两个标签加起来始终落在可用宽度内(不能用 Flexible: 它在 Column 里约束的是
+                  //   垂直方向, 会把标签行压扁)
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     spacing: 6.0,
                     children: (_tags.isNotEmpty ? _tags : _mockTags(title)).take(2).map((String tag) => Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 2.0),
+                      constraints: const BoxConstraints(maxWidth: 68.0),
+                      padding: const EdgeInsets.symmetric(horizontal: 7.0, vertical: 3.0),
                       decoration: BoxDecoration(
                         color: const Color(0xFFFFF8F6),
                         borderRadius: BorderRadius.circular(10.0),
                       ),
                       child: Text(
                         tag,
-                        style: const TextStyle(fontSize: 10.0, color: Color(0xFFFF5A4D)),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11.0, color: Color(0xFFFF5A4D)),
                       ),
                     )).toList(),
                   ),

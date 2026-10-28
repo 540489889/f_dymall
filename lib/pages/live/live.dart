@@ -2343,8 +2343,8 @@ Widget _previewCard(Map<String, dynamic> item) {
 }
 
 // 弹幕列表
-// * [zoom] 弹幕字体缩放(1 标 / 1.3 中 / 1.6 大, 见 utils/danmu_zoom.dart), 作用在所有聊天文本上
-List<Widget> danmuList(dynamic list, {double zoom = 1.0}) {
+// * [zoom] 弹幕字体缩放(1.0 小 / 1.3 中 / 1.6 大, 见 utils/danmu_zoom.dart), 作用在所有聊天文本上
+List<Widget> danmuList(dynamic list, {double zoom = danmuZoomDefault}) {
   List<Widget> danmu = [];
   final double size = 13.0 * zoom;
   for (var item in list) {

@@ -370,9 +370,9 @@ class _EarnPageState extends State<EarnPage> {
                 // 立即提现: 暂时隐藏(板块代码仍在 _buildWithdraw, 要恢复就注掉下面这行前面的注释)
                 // SliverToBoxAdapter(child: _buildWithdraw()),
                 SliverToBoxAdapter(child: _buildHotTasks()),
-                // Banner 广告位(未配置广告位时不展示)
-                if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
-                  SliverToBoxAdapter(child: _buildBanner()),
+                // 横幅广告位(暂时不需要, 注释掉)
+                // if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
+                //   SliverToBoxAdapter(child: _buildBanner()),
                 const SliverToBoxAdapter(child: SizedBox(height: 24.0)),
               ],
             ),

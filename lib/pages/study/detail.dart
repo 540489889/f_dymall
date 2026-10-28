@@ -127,13 +127,27 @@ class _StudyDetailPageState extends State<StudyDetailPage> {
 
   Map<String, dynamic> _adaptComment(dynamic item) {
     final Map<String, dynamic> m = item as Map<String, dynamic>;
-    final String avatar = MaterialsApi.fixUrl(m['member_headimg'] ??
-        m['avatar'] ??
-        m['head_img'] ??
-        m['user_avatar']);
-    final String nickname = '${m['member_nickname'] ?? m['nickname'] ?? m['user_name'] ?? m['nick_name'] ?? '匿名用户'}';
-    final String time = '${m['create_time'] ?? m['time'] ?? m['comment_time'] ?? ''}';
-    final String content = '${m['content'] ?? m['comment'] ?? ''}';
+    // 兼容用户字段直接挂在顶层, 或嵌套在 member / user 对象里
+    final Map<String, dynamic> u = <String, dynamic>{};
+    if (m['member'] is Map) u.addAll((m['member'] as Map).cast<String, dynamic>());
+    if (m['user'] is Map) u.addAll((m['user'] as Map).cast<String, dynamic>());
+    final Map<String, dynamic> src = <String, dynamic>{}..addAll(m)..addAll(u);
+
+    // 头像: 后端约定多为 headimg(相对路径, 由 fixUrl 拼域名)
+    final String avatar = MaterialsApi.fixUrl(src['member_headimg'] ??
+        src['headimg'] ??
+        src['avatar'] ??
+        src['head_img'] ??
+        src['user_avatar']);
+    // 昵称: nickname 取不到时回退 username
+    final String nickname = '${src['member_nickname'] ??
+        src['nickname'] ??
+        src['user_name'] ??
+        src['username'] ??
+        src['nick_name'] ??
+        '匿名用户'}';
+    final String time = '${src['create_time'] ?? src['time'] ?? src['comment_time'] ?? ''}';
+    final String content = '${src['content'] ?? src['comment'] ?? ''}';
     return <String, dynamic>{
       'avatar': avatar,
       'nickname': nickname,

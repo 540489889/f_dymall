@@ -25,6 +25,9 @@ const Color _aux = Color(0xFFFD9A01);
 /// 顶部圆形按钮直径(返回/搜索/购物车/收藏统一)
 const double _kTopBtnSize = 34.0;
 
+/// 轮播图高度(与普通商品详情 lib/pages/goods/detail.dart 保持一致)
+const double _kSwiperHeight = 360.0;
+
 /// 接口字段多为字符串, 统一转 num
 num _toNum(dynamic value, [num def = 0]) => value is num ? value : (num.tryParse('${value ?? ''}') ?? def);
 
@@ -530,18 +533,18 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
     );
   }
 
-  /// 轮播图
+  /// 轮播图(与普通商品详情一致)
   Widget _buildSwiper() {
     if (images.isEmpty) {
       return Container(
-        height: 320.0,
+        height: _kSwiperHeight,
         color: Colors.white,
         alignment: Alignment.center,
         child: const Icon(Icons.image_outlined, color: Color(0xFFDDDDDD), size: 48.0),
       );
     }
     return SizedBox(
-      height: 320.0,
+      height: _kSwiperHeight,
       child: Swiper(
         itemCount: images.length,
         autoplay: images.length > 1,
@@ -551,7 +554,8 @@ class _SeckillDetailPageState extends State<SeckillDetailPage> {
         ),
         itemBuilder: (BuildContext context, int index) => CachedNetworkImage(
           imageUrl: images[index],
-          fit: BoxFit.cover,
+          // 不指定 fit: 默认 BoxFit.contain, 与普通商品详情一致。
+          // 之前用 cover 会按容器裁掉宽幅 banner 的两侧/上下, 商家图底部的促销贴片就看不见了。
           // 切图时不要淡入淡出(默认 500ms 的淡入会跟着轮播切换闪一下)
           fadeInDuration: Duration.zero,
           fadeOutDuration: Duration.zero,

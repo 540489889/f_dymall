@@ -522,6 +522,9 @@ class _ChatState extends State<Chat> with WidgetsBindingObserver {
                               );
                               evaluated = true;
                               MyDialog.toast('感谢您的评价');
+                              // 评价已完成(会话也已结束), 直接退出客服页回到来路页面,
+                              // 不再停留在空会话里
+                              if (mounted) Get.back();
                             } catch (e) {
                               MyDialog.toast(_errMsg(e));
                             }
@@ -579,7 +582,8 @@ class _ChatState extends State<Chat> with WidgetsBindingObserver {
   /* ----------------------------- 顶部状态文案 ----------------------------- */
 
   String _statusText() {
-    if (mode == 'ai') return 'AI 智能客服为您服务';
+    // 界面上不出现「AI」字眼, 统一叫「智能客服」
+    if (mode == 'ai') return '智能客服为您服务';
     if (status == 3) return '会话已结束';
     if (servicerName.isEmpty) return '正在为您转接，请稍候…';
     return '客服 $servicerName 为您服务';
