@@ -14,6 +14,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../api/servicer.dart';
 import '../../config/index.dart';
+import '../../controller/auth_store.dart';
 
 class Chat extends StatefulWidget {
   const Chat({super.key});
@@ -794,6 +795,7 @@ class _ChatState extends State<Chat> with WidgetsBindingObserver {
   }
 
   Widget _memberAvatar() {
+    final String url = AuthStore.to.headimg;
     return Container(
       width: 36,
       height: 36,
@@ -801,7 +803,22 @@ class _ChatState extends State<Chat> with WidgetsBindingObserver {
         color: const Color(0xFFD9D9D9),
         borderRadius: BorderRadius.circular(18),
       ),
-      child: const Center(child: Text('我', style: TextStyle(color: Colors.white, fontSize: 14))),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: url.isNotEmpty
+            ? Image.network(
+                url,
+                width: 36,
+                height: 36,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const Center(
+                  child: Text('我', style: TextStyle(color: Colors.white, fontSize: 14)),
+                ),
+              )
+            : const Center(
+                child: Text('我', style: TextStyle(color: Colors.white, fontSize: 14)),
+              ),
+      ),
     );
   }
 
@@ -833,7 +850,7 @@ class _ChatState extends State<Chat> with WidgetsBindingObserver {
       child: SafeArea(
         top: false,
         child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
+          crossAxisAlignment: CrossAxisAlignment.center,
           children: <Widget>[
             IconButton(
               icon: const Icon(Icons.add_circle_outline, size: 28, color: Color(0xFF333333)),

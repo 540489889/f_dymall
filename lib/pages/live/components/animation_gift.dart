@@ -133,15 +133,30 @@ if(idle == true) {
     super.dispose();
   }
 
-  // 礼物图片: 本地演示数据是 assets 路径, socket 推送是网络地址, 两者都要能显示
+  // 头像/图片: 本地演示数据是 assets 路径, socket 推送是网络地址, 两者都要能显示
+  // * 空地址或加载失败都回落默认头像(人像剪影), 不留白(送礼横幅头像缺失就是这里造成的)
   Widget _img(dynamic path, double size, {BoxFit fit = BoxFit.cover}) {
     final String src = '${path ?? ''}'.trim();
-    if (src.isEmpty) return SizedBox(width: size, height: size);
+    if (src.isEmpty) return _defaultAvatar(size);
     if (src.startsWith('http')) {
       return Image.network(src, height: size, width: size, fit: fit,
-          errorBuilder: (_, __, ___) => SizedBox(width: size, height: size));
+          errorBuilder: (_, __, ___) => _defaultAvatar(size));
     }
-    return Image.asset(src, height: size, width: size, fit: fit);
+    return Image.asset(src, height: size, width: size, fit: fit,
+        errorBuilder: (_, __, ___) => _defaultAvatar(size));
+  }
+
+  // 默认头像: 灰底圆 + 白色人像(头像为空/加载失败时兜底, 保证横幅不缺角)
+  Widget _defaultAvatar(double size) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A3D4D),
+        shape: BoxShape.circle,
+      ),
+      child: Icon(Icons.person, size: size * 0.6, color: Colors.white54),
+    );
   }
 
   @override

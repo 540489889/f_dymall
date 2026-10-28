@@ -18,6 +18,8 @@ pluginManagement {
         maven { url = uri("https://artifact.bytedance.com/repository/pangle") }
         // 穿山甲内容SDK(短剧/小视频)仓库
         maven { url = uri("https://artifact.bytedance.com/repository/Volcengine") }
+        // 华为 HMS / 厂商通道(离线推送): agcp gradle 插件仓库
+        maven { url = uri("https://developer.huawei.com/repo/") }
     }
 }
 

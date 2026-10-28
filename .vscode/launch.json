@@ -7,7 +7,7 @@
       "name": "Android 真机(默认)",
       "request": "launch",
       "type": "dart",
-      "deviceId": "3TG0221720006674"
+      "deviceId": "b83fd2c5"
     },
     {
       "name": "Web Chrome(网页调试)",

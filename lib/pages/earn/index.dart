@@ -17,6 +17,7 @@ import '../../api/member_signin.dart';
 import '../../api/member_task.dart';
 import '../../controller/earn_preload.dart';
 import '../../controller/app_config.dart';
+import '../../utils/app_splash.dart';
 import '../../api/member_withdraw.dart';
 import '../../controller/auth_store.dart';
 import '../../utils/ads.dart';
@@ -27,7 +28,12 @@ import '../../utils/ads_config.dart';
 final ValueNotifier<int> earnTabRefreshTick = ValueNotifier<int>(0);
 
 class EarnPage extends StatefulWidget {
-  const EarnPage({super.key});
+  const EarnPage({super.key, this.fromPush = false});
+
+  /// 是否从推送/外部入口(通知点击「任务中心」)进来
+  /// * 只有这种来源才显示右下角"回到首页"入口: 底部"赚钱"tab 进来时本来就在站内,
+  ///   再给一个回首页按钮既多余又和 tab 栏语义冲突(与直播列表页 fromHome 同思路)
+  final bool fromPush;
 
   @override
   State<EarnPage> createState() => _EarnPageState();
@@ -84,6 +90,10 @@ class _EarnPageState extends State<EarnPage> {
   @override
   void initState() {
     super.initState();
+    if (kDebugMode) debugPrint('[赚钱] EarnPage.initState fromPush=${widget.fromPush}');
+    // 从推送/外部入口冷启进来的场景: 首屏就是赚钱页, 首页不会自己 dismiss 启动图,
+    // 否则启动图会卡到 6s 兜底才消失(看起来像"没跳转/停在首页")。这里主动标记首屏就绪
+    AppSplash.dismiss();
     load();
     loadWithdrawAccount();
     // 先同步填充启动预拉的缓存(进页面首帧即为真实内容, 不闪现)
@@ -351,6 +361,8 @@ class _EarnPageState extends State<EarnPage> {
         Positioned.fill(
           child: Scaffold(
             backgroundColor: const Color(0xFFFCF7EE),
+            // 从推送进来时, 右下角悬浮"回到首页"入口(与直播列表页一致)
+            floatingActionButton: widget.fromPush ? _buildHomeFab() : null,
             body: CustomScrollView(
               slivers: <Widget>[
                 SliverToBoxAdapter(child: _buildHeader()),
@@ -367,6 +379,35 @@ class _EarnPageState extends State<EarnPage> {
           ),
         ),
       ],
+    );
+  }
+
+  /// 回到首页悬浮按钮(仅从推送进来时显示, widget.fromPush)
+  /// * 质感与直播列表页"回到首页"一致(白粉渐变 + 主色描边 + 双层投影)
+  /// * offAllNamed('/'): 清空栈后落在底部导航的首页
+  Widget _buildHomeFab() {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => Get.offAllNamed('/'),
+      child: Container(
+        width: 46.0,
+        height: 46.0,
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: <Color>[Color(0xFFFFFFFF), Color(0xFFFFF1F4)],
+          ),
+          borderRadius: BorderRadius.circular(23.0),
+          border: Border.all(color: const Color(0x33FF2C55), width: 1.0),
+          boxShadow: const <BoxShadow>[
+            BoxShadow(color: Color(0x2EFF2C55), blurRadius: 14.0, offset: Offset(0.0, 4.0)),
+            BoxShadow(color: Color(0x0F000000), blurRadius: 4.0, offset: Offset(0.0, 1.0)),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: const Icon(Icons.home_outlined, size: 22.0, color: Color(0xFFFF2C55)),
+      ),
     );
   }
 

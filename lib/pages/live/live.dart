@@ -1610,8 +1610,15 @@ void _addGiftMessage(dynamic data) {
   final String label = _firstText(src, const <String>['gift_name', 'label', 'giftName']);
   // 礼物小图: 实际是 gift_image
   final String giftImg = LiveApi.imageOf(_firstText(src, const <String>['gift_image', 'gift', 'gift_img', 'image']));
-  // 头像: 实际字段是 heading
-  final String avatar = LiveApi.imageOf(_firstText(src, const <String>['heading', 'avatar', 'headimg', 'head_img']));
+  // 头像: 实际字段在 user.heading(user 里还可能有 headimg/head_img/avatar)
+  // * 顶层 heading 也兼容(部分报文把它平铺出来); user 里找不到才回退顶层
+  String avatar = LiveApi.imageOf(_firstText(src, const <String>['heading', 'avatar', 'headimg', 'head_img']));
+  if (avatar.isEmpty || avatar == 'null') {
+    final dynamic userMap = src['user'];
+    if (userMap is Map) {
+      avatar = LiveApi.imageOf(_firstText(userMap.cast<String, dynamic>(), const <String>['heading', 'avatar', 'headimg', 'head_img']));
+    }
+  }
   // 全屏礼物: full_screen=1 时播 gift_big_image(gif)
   final bool fullScreen = '${src['full_screen'] ?? ''}'.trim() == '1' || src['full_screen'] == true;
   final String bigImage = LiveApi.imageOf(_firstText(src, const <String>['gift_big_image', 'big_image', 'bigImage']));
@@ -1857,7 +1864,7 @@ Future<bool> _showExitAwardDialog() async {
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            // 自绘奖励图标: 金币=圆环硬币(奶白底+古铜环), 现金=红色红包纸币(奶白圆+¥), 均适配金色徽底
+                            // 奖励图标: 金币用 sign-icon.png(星形金币图), 现金仍为自绘红包样式
                             isCash
                                 ? Container(
                                     width: h * 0.078,
@@ -1886,24 +1893,11 @@ Future<bool> _showExitAwardDialog() async {
                                       ),
                                     ),
                                   )
-                                : Container(
+                                : Image.asset(
+                                    'assets/images/sign-icon.png',
                                     width: h * 0.052,
                                     height: h * 0.052,
-                                    decoration: BoxDecoration(
-                                      shape: BoxShape.circle,
-                                      gradient: const LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [Color(0xFFFFF8E1), Color(0xFFFFE0A0)],
-                                      ),
-                                      border: Border.all(color: const Color(0xFFC77B00), width: h * 0.004),
-                                      boxShadow: const [
-                                        BoxShadow(color: Color(0x4DFFB300), blurRadius: 4.0, offset: Offset(0, 2)),
-                                      ],
-                                    ),
-                                    child: Center(
-                                      child: Text('¥', style: TextStyle(color: const Color(0xFFC77B00), fontSize: h * 0.03, fontWeight: FontWeight.w900)),
-                                    ),
+                                    fit: BoxFit.contain,
                                   ),
                             const SizedBox(width: 8.0),
                             Flexible(

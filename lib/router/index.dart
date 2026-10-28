@@ -14,7 +14,11 @@ import '../pages/store/detail.dart';
 // 直播
 import '../pages/live/live.dart';
 import '../pages/live/link_mic.dart';
+// 扫一扫(直播码/直播间入口页, 也用于桌面长按快捷方式)
+import '../pages/live/scan.dart' show LiveScanPage;
 import '../pages/live/index.dart' show LivePage;
+// 赚钱(推广中心): /earn 为推送「任务中心」进入的独立页面(带右下角回到首页); 底部 tab 内嵌实例不走此路由
+import '../pages/earn/index.dart' show EarnPage;
 // 商品详细
 import '../pages/goods/detail.dart';
 import '../pages/goods/search.dart';
@@ -96,6 +100,8 @@ final Map<String, Widget> routes = {
  '/live': const Live(),
  // 直播列表(独立页面: 广告/导航等 link 跳转用; 底部 tab 内嵌实例不走此路由)
  '/live/list': const LivePage(fromHome: true),
+ // 赚钱页(独立页面: 推送「任务中心」进入, 带右下角回到首页; 底部 tab 内嵌实例不走此路由)
+ '/earn': const EarnPage(fromPush: true),
  '/goods': const Goods(),
   // 商品搜索 / 搜索结果分类列表(游客可见,不进 authRoutes)
   '/search': const SearchPage(),
@@ -224,6 +230,8 @@ GetPage(name: '/goods/evaluate', page: () => const GoodsEvaluatePage()),
   GetPage(name: '/study/more', page: () => const StudyMorePage()),
   // 付款码(会员可见, 需登录)
   GetPage(name: '/my/payment_qrcode', page: () => const PaymentQrcodePage(), middlewares: [RouteMiddleware()]),
+  // 扫一扫(直播码/直播间入口页, 桌面长按快捷方式进入; 游客可进)
+  GetPage(name: '/scan', page: () => const LiveScanPage()),
   // 看播集章(游客可见,不进 authRoutes)
   GetPage(name: '/stamp', page: () => const StampIndexPage()),
   GetPage(name: '/stamp/detail', page: () => const StampDetailPage()),

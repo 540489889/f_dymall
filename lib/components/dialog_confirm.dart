@@ -20,6 +20,7 @@ Future<bool> showConfirmDialog({
   String confirmText = '确定',
   String cancelText = '取消',
   IconData? icon,
+  Widget? iconWidget,
   Color brandColor = const Color(0xFFFF4D5F),
 }) async {
   final bool? ok = await Get.dialog<bool>(
@@ -29,6 +30,7 @@ Future<bool> showConfirmDialog({
       confirmText: confirmText,
       cancelText: cancelText,
       icon: icon,
+      iconWidget: iconWidget,
       brandColor: brandColor,
     ),
     // 点遮罩关闭(结果为 null, 下面按 false 处理)
@@ -44,6 +46,7 @@ class _ConfirmDialog extends StatelessWidget {
     required this.confirmText,
     required this.cancelText,
     this.icon,
+    this.iconWidget,
     required this.brandColor,
   });
 
@@ -52,6 +55,7 @@ class _ConfirmDialog extends StatelessWidget {
   final String confirmText;
   final String cancelText;
   final IconData? icon;
+  final Widget? iconWidget;
   final Color brandColor;
 
   @override
@@ -76,7 +80,7 @@ class _ConfirmDialog extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              if (icon != null) ...<Widget>[
+              if (icon != null || iconWidget != null) ...<Widget>[
                 Container(
                   width: 56.0,
                   height: 56.0,
@@ -84,7 +88,7 @@ class _ConfirmDialog extends StatelessWidget {
                     color: brandColor.withAlpha(26),
                     shape: BoxShape.circle,
                   ),
-                  child: Icon(icon, color: brandColor, size: 28.0),
+                  child: iconWidget ?? Icon(icon, color: brandColor, size: 28.0),
                 ),
                 const SizedBox(height: 16.0),
               ],

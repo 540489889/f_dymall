@@ -97,6 +97,8 @@ void dispose() {
       body: ScrollConfiguration(
     behavior: CustomScrollBehavior().copyWith(scrollbars: false),
     child: SafeArea(
+      top: true,
+      bottom: false,
       child: Column(
         children: [
           Expanded(
@@ -112,7 +114,9 @@ void dispose() {
         Material(
           color: Color(0xFF161823),
           borderRadius: BorderRadius.vertical(top: Radius.circular(10.0)),
-          child: Column(
+          child: Padding(
+            padding: EdgeInsets.only(bottom: MediaQuery.of(context).padding.bottom),
+            child: Column(
             children: [
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 15.0, vertical: 10.0,),
@@ -270,6 +274,7 @@ void dispose() {
                   ),
                   ),
                 ],
+              ),
               ),
               ),
             ],

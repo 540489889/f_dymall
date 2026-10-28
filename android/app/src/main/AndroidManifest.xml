@@ -82,6 +82,49 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- 阿里云移动推送: 消息接收器(必须声明, 插件原生层靠它回调通知/透传/点击) -->
+        <receiver
+            android:name="com.aliyun.ams.push.AliyunPushMessageReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.alibaba.push2.action.NOTIFICATION_OPENED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.alibaba.push2.action.NOTIFICATION_REMOVED" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="com.alibaba.sdk.android.push.RECEIVE" />
+            </intent-filter>
+        </receiver>
+        <!-- 阿里云移动推送: 辅助弹窗(厂商通道点击通知拉起 App 用, 必须 exported=true) -->
+        <activity
+            android:name="com.aliyun.ams.push.PushPopupActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:host="${applicationId}"
+                    android:path="/thirdpush"
+                    android:scheme="agoo" />
+            </intent-filter>
+        </activity>
+        <!-- 华为厂商通道(离线推送): 手写 appid meta-data(等价于 agcp 注入的 com.huawei.hms.client.appid)。
+             Aliyun 的 HuaWeiRegister 据此读取 appid 注册华为系统通道。
+             * 值与华为 AppGallery Connect 的应用 app_id 一致(118256145), 更换华为应用时同步改这里 -->
+        <meta-data
+            android:name="com.huawei.hms.client.appid"
+            android:value="appid=118256145" />
+        <!-- 小米厂商通道(离线推送): Aliyun 的 MiPushRegister 据此读取 id/key 注册小米系统通道。
+             * 值为小米开放平台应用的长数字(包名 com.chongloutech.lehui), 须与 EMAS 控制台「厂商通道-小米」填写一致
+             * 必须加 id= 前缀, 否则长数字被当 long 解析失败 -->
+        <meta-data
+            android:name="com.xiaomi.push.id"
+            android:value="id=2882303761520547654" />
+        <meta-data
+            android:name="com.xiaomi.push.key"
+            android:value="id=5662054722654" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -101,7 +144,7 @@
       Internet access permissions.
       -->
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Android 13+ 通知栏运行时权限: 不声明时 JPush 申请通知权限会被系统直接拒, 离线推送全收不到 -->
+    <!-- Android 13+ 通知栏运行时权限: 不声明时 permission_handler 申请会被系统直接拒, 离线推送全收不到 -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 扫码绑定门店 + 直播连麦需要相机权限 -->
     <uses-permission android:name="android.permission.CAMERA" />

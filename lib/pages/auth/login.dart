@@ -554,10 +554,14 @@ class _LoginState extends State<Login> {
       await _finishLogin(token, res['data']);
     } catch (e) {
       debugPrint('[ali] ERROR $e');
-      // 环境类错误(无SIM / 没开移动数据 / 连着WiFi / VPN / 密钥签名不对): 静默回退,不提示用户
-      // 其他错误(取号失败、接口报错、超时等)照常提示
-      final bool silent = e is AliOneKeyFailure && e.isEnvError;
-      if (!silent && mounted) showError('$e');
+      final String msg = '$e';
+      // 环境类错误(无SIM / 没开移动数据 / 连着WiFi / VPN / 密钥签名不对): 静默回退
+      // 用户取消(已取消一键登录) / 超时: 也是"非报错",静默即可
+      // 关键: 这些都不走 showError(它会把文案写进 formError,导致 FieldError 常驻在登录页底部),
+      // 只针对真正的取号/接口失败弹一个瞬时 Toast,避免错误提示一直显示在页面上
+      final bool silent = (e is AliOneKeyFailure && (e.isEnvError || e.isCancel)) ||
+          msg.contains('超时');
+      if (!silent && mounted) MyDialog.toast(msg);
     } finally {
       if (mounted) setState(() => aliSubmitting = false);
       // 兜底: 登录失败/异常时授权页可能还挂着,这里再关一次

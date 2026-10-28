@@ -15,18 +15,18 @@ import 'config/index.dart';
 import 'controller/auth_store.dart';
 import 'controller/video_store.dart';
 import 'controller/app_config.dart';
-import 'controller/main_tab.dart';
 import 'controller/my_preload.dart';
 import 'controller/earn_preload.dart';
-// 开发调试: 暂时注释穿山甲相关 import(恢复广告时与本文件里的 Ads.init / Content.init 一起解开)
-// import 'utils/ads.dart';
-// import 'utils/content.dart';
+// 穿山甲广告SDK / 内容SDK(短剧/小视频): 恢复广告时与本文件里的 Ads.init / Content.init 一起生效
+import 'utils/ads.dart';
+import 'utils/content.dart';
 // 引入路由管理
 import 'router/index.dart';
 import 'components/splash_cover.dart';
 import 'utils/app_splash.dart';
 import 'utils/privacy_agreement.dart';
-// 极光推送(离线推送)
+import 'utils/shortcut.dart';
+// 阿里云移动推送(离线推送)
 import 'utils/push.dart';
 
 void main() async {
@@ -53,7 +53,6 @@ void main() async {
     Get.put(AuthStore());
     Get.put(VideoStore());
     Get.put(AppConfig()); // 进入 App 即拉取 /api/config/init 全局配置
-    Get.put(MainTabController()); // 主框架底部 tab 切换(推送/深链用)
   } catch (e) {
     debugPrint('[main] Get.put 异常: $e');
     // 配置控制器没起来就没人通知启动图, 这里补一个放行信号(否则只能等启动图 6s 兜底超时)
@@ -94,6 +93,16 @@ void main() async {
   // 二次启动 ATT 已授权会立即返回才正常。所以必须在 runApp 之后再做这类初始化。
   runApp(const MyApp());
 
+  // 首帧绘制完成后再注册桌面长按快捷方式: 保证 GetMaterialApp 已就绪,
+  // 冷启动时快捷方式携带的路由也能正确跳转。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    try {
+      ShortcutHelper.init();
+    } catch (e) {
+      debugPrint('[main] 快捷方式初始化异常(已忽略): $e');
+    }
+  });
+
   // 以下为不阻塞首帧的后台初始化, 各自兜底, 任一失败不影响首屏使用
   unawaited(_initSdks());
 
@@ -112,28 +121,31 @@ Future<void> _initSdks() async {
     debugPrint('[main] MediaKit.ensureInitialized 异常: $e');
   }
 
+  // 穿山甲硬性要求: 广告/内容 SDK 必须在用户同意隐私政策之后才能初始化。
+  // 小米(HyperOS)等 ROM 上, 前置初始化会触发原生层空指针崩溃(日志: token is empty -> libEncryptorP.so 后 SIGSEGV 闪退)。
+  // 老用户(已同意)这里立即返回, 不影响启动速度; 新用户则等点完「同意」再初始化。
+  await PrivacyAgreement.waitAgreed();
+
   // 初始化穿山甲广告SDK(内部 iOS 会弹 ATT 授权框, 已放到首帧之后, 不阻塞启动)
-  // 开发调试: 暂时注释掉(见 AdsConfig.debugDisable), 恢复时把下面 5 行解开
-  // try {
-  //   await Ads.init();
-  // } catch (e) {
-  //   debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
-  // }
+  try {
+    await Ads.init();
+  } catch (e) {
+    debugPrint('[main] Ads.init 异常(已忽略, 不影响启动): $e');
+  }
 
   // 穿山甲内容SDK(短剧/小视频): 依赖上面的广告SDK, 失败/H5 自动跳过, 页面走兜底
-  // 开发调试: 广告SDK 关了它也起不来, 一并注释; 恢复时把下面 5 行解开
-  // try {
-  //   await Content.init();
-  // } catch (e) {
-  //   debugPrint('[main] Content.init 异常(已忽略): $e');
-  // }
+  try {
+    await Content.init();
+  } catch (e) {
+    debugPrint('[main] Content.init 异常(已忽略): $e');
+  }
 
-  // 极光推送(离线推送): 内部按 Config.jpushAppKey 是否为空自动跳过
-  // * 要等长连接建立才拿得到 RegistrationID, 所以放在后台初始化里, 不占启动时间
+  // 阿里云移动推送(离线推送): 内部按 Config.aliPushAppKey/aliPushAppSecret 是否为空自动跳过
+  // * 要等注册完成才拿得到 deviceId, 所以放在后台初始化里, 不占启动时间
   try {
     await PushService.to.init();
   } catch (e) {
-    debugPrint('[main] 极光推送初始化异常(已忽略, 不影响启动): $e');
+    debugPrint('[main] 阿里云推送初始化异常(已忽略, 不影响启动): $e');
   }
 }
 

@@ -135,7 +135,13 @@ class _AddressListPageState extends State<AddressListPage> {
       message: '确定要删除该地址吗?',
       confirmText: '确定',
       cancelText: '取消',
-      icon: Icons.delete_outline,
+      iconWidget: Image.asset(
+        'assets/images/shanchu.png',
+        width: 28.0,
+        height: 28.0,
+        fit: BoxFit.contain,
+        color: const Color(0xFFFF4D5F),
+      ),
       brandColor: const Color(0xFFFF4D5F),
     );
     if (!confirm) return;
@@ -346,7 +352,13 @@ class _AddressListPageState extends State<AddressListPage> {
                       width: 26.0,
                       height: 26.0,
                       decoration: const BoxDecoration(color: Color(0xFFF5F5F5), shape: BoxShape.circle),
-                      child: const Icon(Icons.delete_outline, size: 15.0, color: Color(0xFF999999)),
+                      child: Image.asset(
+                        'assets/images/shanchu.png',
+                        width: 15.0,
+                        height: 15.0,
+                        fit: BoxFit.contain,
+                        color: const Color(0xFF999999),
+                      ),
                     ),
                   ),
               ],

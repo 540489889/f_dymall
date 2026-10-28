@@ -39,24 +39,22 @@ class _LayoutState extends State<Layout> {
     AppConfig.to.fetchIfEmpty();
     _syncHomeTabActive();
     // 把「按 type 切 tab」的方法注册给主框架控制器, 供推送/深链(如任务中心)调用
-    try {
-      Get.find<MainTabController>().register(_switchToType);
-    } catch (_) {}
+    MainTabController.register(_switchToType);
   }
 
   @override
   void dispose() {
     // 解注册, 避免切 tab 回调指向已销毁的 State
-    try {
-      Get.find<MainTabController>().unregister(_switchToType);
-    } catch (_) {}
+    MainTabController.unregister(_switchToType);
     super.dispose();
   }
 
   /// 外部(推送/深链)按 type 切底部 tab('home'/'video'/'live'/'earn'/'mine'/diy type)
   /// * 复用 onNavTap: 切 tab 时一并触发视频暂停、各 tab 刷新等原有逻辑
   void _switchToType(String type) {
-    final int idx = _pageTypes.indexOf(type);
+    final List<String> types = _pageTypes;
+    final int idx = types.indexOf(type);
+    debugPrint('[nav] switchToType: type=$type idx=$idx useDiy=$_useDiy types=$types');
     if (idx < 0 || idx >= _pages.length) return;
     onNavTap(idx);
   }
@@ -223,13 +221,33 @@ class _LayoutState extends State<Layout> {
     }).toList();
   }
 
+  /// 切 tab 时让 PageView 跳到对应页
+  /// * 后台被通知点击拉起时 PageController 可能还没 attach 到视图, 直接 jump 会抛异常;
+  ///   未 attach 时等下一帧(应用 resume 后)重试, 直到 attach 成功, 保证最终落到正确页
+  void _jumpSafely(int index) {
+    if (pageController.hasClients) {
+      pageController.jumpToPage(index);
+      return;
+    }
+    int tries = 0;
+    void retry() {
+      if (pageController.hasClients) {
+        pageController.jumpToPage(index);
+      } else if (tries++ < 30) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => retry());
+      }
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) => retry());
+  }
+
   void onNavTap(int index) {
+    if (index < 0 || index >= _pages.length) return;
     setState(() {
       pageCurrent = index;
     });
     _syncHomeTabActive();
     videoStore.updateBottomNavigationIndex(index);
-    pageController.jumpToPage(index);
+    _jumpSafely(index);
     // 切到直播 tab(包括重复点当前 tab)时让直播列表重新拉一次:
     // * 直播页被 KeepAliveWrapper 保活, 不主动刷新的话列表一直停在首次进 tab 时的数据
     if (index < _pageTypes.length && _pageTypes[index] == 'live') {
@@ -306,15 +324,24 @@ class _LayoutState extends State<Layout> {
     return Obx(() {
       final List<Widget> pages = _pages;
       final List<BottomNavigationBarItem> items = _navItems();
-      final Color barBg = _useDiy
-          ? _parseColor(_diy?['backgroundColor'], const Color(0xFFFDFAF7))
-          : const Color(0xFFFDFAF7);
-      final Color selColor = _useDiy
-          ? _parseColor(_diy?['textHoverColor'], const Color(0xFFFF2C55))
-          : const Color(0xFFFF2C55);
-      final Color unselColor = _useDiy
-          ? _parseColor(_diy?['textColor'], Colors.black54)
-          : Colors.black54;
+      // 切到「短剧/视频」tab 时, 底部导航栏整体转黑, 与全屏短剧页融为一体
+      final bool isVideo =
+          pageCurrent < _pageTypes.length && _pageTypes[pageCurrent] == 'video';
+      final Color barBg = isVideo
+          ? Colors.black
+          : (_useDiy
+              ? _parseColor(_diy?['backgroundColor'], const Color(0xFFFDFAF7))
+              : const Color(0xFFFDFAF7));
+      final Color selColor = isVideo
+          ? Colors.white
+          : (_useDiy
+              ? _parseColor(_diy?['textHoverColor'], const Color(0xFFFF2C55))
+              : const Color(0xFFFF2C55));
+      final Color unselColor = isVideo
+          ? Colors.white70
+          : (_useDiy
+              ? _parseColor(_diy?['textColor'], Colors.black54)
+              : Colors.black54);
       // diy 导航配置是异步来的: tab 类型可能随之后到而变化(首页也可能不在 0 位), 每次布局都同步一次
       _syncHomeTabActive();
       // 未登录: 在底部导航栏上方悬浮「立即登录」横幅

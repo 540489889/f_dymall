@@ -105,14 +105,17 @@ class AliOneKey {
       privacyBefore: '我已阅读并同意',
       privacyEnd: '并使用本机号码登录',
       privacyTextSize: 12,
-      // 默认已勾选(登录页协议勾选由页面控制,这里保持一致更顺滑)
-      privacyState: true,
+      // 默认不勾选: 让用户主动勾选协议(部分应用商店审核要求协议需用户主动勾选)
+      privacyState: false,
       privacyOperatorIndex: 0,
       protocolLayoutGravity: Gravity.centerHorizntal,
       protocolGravity: Gravity.centerHorizntal,
       statusBarColor: '#FFFFFF',
       lightColor: true,
       isStatusBarHidden: false,
+      // 非全屏显示状态(LOW_PROFILE): 状态栏正常显示,授权页内容落在状态栏之下,
+      // 顶部"本机号码一键登录"导航栏不再顶到状态栏/刘海(全屏模式内容会穿透到状态栏之下导致重叠)
+      statusBarUIFlag: UIFAG.systemUiFalgLowProfile,
       webNavColor: '#FFFFFF',
       webNavTextColor: '#202020',
       webSupportedJavascript: true,

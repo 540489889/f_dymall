@@ -3,6 +3,8 @@
 /// * ValueNotifier 用于在 MyApp 中切换「隐私同意页 / 正常启动流程」
 library;
 
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:get_storage/get_storage.dart';
 
@@ -34,5 +36,26 @@ class PrivacyAgreement {
     } catch (e) {
       debugPrint('[PrivacyAgreement] write 异常: $e');
     }
+  }
+
+  /// 等待用户同意隐私政策(已同意则立即返回)
+  /// * 用于延迟初始化广告/内容 SDK: 穿山甲硬性要求 SDK 必须在用户同意隐私政策之后才能初始化,
+  ///   否则部分 ROM(如小米 HyperOS)上会触发原生层空指针崩溃 -> 闪退
+  static Future<void> waitAgreed() async {
+    if (agreedNotifier.value) return;
+    final Completer<void> completer = Completer<void>();
+    void listener() {
+      if (agreedNotifier.value) {
+        agreedNotifier.removeListener(listener);
+        if (!completer.isCompleted) completer.complete();
+      }
+    }
+    agreedNotifier.addListener(listener);
+    // 竞态保护: 在 addListener 之前已变 true
+    if (agreedNotifier.value && !completer.isCompleted) {
+      agreedNotifier.removeListener(listener);
+      completer.complete();
+    }
+    return completer.future;
   }
 }

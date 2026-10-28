@@ -242,6 +242,8 @@ final PageController pageController = PageController();
 
 // 轮播图翻页控制器(配合底部 CustomPageViewIndicator, 下标与金刚区一致)
 final PageController bannerController = PageController();
+// 轮播图自动播放定时器(每 4 秒翻一页)
+Timer? _bannerTimer;
 // 记录滚动位置
 final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 // TabBar 的 tabs 由 tabList 生成, 并统一用 DefaultTabController 托管(长度=tabList.length),
@@ -1067,6 +1069,8 @@ void initState() {
             ? Map<String, dynamic>.from(data['popup_info'] as Map)
             : <String, dynamic>{};
       });
+      // 轮播图拿到数据后启动自动播放(数量 <2 时不转)
+      _startBannerAutoPlay();
       // 弹窗: 仅首次进入弹一次
       if (!_popupShown &&
           popupInfo.isNotEmpty &&
@@ -1280,6 +1284,22 @@ void initState() {
     _startHotWordTimer();
   }
 
+  /// 轮播图自动播放: 每 4 秒翻一页; 仅 2 页以上才转, 否则没必要
+  void _startBannerAutoPlay() {
+    _bannerTimer?.cancel();
+    _bannerTimer = null;
+    if (bannerList.length < 2) return;
+    _bannerTimer = Timer.periodic(const Duration(seconds: 4), (_) {
+      if (!mounted || bannerList.isEmpty) return;
+      final int cur = bannerController.page?.round() ?? 0;
+      bannerController.animateToPage(
+        (cur + 1) % bannerList.length,
+        duration: const Duration(milliseconds: 350),
+        curve: Curves.easeInOut,
+      );
+    });
+  }
+
   /// 热搜词轮播: 每 10s 换一个(只有一个词时没必要轮播)
   void _startHotWordTimer() {
     _hotWordTimer?.cancel();
@@ -1448,12 +1468,21 @@ void initState() {
                   child: Container(
                     width: 44.0,
                     alignment: Alignment.center,
-                    child: Icon(
-                      // 与商品列表页保持一致: 单列态显示瀑布流图标,反之显示列表图标
-                      isHorizontalList ? Icons.grid_view_rounded : Icons.list_rounded,
-                      size: 22.0,
-                      color: const Color(0xFF666666),
-                    ),
+                    child: isHorizontalList
+                        // 单列(一个)态: 显示 shu.png 竖排列表图标(点击切到双列)
+                        ? Image.asset(
+                            'assets/images/shu.png',
+                            width: 22.0,
+                            height: 22.0,
+                            fit: BoxFit.contain,
+                          )
+                        // 双列(二个)态: 显示 heng.png 图标
+                        : Image.asset(
+                            'assets/images/heng.png',
+                            width: 22.0,
+                            height: 22.0,
+                            fit: BoxFit.contain,
+                          ),
                   ),
                 ),
               ],
@@ -1527,6 +1556,7 @@ void initState() {
     _goodsFormatWorker?.dispose();
     _goodsListCfgWorker?.dispose();
     _hotWordTimer?.cancel();
+    _bannerTimer?.cancel();
     scrollController.dispose();
     seckillTimer?.cancel();
     liveScrollIdleTimer?.cancel();

@@ -1,6 +1,7 @@
-/// 极光推送(离线推送)接口
+/// 阿里云移动推送(离线推送)接口
 /// * 对齐后端《APP推送接口文档》: 只接 bind / unbind 两个
 ///   (消息列表/未读/已读/删除/点击上报属于「消息中心」, 暂不接入)
+/// * registration_id 字段的值现为阿里云 deviceId(后端需切到阿里云 SDK 按 deviceId 下发)
 library;
 
 import 'package:dio/dio.dart';

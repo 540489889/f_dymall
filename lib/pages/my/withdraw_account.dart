@@ -357,8 +357,14 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
                 ),
                 if (!isDefault)
                   _buildAction(
-                    icon: Icons.delete_outline,
                     label: '删除',
+                    iconWidget: Image.asset(
+                      'assets/images/shanchu.png',
+                      width: 16.0,
+                      height: 16.0,
+                      fit: BoxFit.contain,
+                      color: const Color(0xFF888888),
+                    ),
                     onTap: () => deleteAccount(id),
                   ),
               ],
@@ -394,9 +400,10 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
 
   /// 底部小操作(图标 + 文字)
   Widget _buildAction({
-    required IconData icon,
+    IconData? icon,
     required String label,
     Color color = const Color(0xFF888888),
+    Widget? iconWidget,
     VoidCallback? onTap,
   }) {
     return Material(
@@ -409,7 +416,7 @@ class _WithdrawAccountPageState extends State<WithdrawAccountPage> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              Icon(icon, size: 16.0, color: color),
+              iconWidget ?? Icon(icon, size: 16.0, color: color),
               const SizedBox(width: 4.0),
               Text(label, style: TextStyle(fontSize: 12.0, color: color)),
             ],

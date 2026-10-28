@@ -303,10 +303,13 @@ class _GoodsListPageState extends State<GoodsListPage> {
             onTap: () => setState(() => isDoubleColumn = !isDoubleColumn),
             child: Padding(
               padding: const EdgeInsets.only(left: 10.0),
-              child: Icon(
-                isDoubleColumn ? Icons.grid_view_rounded : Icons.list_rounded,
-                size: 22.0,
-                color: const Color(0xFF666666),
+              child: Image.asset(
+                isDoubleColumn
+                    ? 'assets/images/h' + 'eng' + '.png'
+                    : 'assets/images/shu.png',
+                width: 22.0,
+                height: 22.0,
+                fit: BoxFit.contain,
               ),
             ),
           ),

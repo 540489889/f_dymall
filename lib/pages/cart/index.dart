@@ -378,12 +378,14 @@ class _CartPageState extends State<CartPage> {
     String title = '提示',
     String confirmText = '确定',
     IconData? icon,
+    Widget? iconWidget,
   }) {
     return showConfirmDialog(
       title: title,
       message: message,
       confirmText: confirmText,
       icon: icon,
+      iconWidget: iconWidget,
     );
   }
 
@@ -393,7 +395,6 @@ class _CartPageState extends State<CartPage> {
       '确定要删除「${item.goodsName}」吗？',
       title: '删除商品',
       confirmText: '删除',
-      icon: Icons.delete_outline,
     );
     if (!ok) return;
     await _deleteIds(<int>[item.cartId]);
@@ -409,7 +410,6 @@ class _CartPageState extends State<CartPage> {
       '确定删除选中的${selectedIds.length}件商品吗？',
       title: '删除商品',
       confirmText: '删除',
-      icon: Icons.delete_outline,
     );
     if (!ok) return;
     await _deleteIds(selectedIds.toList());
@@ -740,7 +740,13 @@ class _CartPageState extends State<CartPage> {
       '确定要清空失效商品吗？',
       title: '清空失效',
       confirmText: '清空',
-      icon: Icons.delete_sweep_outlined,
+      iconWidget: Image.asset(
+        'assets/images/shanchu.png',
+        width: 28.0,
+        height: 28.0,
+        fit: BoxFit.contain,
+        color: const Color(0xFFFF4D5F),
+      ),
     );
     if (!ok) return;
     final List<int> ids = invalidItems.map((CartItem e) => e.cartId).toList();
@@ -879,7 +885,13 @@ class _CartPageState extends State<CartPage> {
                           GestureDetector(
                             behavior: HitTestBehavior.opaque,
                             onTap: () => _deleteItem(item),
-                            child: Icon(Icons.delete_outline, size: 18.0, color: Colors.grey.shade500),
+                            child: Image.asset(
+                              'assets/images/shanchu.png',
+                              width: 18.0,
+                              height: 18.0,
+                              fit: BoxFit.contain,
+                              color: Colors.grey.shade500,
+                            ),
                           ),
                         ],
                       ],

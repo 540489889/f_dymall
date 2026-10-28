@@ -212,7 +212,13 @@ class _SearchPageState extends State<SearchPage> {
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: _clearHistory,
-                  child: const Icon(Icons.delete_outline, size: 18.0, color: Color(0xFF999999)),
+                  child: Image.asset(
+                    'assets/images/shanchu.png',
+                    width: 18.0,
+                    height: 18.0,
+                    fit: BoxFit.contain,
+                    color: const Color(0xFF999999),
+                  ),
                 ),
             ],
           ),

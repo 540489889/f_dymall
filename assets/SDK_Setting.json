@@ -1,0 +1,73 @@
+{
+	"init": {
+		"site_id": "5888700",
+		"app_id": "1078786",
+		"partner": "pangle_1078786",
+		"secure_key": "5efebeefe93828e59a002299d31c639e",
+		"secure_key_d": "fd91639f7a578c0ad94485d1ffaf737c"
+	},
+	"feed": {
+		"news_list_ad_code_id": "",
+		"news_first_ad_code_id": "",
+		"news_second_ad_code_id": "",
+		"video_first_ad_code_id": "",
+		"video_second_ad_code_id": "",
+		"related_ad_code_id": "",
+		"news_draw_ad_code_id": "992444098",
+		"news_draw_native_ad_code_id": "992444102",
+		"news_outer_list_ad_code_id": "",
+		"news_outer_first_ad_code_id": "",
+		"news_outer_second_ad_code_id": "",
+		"outer_video_second_ad_code_id": "",
+		"outer_related_ad_code_id": "",
+		"news_outer_draw_ad_code_id": "992444095",
+		"news_outer_draw_native_ad_code_id": "992444088",
+		"news_interstitial_code_id": ""
+	},
+	"small_video": {
+		"draw_ad_code_id": "992444109",
+		"draw_native_ad_code_id": "992444096",
+		"grid_ad_code_id": "992444108",
+		"grid_draw_ad_code_id": "992444087",
+		"grid_draw_native_ad_code_id": "992444091",
+		"video_card_ad_code_id": "992444107",
+		"video_card_draw_ad_code_id": "992444106",
+		"video_card_draw_native_ad_code_id": "992444097",
+		"interstitial_ad_code_id": "",
+		"interstitial_note_ad_code_id": "992444090",
+		"staggered_grid_ad_code_id": "992444086",
+		"staggered_grid_draw_ad_code_id": "992444109",
+		"staggered_grid_draw_native_ad_code_id": "992444096",
+		"draw_interstitial_ad_code_id": "992444094",
+		"draw_fullscreen_interstitial_ad_code_id": "992444100",
+		"draw_banner_code_id": "992444110",
+		"drama_rewarded_ad_code_id": "992444099",
+		"drama_rewarded_ad_code_id_02": "992444103",
+		"drama_draw_ad_code_id": "992444105",
+		"staggered_grid_ad_code_id_02": "992444093"
+	},
+	"novel": {
+		"status": 0,
+		"pre_ad_code_id": "",
+		"mid_ad_code_id": "",
+		"exciting_ad_code_id": "",
+		"interstitial_code_id": "",
+		"banner_ad_code_id": "",
+		"end_ad_code_id": ""
+	},
+	"live": null,
+	"license_config": [
+		{
+			"PackageName": "com.chongloutech.lehui",
+			"BundleId": "com.chongloutech.lehui",
+			"StartTime": "20261027T090432Z",
+			"ExpireTime": "20281026T090432Z",
+			"CreatedTime": "20261027T090431Z",
+			"Signature": "udjoFnZo3MtkeI8uQHhavCpfT4EztejOYQ4YDP0vc87p6YRkGca+KxSHT6Wt+U//nC2b0peRM2K6HCkfDWsoR7NREw4Ii2RI9Ri+Et4sN+MhNSLpOmAG9LLyjsOAhYpiIi2vTZ/sT+2TXKNeKjD7MYKljoeXHX39O2kBrEARWxFbJ2yaJZNxWyP9YcMbKnNh2RgVFSbWEuRFsdA3gXIzlCXQrZpC8kc570pRC/MdChAHIZKYPJ6PYxog2QQnz63Yohpmr1eQ9yqyw5scIg/uqeSVvJay3xESuPoBg8fMknhmzN9KEf0kbzcjIjU0eED9c5nzj34w3mRWIKYxwRJozw==",
+			"Content": "eyJJZCI6Ijg1MDIxNjU1MDYiLCJWZXJzaW9uIjoyLCJDaGFubmVsIjoiYWRfY3NqIiwiVHlwZSI6MiwiUGFja2FnZU5hbWUiOiJjb20uY2hvbmdsb3V0ZWNoLmxlaHVpIiwiQnVuZGxlSWQiOiJjb20uY2hvbmdsb3V0ZWNoLmxlaHVpIiwiTW9kdWxlcyI6W3siTmFtZSI6InZvZF9wbGF5IiwiRWRpdGlvbiI6InByZW1pdW1fZWRpdGlvbiIsIlN0YXJ0VGltZSI6MTc5MzA5MTg3MTg3MCwiRXhwaXJlVGltZSI6MTg1NjE2Mzg3MTg3MCwiRXhwaXJlQnVmZmVyIjoxNTU1MjAwMDAwMH1dLCJGaWxlVmVyc2lvbiI6IjE3OTMwOTE4NzE4OTUzNTQ0NzkifQ==",
+			"MainURL": "https://vod-license-m.volccdn.com/vod-license/l-8502165506-ch-ad_csj-a-1078786.lic?lk3s=0d9f7a7d\u0026x-expires=4946691871\u0026x-signature=wdosYAir0xvkdfUeBLFZgnR81HQ%3D",
+			"BackupURL": "https://vod-license-b.volccdn.com/vod-license/l-8502165506-ch-ad_csj-a-1078786.lic?lk3s=0d9f7a7d\u0026x-expires=4946691871\u0026x-signature=BHys49XowSTbPw6SIrcQyb5uvCk%3D",
+			"Id": "8502165506"
+		}
+	]
+}

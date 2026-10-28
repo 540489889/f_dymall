@@ -83,6 +83,23 @@ class _DramaModuleState extends State<DramaModule> {
   // 记录滚动位置
   final ValueNotifier<double> scrollOffset = ValueNotifier(0);
 
+  // 短剧滑滑流状态(暴露 SDK 侧错误, 避免静默空白)
+  bool _swipeReady = false;
+  String? _swipeError;
+  late final DramaSwipeFlowListener _swipeListener = DramaSwipeFlowListener(
+    onSwipeFlowReady: (String swipeFlowId) {
+      debugPrint('[drama] 滑滑流就绪: $swipeFlowId');
+      if (mounted) setState(() => _swipeReady = true);
+    },
+    onSwipeFlowError: (String error) {
+      debugPrint('[drama] 滑滑流错误: $error');
+      if (mounted) setState(() => _swipeError = error);
+    },
+    onChannelTabChange: (int channel) {
+      debugPrint('[drama] 频道Tab切换: $channel');
+    },
+  );
+
   // 主色
   static const Color primary = Color(0xFFFF5C33);
 
@@ -111,6 +128,8 @@ class _DramaModuleState extends State<DramaModule> {
   @override
   void initState() {
     super.initState();
+    // 延迟初始化场景(隐私同意后才初始化内容SDK): 等 Content.ready 变 true 时自动重绘, 切到原生短剧
+    Content.readyNotifier.addListener(_onContentReady);
     scrollController.addListener(() {
       scrollOffset.value = scrollController.offset;
 
@@ -125,25 +144,69 @@ class _DramaModuleState extends State<DramaModule> {
     handleRefresh();
   }
 
+  /// 内容SDK就绪(延迟初始化完成后)时重绘, 从兜底列表切到原生短剧
+  void _onContentReady() {
+    if (mounted) setState(() {});
+  }
+
   @override
   void dispose() {
+    Content.readyNotifier.removeListener(_onContentReady);
     scrollController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // 内容SDK已就绪: 直接渲染穿山甲短剧聚合页
+    // 内容SDK已就绪: 渲染穿山甲短剧滑滑流(全屏上下滑, 顶部推荐/剧场Tab)
     if (Content.ready) {
-      return const Scaffold(
-        backgroundColor: const Color(0xFFFCF7EE),
-        body: SafeArea(
-          child: DramaHomeNativeView(
-            config: DramaHomeConfig(
-              showBackBtn: false,
-              freeEpisodesCount: 3,
-              unlockEpisodesCountUsingAd: 2,
-            ),
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: SizedBox.expand(
+          // SizedBox.expand 兜底: 确保原生 PlatformView 拿到明确尺寸(否则塌成 0 高度白屏)
+          child: Stack(
+            children: [
+              // 用 SafeArea 顶部留白: 原生视图整体下移到状态栏之下,
+              // 其顶部Tab在自身 y=0 处绘制, 自然落在状态栏下方。
+              // 注: setTopOffset 仅作用于播放/详情页, 对滑滑流顶部Tab无效, 故此处用 SafeArea。
+              SafeArea(
+                top: true,
+                bottom: false,
+                child: DramaSwipeFlowNativeView(
+                  config: DramaSwipeFlowConfig(
+                    channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
+                    detailFree: 3, // 免费观看集数
+                    unlockCount: 2, // 每次看激励广告解锁集数
+                    unlockAdMode: 0, // 0=SDK内置广告解锁
+                    autoPlay: true,
+                    hideTopInfo: false, // 显示顶部频道Tab
+                    hideBottomInfo: false, // 显示底部剧名/集数信息
+                    hideEnter: false, // 显示「下一集」按钮
+                    hideLikeButton: false, // 显示点赞
+                    hideFavorButton: false, // 显示收藏
+                    showChangeBtn: false, // 不显示换一换
+                    hideBack: true, // 主Tab页无需返回按钮
+                    // 同时给详情/播放页顶部留状态栏高度(单位dp)
+                    setTopOffset: MediaQuery.of(context).padding.top.round(),
+                  ),
+                  listener: _swipeListener,
+                ),
+              ),
+              // SDK 报错且尚未就绪时, 直接把错误显示出来, 不再静默空白
+              if (_swipeError != null && !_swipeReady)
+                Positioned.fill(
+                  child: Container(
+                    color: Colors.black,
+                    alignment: Alignment.center,
+                    padding: const EdgeInsets.all(24.0),
+                    child: Text(
+                      '短剧加载失败:\n$_swipeError',
+                      style: const TextStyle(color: Colors.white70, fontSize: 13.0),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       );
