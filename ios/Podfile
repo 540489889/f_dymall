@@ -4,6 +4,10 @@
 # * 注意: 不能低于 15.0 —— Codemagic 上的 Flutter stable 要求更高的 min deployment target,
 #   13.0 时 pod install 报 "could not find compatible versions for pod Flutter ...
 #   required a higher minimum deployment target"
+source 'https://cdn.cocoapods.org/'
+source 'https://github.com/volcengine/volcengine-specs.git'
+source 'https://github.com/aliyun/aliyun-specs.git'
+
 platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.

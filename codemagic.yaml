@@ -150,13 +150,19 @@ workflows:
           if ! pod repo list | grep -q volcengine; then
             retry pod repo add volcengine https://github.com/volcengine/volcengine-specs.git
           fi
-          # 3) 显式写入 Podfile 的 source(官方推荐做法)
-          if ! grep -q "volcengine-specs" Podfile; then
+          # 2.5) 注册阿里云移动推送私有 spec 源(AlicloudPush 不在 trunk, 托管于 aliyun-specs)
+          if ! pod repo list | grep -q aliyun-specs; then
+            retry pod repo add aliyun https://github.com/aliyun/aliyun-specs.git
+          fi
+          # 3) 显式写入 Podfile 的 source(官方推荐做法): 官方 CDN + Volcengine + 阿里云推送
+          #    先剥离已有 source 行避免重复, 再统一在顶部写入三行
+          if ! grep -q "aliyun-specs" Podfile; then
             TMP=$(mktemp)
             {
               echo "source 'https://cdn.cocoapods.org/'"
               echo "source 'https://github.com/volcengine/volcengine-specs.git'"
-              cat Podfile
+              echo "source 'https://github.com/aliyun/aliyun-specs.git'"
+              grep -v "^\s*source " Podfile
             } > "$TMP"
             mv "$TMP" Podfile
           fi
