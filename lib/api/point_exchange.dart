@@ -3,7 +3,7 @@
 /// * 兑换商品 /pointexchange/api/goods/page(type: 1 商品 / 2 优惠券 / 3 红包)
 /// * 兑换商品详情 /pointexchange/api/goods/detail(id)
 /// * 下单结算 /pointexchange/api/ordercreate/payment|calculate|create
-/// * 兑换订单 /pointexchange/api/order/page|close
+/// * 兑换订单 /pointexchange/api/order/page|info|close
 library;
 
 import 'package:dio/dio.dart';
@@ -163,6 +163,20 @@ class PointExchangeApi {
       }
     }
     return <Map<String, dynamic>>[];
+  }
+
+  /// 兑换订单详情(/pointexchange/api/order/info)
+  /// * 对齐 H5 pages/order/detail_point.vue 的 getOrderData
+  /// * 返回订单对象: order_no / out_trade_no / order_status / type /
+  ///   exchange_goods_id / exchange_name / exchange_image / point / price / num /
+  ///   create_time / close_time / delivery_price / order_money / relate_order_id ...
+  static Future<Map<String, dynamic>> orderInfo(int orderId) async {
+    final dynamic res = await Request().get(
+      '/pointexchange/api/order/info',
+      queryParameters: <String, dynamic>{'order_id': orderId},
+    );
+    if (res is Map) return res.cast<String, dynamic>();
+    return <String, dynamic>{};
   }
 
   /// 关闭兑换订单(/pointexchange/api/order/close)

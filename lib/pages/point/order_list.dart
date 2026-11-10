@@ -2,7 +2,7 @@
 /// 对齐 H5: pages_promotion/point/order_list.vue
 /// * 列表 /pointexchange/api/order/page(order_status: all / 0 待支付 / 1 已完成)
 /// * 关闭 /pointexchange/api/order/close;待支付且含现金时可继续支付(PopupPay)
-/// * 详情: 兑换的是实物商品且已生成关联订单时跳普通订单详情
+/// * 详情: 统一跳 /point/order_detail(兑换订单详情), 关联普通订单入口在详情页内
 library;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -170,15 +170,19 @@ class _PointOrderListPageState extends State<PointOrderListPage> {
     );
   }
 
-  /// 详情: 实物商品且已生成关联订单 -> 普通订单详情
+  /// 详情: 所有类型统一进兑换订单详情页
+  /// * 顺带透传 relate_order_id, 供详情页「查看关联订单」按钮兜底(详情接口不一定返回该字段)
   void openDetail(Map<String, dynamic> item) {
-    final int type = int.tryParse('${item['type'] ?? 0}') ?? 0;
+    final int orderId = int.tryParse('${item['order_id'] ?? 0}') ?? 0;
     final int relateOrderId = int.tryParse('${item['relate_order_id'] ?? 0}') ?? 0;
-    if (type == PointExchangeApi.typeGoods && relateOrderId > 0) {
-      Get.toNamed('/order/detail', arguments: <String, dynamic>{'order_id': relateOrderId});
+    if (orderId <= 0) {
+      MyDialog.toast('订单信息有误');
       return;
     }
-    MyDialog.toast('该兑换暂无订单详情');
+    Get.toNamed('/point/order_detail', arguments: <String, dynamic>{
+      'order_id': orderId,
+      'relate_order_id': relateOrderId,
+    });
   }
 
   @override

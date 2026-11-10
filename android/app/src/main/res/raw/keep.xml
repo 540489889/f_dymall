@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  资源压缩保留清单（shrinkResources 生效时读取）
+
+  问题: 桌面长按 App 图标弹出的快捷菜单(扫一扫/每日任务/付款码), release 包图标空白。
+  原因: quick_actions 插件通过 res.getIdentifier("ic_scan", "drawable", 包名) 动态查找图标,
+       资源名来自 Dart 侧字符串(lib/utils/shortcut.dart), 代码里没有任何 R.drawable.ic_scan 静态引用,
+       资源压缩判定为「未使用」直接删除 -> 运行时 getIdentifier 返回 0 -> 只显示文字没有图标。
+       已在 release APK 上用 aapt2 dump resources 核实: drawable/ic_scan|ic_task|ic_pay 均不存在。
+
+  处理: 用 tools:keep 显式保留。新增同类动态引用资源时, 记得也加到这里。
+-->
+<resources xmlns:tools="http://schemas.android.com/tools"
+    tools:keep="@drawable/ic_scan,@drawable/ic_task,@drawable/ic_pay" />

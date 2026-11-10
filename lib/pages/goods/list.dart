@@ -1,8 +1,9 @@
 /// 商品列表(搜索结果 / 分类列表)
 /// * 入参(arguments): {'keyword': 'xxx', 'categoryId': 1}
-///   - keyword: 搜索关键词(搜索页跳过来)
-///   - categoryId: 指定一级分类(分类入口跳过来)
-/// * 顶部: 居中标题 + 搜索框(框内右侧搜索图标,框外右侧列表样式切换)
+///   - keyword: 搜索关键词(搜索页跳过来), 允许为空
+///   - categoryId: 指定一级分类; 同时兼容后台字段名 category_id(nav_url 直接带过来时)
+///   - categoryName: 可选, 分类树返回前的标题兜底; 拿到分类树后以 category_name 为准
+/// * 顶部: 居中标题(带分类时显示分类名, 否则「商品列表」) + 搜索框(框内右侧搜索图标,框外右侧列表样式切换)
 /// * 排序栏: 综合 / 销量 / 价格 / 筛选(筛选抽屉: 一级分类 + 价格区间)
 /// * 列表: /api/goodssku/page,支持 category_id / keyword / order / sort / min_price / max_price
 library;
@@ -16,6 +17,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/goods.dart';
 import '../../components/common_empty.dart';
+import '../../components/task_countdown.dart';
 import '../../components/loading.dart';
 import '../../components/skeleton.dart';
 // 商品卡片复用首页的 CardItem(视觉与首页瀑布流保持一致)
@@ -44,6 +46,25 @@ class _GoodsListPageState extends State<GoodsListPage> {
   int categoryId = 0;
   /// 一级分类列表 [{category_id, category_name, ...}]
   List<Map<String, dynamic>> categoryList = <Map<String, dynamic>>[];
+  /// 跳转时带入的分类名(可选, 用于分类树尚未返回时显示标题)
+  String categoryName = '';
+
+  /// 标题: 指定了分类就显示分类名, 否则「商品列表」
+  /// * 优先取分类树里的 category_name(权威); 分类树异步返回后 setState 会自动刷新标题
+  /// * 分类树没返回 / 该 id 不在一级分类里时, 用跳转带入的 categoryName 兜底
+  /// * 跟随当前 categoryId, 筛选抽屉里切换分类后标题同步更新
+  String get pageTitle {
+    if (categoryId <= 0) return '商品列表';
+    for (final Map<String, dynamic> item in categoryList) {
+      final dynamic raw = item['category_id'];
+      final int id = raw is int ? raw : int.tryParse('$raw') ?? 0;
+      if (id != categoryId) continue;
+      final String name = '${item['category_name'] ?? ''}'.trim();
+      if (name.isNotEmpty) return name;
+    }
+    return categoryName.isNotEmpty ? categoryName : '商品列表';
+  }
+
   /// 排序字段: 空=综合, sale_num=销量, discount_price=价格
   String order = '';
   /// 排序方向: desc / asc
@@ -75,8 +96,11 @@ class _GoodsListPageState extends State<GoodsListPage> {
     final dynamic args = Get.arguments;
     if (args is Map) {
       keyword = '${args['keyword'] ?? ''}';
-      final dynamic id = args['categoryId'];
+      // 分类 id: 分类入口/跳转协议用 categoryId, 后台 nav_url 原始字段名是 category_id, 两者都认
+      final dynamic id = args['categoryId'] ?? args['category_id'];
       categoryId = id is int ? id : int.tryParse('$id') ?? 0;
+      // 分类名兜底: 分类树 /api/goodscategory/tree 是异步的, 拿到之前先显示跳转带入的名称
+      categoryName = '${args['categoryName'] ?? args['category_name'] ?? ''}'.trim();
     }
     inputController.text = keyword;
     scrollController.addListener(_onScroll);
@@ -152,12 +176,9 @@ class _GoodsListPageState extends State<GoodsListPage> {
   }
 
   /// 重新搜索(顶部搜索框改词后)
+  /// * 清空输入框再点搜索 = 不过滤关键词, 展示全部数据(/api/goodssku/page 的 keyword 允许为空)
   void onSearch() {
     final String text = inputController.text.trim();
-    if (text.isEmpty) {
-      MyDialog.toast('请输入搜索关键词');
-      return;
-    }
     FocusScope.of(context).unfocus();
     setState(() {
       keyword = text;
@@ -267,11 +288,11 @@ class _GoodsListPageState extends State<GoodsListPage> {
           onPressed: () => Get.back(),
         ),
         actions: const <Widget>[SizedBox(width: 48.0)],
-        title: const Text(
-          '商品列表',
+        title: Text(
+          pageTitle,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 17.0,
             fontWeight: FontWeight.w600,
             color: Color(0xFF222222),
@@ -279,11 +300,24 @@ class _GoodsListPageState extends State<GoodsListPage> {
         ),
       ),
       endDrawer: _buildScreenDrawer(),
-      body: Column(
+      body: Stack(
         children: <Widget>[
-          _buildSearchBar(),
-          _buildSortBar(),
-          Expanded(child: _buildList()),
+          Positioned.fill(
+            child: Column(
+              children: <Widget>[
+                _buildSearchBar(),
+                _buildSortBar(),
+                Expanded(child: _buildList()),
+              ],
+            ),
+          ),
+          // 浏览商品任务倒计时(仅从赚钱页任务入口进来时显示)
+          const Positioned(
+            left: 0.0,
+            right: 0.0,
+            bottom: 16.0,
+            child: Center(child: TaskCountdownBanner()),
+          ),
         ],
       ),
     );

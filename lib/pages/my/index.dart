@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:ai_barcode_scanner/ai_barcode_scanner.dart';
 import 'package:get/get.dart';
-import '../../api/member.dart';
 import '../../api/order.dart';
 import '../../components/adv_banner.dart';
 import '../../controller/auth_store.dart';
@@ -36,12 +35,13 @@ class _MyPageState extends State<MyPage> {
   bool advLoaded = false;
   bool serviceLoaded = false;
   // 是否显示「门店支付」板块: 由 /api/member/memberPageConfig 的 is_pay_code == '1' 决定
-  // * null = 还没拿到结果(首帧不渲染), 拿到后才是确定值
-  bool? payCodeEnabled;
+  // * 首帧直接取 MyPreload 启动预拉结果, 不再等页面内接口回来才把板块插进来
+  // * null = 预拉也没拿到结果(首帧不渲染)
+  bool? payCodeEnabled = MyPreload.payCodeEnabled;
   // 是否已成功拿到过配置: 拿到后即使后续请求失败/返回空也保留上次结果, 不再把板块撤掉(避免切 tab 闪一下)
-  bool payCodeLoaded = false;
-  // 上次成功拿到配置的时间(切 tab 很频繁, 做节流避免反复重建)
-  DateTime? _payCodeAt;
+  bool payCodeLoaded = MyPreload.payCodeLoaded;
+  // 上次成功拿到配置的时间(切 tab 很频繁, 做节流避免反复重建; 预拉结果也带时间戳)
+  DateTime? _payCodeAt = MyPreload.payCodeAt;
   // 请求进行中: 防止快速切 tab 时并发请求多次 -> 重复 setState
   bool _payCodeLoading = false;
   // 登录态变化监听(页面保活后不会重新 initState, 登录/退出要自己刷新一遍)
@@ -116,8 +116,8 @@ class _MyPageState extends State<MyPage> {
 
   /// 我的页配置(/api/member/memberPageConfig)
   /// * is_pay_code == '1' 时显示「门店支付」板块
-  /// * 数据没变化就不 setState: 值相同还重建会把整块重刷一遍(看起来就是闪一下)
-  /// * 拿到过结果后, 失败 / 空响应当作"没有新信息", 保留上次的值, 不再把板块撤掉
+  /// * 首帧值来自 MyPreload 启动预拉, 这里只在后台核对; 值没变化就不 setState(避免整块重刷闪一下)
+  /// * 空响应 / 请求失败当作"没有新信息", 保留上次的值, 不再把板块撤掉
   Future<void> loadMemberPageConfig({bool force = false}) async {
     if (_payCodeLoading) return;
     if (!force && payCodeLoaded && _payCodeAt != null) {
@@ -126,15 +126,12 @@ class _MyPageState extends State<MyPage> {
     }
     _payCodeLoading = true;
     try {
-      final Map<String, dynamic> res = await MemberApi.memberPageConfig();
-      if (kDebugMode) {
-        debugPrint('[memberPageConfig] code=${res['code']} message=${res['message']}');
-        debugPrint('[memberPageConfig] data=${res['data']}');
-      }
-      final dynamic data = res['data'];
-      // 空 / 非 Map 响应: 没有新信息, 保留上次结果
-      if (data is! Map) {
-        if (mounted && !payCodeLoaded) {
+      // 请求 / 解析 / 写缓存统一走 MyPreload, 与启动预拉共用一份结果
+      final bool? showPay = await MyPreload.loadPayCodeConfig();
+      if (!mounted) return;
+      // 没拿到新信息: 保留上次结果; 首次则按「不显示」落定, 避免一直不渲染
+      if (showPay == null) {
+        if (!payCodeLoaded) {
           setState(() {
             payCodeLoaded = true;
             payCodeEnabled ??= false;
@@ -142,20 +139,10 @@ class _MyPageState extends State<MyPage> {
         }
         return;
       }
-      final bool showPay = '${data['is_pay_code'] ?? ''}' == '1';
-      if (!mounted) return;
       payCodeLoaded = true;
-      _payCodeAt = DateTime.now();
+      _payCodeAt = MyPreload.payCodeAt ?? DateTime.now();
       if (showPay != payCodeEnabled) {
         setState(() => payCodeEnabled = showPay);
-      }
-    } catch (e) {
-      if (kDebugMode) debugPrint('[memberPageConfig] 请求失败: $e');
-      if (mounted && !payCodeLoaded) {
-        setState(() {
-          payCodeLoaded = true;
-          payCodeEnabled ??= false;
-        });
       }
     } finally {
       _payCodeLoading = false;
@@ -714,7 +701,11 @@ class _MyPageState extends State<MyPage> {
           Get.toNamed('/my/wallet');
           break;
         case 'GOODS_CATEGORY_PAGE':
-          Get.toNamed('/goods', arguments: <String, dynamic>{'category_id': '${info['category_id'] ?? ''}'});
+          // 与首页金刚区同一套 nav_url 协议: 跳商品列表页(/goods/list), 带一级分类 id 和可选分类名
+          Get.toNamed('/goods/list', arguments: <String, dynamic>{
+            'categoryId': '${info['category_id'] ?? ''}',
+            'categoryName': '${info['category_name'] ?? ''}'.trim(),
+          });
           break;
         case 'INVITE':
           // 邀请好友页(需登录, 路由带登录拦截)
@@ -1144,7 +1135,7 @@ class _MyPageState extends State<MyPage> {
             children: <Widget>[
               _buildTopArea(statusTop),
               // 门店支付(白卡 + 右缘绿色竖排标签): 由 memberPageConfig.is_pay_code 控制是否显示
-              // * 结果没拿到(null)时不渲染, 避免先不显示再突然冒出来
+              // * 首帧就用 MyPreload 预拉结果渲染, 只有预拉也没拿到(null)时才不渲染
               if (payCodeEnabled == true) _buildPaymentQrcode(),
               // 广告位(MEMBER_M): 在「我的订单」上方
               _buildAdvBanner(),

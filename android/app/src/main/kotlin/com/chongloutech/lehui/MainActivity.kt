@@ -23,5 +23,7 @@ class MainActivity : FlutterFragmentActivity() {
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility =
             View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        // 修正短剧视频被 SDK 按屏幕尺寸 fill 拉伸的问题(DJX 3.0.0.2, 详见 DramaAspectFixer)
+        window.decorView.post { DramaAspectFixer.attach(window.decorView) }
     }
 }

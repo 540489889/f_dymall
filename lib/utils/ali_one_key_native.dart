@@ -7,6 +7,7 @@
 
 import 'dart:async';
 import 'dart:io' show Platform;
+import 'dart:ui' show PlatformDispatcher;
 
 import 'package:ali_auth/ali_auth.dart';
 import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
@@ -48,22 +49,41 @@ class AliOneKey {
   /// 预检一键登录环境: 通过运营商名称判断设备是否装有 SIM 卡
   /// * 阿里云只有在真正拉起授权页时才会返回 600007(未检测到 SIM 卡),
   ///   为避免"无卡却显示一键登录入口",进入登录页先做一次轻量预检
-  /// * 无 SIM / 取不到运营商名 / 调用异常 都视为不可用,入口不展示
+  /// * 插件 Android 端 getCurrentCarrierName 取不到卡时返回非空占位符「获取失败」,
+  ///   所以不能用 isNotEmpty 判断(会把无卡误判成可用);只认三大运营商标识,
+  ///   其余(空串 / 获取失败 / 未知文案 / 调用异常)一律视为不可用,入口不展示也不自动拉起
   static Future<void> prefetch() async {
     if (!supported || !configured) {
       _envReady = false;
       return;
     }
     try {
-      final String carrier = await AliAuth.getCurrentCarrierName();
-      _envReady = carrier.trim().isNotEmpty;
+      final String carrier = (await AliAuth.getCurrentCarrierName()).trim();
+      _envReady = carrier.contains('CMCC') ||
+          carrier.contains('CUCC') ||
+          carrier.contains('CTCC') ||
+          carrier.contains('中国移动') ||
+          carrier.contains('中国联通') ||
+          carrier.contains('中国电信');
+      debugPrint('[ali] 预检运营商="$carrier" 可用=$_envReady');
     } catch (_) {
       _envReady = false;
     }
   }
 
   /// 阿里云授权页 UI 配置(对齐 H5 univerifyStyle: 主色 + 协议前置勾选文案)
+  /// * 用弹窗模式: AndroidManifest 里授权页 Activity 是 authsdk_activity_dialog 浮窗主题,
+  ///   配 fullPort 会让内容从 y=0 画起, 顶部「本机号码一键登录」标题被状态栏信息遮挡;
+  ///   SDK 导航栏没有偏移参数, statusBarUIFlag / isStatusBarHidden 实测都无法下移标题。
+  ///   弹窗从状态栏下方开始, 标题物理上不与状态栏重叠(插件文档: 弹窗用该主题)。
   static AliAuthModel _config() {
+    final view = PlatformDispatcher.instance.views.first;
+    final double dpr = view.devicePixelRatio;
+    final double screenW = view.physicalSize.width / dpr;
+    final double screenH = view.physicalSize.height / dpr;
+    // viewPadding 不受 SystemUiMode 影响; 部分机型取到 0, 兜底 24dp 状态栏高度
+    final double paddingTop = view.viewPadding.top / dpr;
+    final double safeTop = paddingTop < 24 ? 24.0 : paddingTop;
     return AliAuthModel(
       Config.aliAndroidSk.trim(),
       Config.aliIosSk.trim(),
@@ -74,7 +94,19 @@ class AliOneKey {
       isDelay: false,
       // 实测该参数没能关掉授权页,页面拿到 token 后会主动调 quit(),这里保留 true 无害
       autoQuitPage: true,
-      pageType: PageType.fullPort,
+      pageType: PageType.dialogPort,
+      // 弹窗从状态栏下方开始并铺满剩余屏幕: 满宽、无边距、无圆角、不透明,
+      // 看起来就是整页; 顶部状态栏由系统绘制, 标题不会被遮挡。
+      // 背后的灰色遮罩来自浮窗主题的 backgroundDimEnabled, 由 styles.xml 的 OneKeyAuthPage 关掉
+      dialogWidth: screenW.round(),
+      dialogHeight: (screenH - safeTop).round(),
+      dialogBottom: false,
+      dialogOffsetX: 0,
+      dialogOffsetY: safeTop.round(),
+      dialogCornerRadiusArray: const <int>[0, 0, 0, 0],
+      dialogAlpha: 1.0,
+      pageBackgroundRadius: 0,
+      tapAuthPageMaskClosePage: false,
       navColor: '#FFFFFF',
       navText: '本机号码一键登录',
       navTextColor: '#202020',
@@ -112,10 +144,9 @@ class AliOneKey {
       protocolGravity: Gravity.centerHorizntal,
       statusBarColor: '#FFFFFF',
       lightColor: true,
+      // 弹窗模式下状态栏在弹窗之外, 这两项不影响布局; 保留示例全屏配置的取值
       isStatusBarHidden: false,
-      // 非全屏显示状态(LOW_PROFILE): 状态栏正常显示,授权页内容落在状态栏之下,
-      // 顶部"本机号码一键登录"导航栏不再顶到状态栏/刘海(全屏模式内容会穿透到状态栏之下导致重叠)
-      statusBarUIFlag: UIFAG.systemUiFalgLowProfile,
+      statusBarUIFlag: UIFAG.systemUiFalgFullscreen,
       webNavColor: '#FFFFFF',
       webNavTextColor: '#202020',
       webSupportedJavascript: true,

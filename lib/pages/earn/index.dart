@@ -1,5 +1,7 @@
 /// 赚钱页(推广中心): 收益概览 + 签到 + 立即提现 + 热门任务
 /// * 界面参考用户提供的 UI 图
+/// * 回到赚钱页(tab / 前后台 / 站内返回)统一刷新本页接口
+/// * 任务进度以服务端 progress_num / limit_num 为准,不再本地累计
 library;
 
 import 'dart:async';
@@ -15,7 +17,9 @@ import '../../api/member_account.dart';
 import '../../api/member_point.dart';
 import '../../api/member_signin.dart';
 import '../../api/member_task.dart';
+import '../../components/task_countdown.dart';
 import '../../controller/earn_preload.dart';
+import '../../controller/main_tab.dart';
 import '../../controller/app_config.dart';
 import '../../utils/app_splash.dart';
 import '../../api/member_withdraw.dart';
@@ -39,7 +43,7 @@ class EarnPage extends StatefulWidget {
   State<EarnPage> createState() => _EarnPageState();
 }
 
-class _EarnPageState extends State<EarnPage> {
+class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
   // 主色
   static const Color primary = Color(0xFFFF5C33);
   static const Color coinGold = Color(0xFFFFE08A);
@@ -49,13 +53,12 @@ class _EarnPageState extends State<EarnPage> {
   // * 金币位 = 会员积分(/api/memberaccount/point 的 point)
   double balanceMoney = 0.0;
   int point = 0;
-  // 看视频任务加的金币(仅本地累计,暂不展示)
+  // 广告 SDK userId 演示值(真实奖励与完成次数以服务端任务列表为准)
   int goldCoin = 12700;
-  // 看视频任务: 今日已看次数 / 上限
-  int videoWatched = 0;
-  static const int videoTotal = 20;
   // 广告播放中: 防止连点重复拉广告
   bool adPlaying = false;
+  // 上一次应用生命周期(页面在前台创建,初值 resumed): 只在「非前台 -> 前台」时刷新
+  AppLifecycleState? lastLifecycleState = AppLifecycleState.resumed;
 
   // 签到: 走「每日签到」同一套规则(/api/membersignin/*), 不再用写死的演示奖励
   int signState = 0; // 签到开关(1 开启)
@@ -94,8 +97,7 @@ class _EarnPageState extends State<EarnPage> {
     // 从推送/外部入口冷启进来的场景: 首屏就是赚钱页, 首页不会自己 dismiss 启动图,
     // 否则启动图会卡到 6s 兜底才消失(看起来像"没跳转/停在首页")。这里主动标记首屏就绪
     AppSplash.dismiss();
-    load();
-    loadWithdrawAccount();
+    WidgetsBinding.instance.addObserver(this);
     // 先同步填充启动预拉的缓存(进页面首帧即为真实内容, 不闪现)
     if (EarnPreload.signinLoaded) {
       signState = EarnPreload.signState;
@@ -107,38 +109,21 @@ class _EarnPageState extends State<EarnPage> {
     if (EarnPreload.tasksLoaded) {
       tasks = EarnPreload.tasks;
     }
-    // 预拉未就绪时(极少见: 用户极快进赚钱页)再兜底拉一次, 已就绪则跳过避免重复请求
-    if (!EarnPreload.signinLoaded) loadSignin();
-    if (!EarnPreload.tasksLoaded) loadTasks();
+    // 每次进赚钱页都刷新当前页接口(缓存只用于首帧占位)
+    unawaited(refreshAll());
     earnTabRefreshTick.addListener(_onTabRefreshTick);
     signinRefreshTick.addListener(_onSigninRefreshTick);
   }
 
   /// 任务中心列表(/membertask/api/task/lists)
-  /// * 映射成界面要的字段: title=name / desc=num_text·cycle_text / reward=reward_text
+  /// * 映射统一走 MemberTaskApi.toUiTask: limit_num/progress_num 决定进度与完成态
   /// * type 1 是激励视频(看视频领乐豆), 走激励视频广告; 其余走插屏
   Future<void> loadTasks() async {
     try {
       final List<Map<String, dynamic>> list = await MemberTaskApi.lists();
       if (!mounted) return;
       setState(() {
-        tasks = list.map((Map<String, dynamic> e) {
-          final String numText = '${e['num_text'] ?? ''}';
-          final String cycleText = '${e['cycle_text'] ?? ''}';
-          final String desc = cycleText.isEmpty ? numText : '$numText·$cycleText';
-          return <String, dynamic>{
-            'task_id': e['task_id'],
-            'type': e['type'],
-            'type_name': '${e['type_name'] ?? ''}',
-            'icon': '${e['icon'] ?? ''}',
-            'title': '${e['name'] ?? ''}',
-            'desc': desc,
-            'reward': '${e['reward_text'] ?? ''}',
-            'btn': '去完成',
-            'done': false,
-            'adType': '${e['type']}' == '1' ? 'reward' : 'interstitial',
-          };
-        }).toList();
+        tasks = list.map(MemberTaskApi.toUiTask).toList();
         // 写回启动预拉缓存(保持新鲜, 下次进页面直接读)
         EarnPreload.tasks = tasks;
         EarnPreload.tasksLoaded = true;
@@ -151,13 +136,40 @@ class _EarnPageState extends State<EarnPage> {
     }
   }
 
-  /// 切到赚钱 tab(含重复点当前 tab): 重新拉任务列表 + 签到状态 + 余额/积分 + 提现账户授权
-  void _onTabRefreshTick() {
+  /// 刷新赚钱页全部接口(任务列表 / 签到 / 余额积分 / 提现账户授权)
+  /// * 进页面、切 tab、前后台、站内返回都走这里,保证 progress_num 与积分始终是最新值
+  Future<void> refreshAll() async {
     if (!mounted) return;
-    unawaited(loadTasks());
-    unawaited(loadSignin());
-    unawaited(load());
-    unawaited(loadWithdrawAccount());
+    await Future.wait<dynamic>(<Future<dynamic>>[
+      loadTasks(),
+      loadSignin(),
+      load(),
+      loadWithdrawAccount(),
+    ]);
+  }
+
+  /// 切到赚钱 tab(含重复点当前 tab)
+  /// * 从短剧 tab 等浏览任务页回来时结束全局倒计时,并刷新任务进度
+  void _onTabRefreshTick() {
+    TaskBrowseTimer.instance.stop();
+    unawaited(refreshAll());
+  }
+
+  /// 从赚钱页跳出去(提现 / 登录 / 任务页等)再返回: 同样刷新当前页接口
+  Future<void> pushAndRefresh(String route, {dynamic arguments}) async {
+    await Get.toNamed<dynamic>(route, arguments: arguments);
+    if (mounted) await refreshAll();
+  }
+
+  /// 应用从后台回到前台(含看完激励视频 / 广告页返回)
+  /// * 只在「非前台 -> 前台」时刷新,首帧那次由 initState 的 refreshAll 负责
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final AppLifecycleState? previous = lastLifecycleState;
+    lastLifecycleState = state;
+    if (previous != null && previous != AppLifecycleState.resumed && state == AppLifecycleState.resumed) {
+      unawaited(refreshAll());
+    }
   }
 
   /// 在「每日签到」页(或其他入口)完成签到后触发: 刷新赚钱页自己的签到板块 + 余额积分
@@ -169,6 +181,7 @@ class _EarnPageState extends State<EarnPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     earnTabRefreshTick.removeListener(_onTabRefreshTick);
     signinRefreshTick.removeListener(_onSigninRefreshTick);
     super.dispose();
@@ -319,10 +332,7 @@ class _EarnPageState extends State<EarnPage> {
     if (signState != 1 || hasSign == 1 || signSubmitting) return;
     // 游客: 签到接口要求登录, 点了只会报错; 先去登录, 回来再刷一次签到状态
     if (!AuthStore.to.isLogin) {
-      await Get.toNamed('/login');
-      if (!mounted) return;
-      await loadSignin();
-      await load();
+      await pushAndRefresh('/login');
       return;
     }
     setState(() => signSubmitting = true);
@@ -330,7 +340,7 @@ class _EarnPageState extends State<EarnPage> {
       final Map<String, dynamic> tip = await MemberSigninApi.signin();
       if (!mounted) return;
       final int point = int.tryParse('${tip['point'] ?? 0}') ?? 0;
-      MyDialog.toast(point > 0 ? '签到成功，获得${point}${AppConfig.to.pointName()}' : '签到成功');
+      MyDialog.toast(point > 0 ? '签到成功，获得$point${AppConfig.to.pointName()}' : '签到成功');
       // 先本地置为已签(接口返回可能有延迟), 再拉最新规则
       if (mounted) {
         setState(() {
@@ -522,7 +532,7 @@ class _EarnPageState extends State<EarnPage> {
                             const SizedBox(width: 6.0),
                             GestureDetector(
                               behavior: HitTestBehavior.opaque,
-                              onTap: () => Get.toNamed('/my/withdraw_account'),
+                              onTap: () => pushAndRefresh('/my/withdraw_account'),
                               child: Text(
                                 withdrawAccountBound ? '去授权' : '去绑定',
                                 style: const TextStyle(
@@ -614,7 +624,7 @@ class _EarnPageState extends State<EarnPage> {
   Widget _headerClaimButton() {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: () => Get.toNamed('/my/withdraw'),
+      onTap: () => pushAndRefresh('/my/withdraw'),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 9.0),
         decoration: BoxDecoration(
@@ -949,7 +959,7 @@ class _EarnPageState extends State<EarnPage> {
                             ),
                             const SizedBox(width: 8.0),
                             GestureDetector(
-                              onTap: () => _onTaskTap(task),
+                              onTap: done ? null : () => _onTaskTap(task),
                               behavior: HitTestBehavior.opaque,
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
@@ -993,9 +1003,60 @@ class _EarnPageState extends State<EarnPage> {
     );
   }
 
-  // 任务按钮: 激励视频看完才发金币, 其他任务走插屏
+  // 任务按钮: 激励视频看完后刷新服务端进度/奖励, 其他任务走插屏
   Future<void> _onTaskTap(Map<String, dynamic> task) async {
     if (adPlaying) return;
+    // progress_num 已达 limit_num: 服务端不再发奖,客户端也不让继续看
+    if (task['done'] == true) {
+      MyDialog.toast('该任务已完成');
+      return;
+    }
+    // 热门任务(广告 / 逛商城 / 看短剧 / 看直播)的进度与发奖都按用户维度,
+    // 游客先登录即可: pushAndRefresh 回来会刷新本页任务列表/签到/余额,
+    // 不自动继续执行任务, 由用户再点一次「去完成」
+    if (!AuthStore.to.isLogin) {
+      await pushAndRefresh('/login');
+      return;
+    }
+    // 浏览类任务(type 2 逛商城 / type 3 看短剧 / type 4 看直播):
+    // 启动全局倒计时(num 秒),归零后上报 /membertask/api/task/complete
+    final String type = '${task['type']}';
+    final int seconds = int.tryParse('${task['seconds'] ?? task['num'] ?? 0}') ?? 0;
+    final int taskId = int.tryParse('${task['task_id'] ?? 0}') ?? 0;
+    final String taskName = '${task['title'] ?? ''}';
+    // type 3 短剧是底部 tab,没有命名路由: 用主框架控制器切过去
+    // * 切走后赚钱页仍保活,计时继续; 切回赚钱 tab 时由 _onTabRefreshTick 结束计时并刷新进度
+    if (type == '3') {
+      TaskBrowseTimer.instance.start(seconds: seconds, taskId: taskId, taskName: taskName);
+      if (widget.fromPush) {
+        // 推送进来的 /earn 是独立页面,不先回主框架的话切 tab 会被当前路由盖住
+        await Get.offAllNamed<dynamic>('/');
+        // 等主框架 initState 注册完切 tab 回调
+        await Future<void>.delayed(Duration.zero);
+      }
+      MainTabController.switchTo('video');
+      return;
+    }
+    // type 4 观看直播: 倒计时与完成上报先关掉,只跳直播列表页
+    // * 恢复方式: 删掉本分支,把下面映射里注释的 '4': '/live/list' 放开
+    if (type == '4') {
+      await pushAndRefresh('/live/list');
+      return;
+    }
+    // type 2 浏览商品: 跳商品列表页,倒计时在列表页与详情页显示
+    // * 路由返回赚钱页时停止计时并刷新任务进度,下一次从任务进来重新计
+    final String browseRoute = <String, String>{
+          '2': '/goods/list',
+          // '4': '/live/list', // 观看直播任务倒计时/提交暂时关闭
+        }[type] ??
+        '';
+    if (browseRoute.isNotEmpty) {
+      TaskBrowseTimer.instance.start(seconds: seconds, taskId: taskId, taskName: taskName);
+      await Get.toNamed(browseRoute);
+      TaskBrowseTimer.instance.stop();
+      if (mounted) await refreshAll();
+      return;
+    }
     // H5 没有广告实现: 直接提示, 不进广告流程(否则报 MissingPluginException)
     if (!Ads.supported) {
       MyDialog.toast('当前环境暂不支持广告');
@@ -1005,34 +1066,38 @@ class _EarnPageState extends State<EarnPage> {
     setState(() => adPlaying = true);
     try {
       if (adType == 'reward') {
-        final bool rewarded = await Ads.showRewardVideo(customData: 'earn_video', userId: '$goldCoin');
+        // customData 带上 task_id,便于广告服务端回调关联到具体任务
+        final bool rewarded = await Ads.showRewardVideo(
+          customData: 'earn_task_${task['task_id'] ?? ''}',
+          userId: '$goldCoin',
+        );
         if (!mounted) return;
         if (!rewarded) {
           // 区分三种 false: 没配广告位 / 广告没拉起来(有 errCode) / 视频没看完
           final String msg = AdsConfig.rewardVideoId.isEmpty
               ? '激励视频广告位未配置'
               : (Ads.lastErrorCode == 0 && Ads.lastErrorMessage.isEmpty
-                  ? '看完视频才能领取金币'
+                  ? '看完视频才能领取奖励'
                   : '广告加载失败，请稍后再试');
           MyDialog.toast(msg);
           return;
         }
-        setState(() {
-          if (videoWatched < videoTotal) videoWatched += 1;
-          goldCoin += 60;
-        });
-        MyDialog.toast('已领取 60 金币');
+        // 完成次数 progress_num 与积分奖励由服务端记录,刷新接口拿最新进度
+        MyDialog.toast('视频已看完，奖励发放中');
+        await refreshAll();
       } else {
         await Ads.showInterstitial();
         if (!mounted) return;
         if (AdsConfig.interstitialId.isEmpty) MyDialog.toast('插屏广告位未配置');
+        await refreshAll();
       }
     } finally {
       if (mounted) setState(() => adPlaying = false);
     }
   }
 
-  // 底部 Banner 广告位
+  // 底部 Banner 广告位(暂时不展示,见 build 里的注释)
+  // ignore: unused_element
   Widget _buildBanner() {
     // H5 不支持广告: 整块不渲染(否则只剩一个空白白卡)
     if (!Ads.supported) return const SizedBox.shrink();

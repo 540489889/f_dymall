@@ -1,6 +1,6 @@
-/// 「我的」页首屏数据预拉: 广告(MEMBER_M) + 我的服务 nav
+/// 「我的」页首屏数据预拉: 广告(MEMBER_M) + 我的服务 nav + 门店支付开关
 /// * 启动时 main 调 MyPreload.start() 预拉一次, 进「我的」页首帧就有内容 —— 不再「先没有, 过一会才冒出来」
-/// * 页面自己进页面时也会再拉一次(见 my/index.dart 的 loadAdv / loadServiceNav),
+/// * 页面自己进页面时也会再拉一次(见 my/index.dart 的 loadAdv / loadServiceNav / loadMemberPageConfig),
 ///   结果写回这里的缓存, 内容没变就不 setState(避免重建把轮播/网格重刷一遍)
 /// * 全部失败静默: 拉不到就按「没数据」处理, 页面走骨架占位后撤掉
 library;
@@ -20,6 +20,12 @@ class MyPreload {
   /// 我的服务(/api/Member/serviceNav, 已自动补看播记录入口)
   static List<Map<String, dynamic>> service = <Map<String, dynamic>>[];
 
+  /// 门店支付开关(/api/member/memberPageConfig 的 is_pay_code == '1')
+  /// * null = 还没拿到结果; true/false = 后台配置结果
+  static bool? payCodeEnabled;
+  static bool payCodeLoaded = false;
+  static DateTime? payCodeAt;
+
   /// 是否已拿到过结果(true 表示结果已确定, 空列表就是后台没配, 页面不再占位)
   static bool advLoaded = false;
   static bool serviceLoaded = false;
@@ -37,6 +43,7 @@ class MyPreload {
     await Future.wait<dynamic>(<Future<dynamic>>[
       loadAdv(),
       loadService(),
+      loadPayCodeConfig(),
     ]);
   }
 
@@ -50,6 +57,28 @@ class MyPreload {
     } catch (e) {
       if (kDebugMode) debugPrint('[preload] 广告(MEMBER_M)拉取失败: $e');
       return adv;
+    }
+  }
+
+  /// 拉门店支付配置并写缓存(启动预拉与页面刷新共用, 只有这一处解析 is_pay_code)
+  /// * 返回 null = 没拿到新信息(空响应 / 请求失败), 调用方保留上次结果
+  static Future<bool?> loadPayCodeConfig() async {
+    try {
+      final Map<String, dynamic> res = await MemberApi.memberPageConfig();
+      if (kDebugMode) {
+        debugPrint('[preload][memberPageConfig] code=${res['code']} message=${res['message']}');
+        debugPrint('[preload][memberPageConfig] data=${res['data']}');
+      }
+      final dynamic data = res['data'];
+      if (data is! Map) return null;
+      final bool showPay = '${data['is_pay_code'] ?? ''}' == '1';
+      payCodeEnabled = showPay;
+      payCodeLoaded = true;
+      payCodeAt = DateTime.now();
+      return showPay;
+    } catch (e) {
+      if (kDebugMode) debugPrint('[preload][memberPageConfig] 请求失败: $e');
+      return null;
     }
   }
 

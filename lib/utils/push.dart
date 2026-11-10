@@ -25,6 +25,7 @@ import '../controller/auth_store.dart';
 import '../controller/main_tab.dart';
 import 'index.dart';
 import 'platform.dart';
+import 'privacy_agreement.dart';
 
 class PushService {
   PushService._();
@@ -77,6 +78,13 @@ class PushService {
       debugPrint('[push] 未配置 Config.aliPushAppKey/aliPushAppSecret, 跳过阿里云推送初始化');
       return;
     }
+
+    // 合规: 推送初始化会采集设备信息, 且下方第 4 步会主动申请通知权限
+    // (首次启动弹出的「是否允许乐惠新零售发送通知」)—— 这些都必须在用户同意隐私政策之后执行,
+    // 否则授权框会抢在隐私政策页之前弹出。
+    // * 老用户(已同意)立即返回, 不影响启动速度; 新用户则在点「同意」后继续执行。
+    // * main.dart 的 _initSdks() 已先 waitAgreed(), 这里再兜一层: 防止任何地方提前调用 init()。
+    await PrivacyAgreement.waitAgreed();
 
     try {
       // 1. 初始化: appKey/appSecret 由 Dart 传入。

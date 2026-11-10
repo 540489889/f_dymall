@@ -4,6 +4,7 @@ library;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import './module/drama.dart';
+import '../../components/task_countdown.dart';
 import '../../utils/content.dart';
 
 class VideoPage extends StatefulWidget {
@@ -25,7 +26,21 @@ class _VideoPageState extends State<VideoPage> {
       builder: (BuildContext context, bool ready, Widget? child) {
         return AnnotatedRegion<SystemUiOverlayStyle>(
           value: ready ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
-          child: const DramaModule(),
+          child: Stack(
+            children: <Widget>[
+              const Positioned.fill(child: DramaModule()),
+              // 赚钱页 type=3「观看短剧」任务: 右上角圆形倒计时,只有从任务入口进来才显示
+              // SafeArea 避开状态栏;再下移约一行(48dp)避开短剧顶部频道 Tab
+              const Positioned(
+                top: 48.0,
+                right: 12.0,
+                child: SafeArea(
+                  bottom: false,
+                  child: TaskCountdownCircle(),
+                ),
+              ),
+            ],
+          ),
         );
       },
     );

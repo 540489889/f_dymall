@@ -85,23 +85,8 @@ class EarnPreload {
   static Future<void> loadTasks() async {
     try {
       final List<Map<String, dynamic>> list = await MemberTaskApi.lists();
-      tasks = list.map((Map<String, dynamic> e) {
-        final String numText = '${e['num_text'] ?? ''}';
-        final String cycleText = '${e['cycle_text'] ?? ''}';
-        final String desc = cycleText.isEmpty ? numText : '$numText·$cycleText';
-        return <String, dynamic>{
-          'task_id': e['task_id'],
-          'type': e['type'],
-          'type_name': '${e['type_name'] ?? ''}',
-          'icon': '${e['icon'] ?? ''}',
-          'title': '${e['name'] ?? ''}',
-          'desc': desc,
-          'reward': '${e['reward_text'] ?? ''}',
-          'btn': '去完成',
-          'done': false,
-          'adType': '${e['type']}' == '1' ? 'reward' : 'interstitial',
-        };
-      }).toList();
+      // 与赚钱页共用同一套映射(limit_num/progress_num -> 进度与完成态)
+      tasks = list.map(MemberTaskApi.toUiTask).toList();
       tasksLoaded = true;
     } catch (e) {
       if (kDebugMode) debugPrint('[earn-preload] 任务列表拉取失败: $e');

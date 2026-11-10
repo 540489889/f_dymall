@@ -26,8 +26,6 @@ import 'components/splash_cover.dart';
 import 'utils/app_splash.dart';
 import 'utils/privacy_agreement.dart';
 import 'utils/shortcut.dart';
-// 阿里云移动推送(离线推送)
-import 'utils/push.dart';
 
 void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
@@ -106,7 +104,7 @@ void main() async {
   // 以下为不阻塞首帧的后台初始化, 各自兜底, 任一失败不影响首屏使用
   unawaited(_initSdks());
 
-  // 预拉「我的」页首屏数据(广告 + 我的服务): 进「我的」时首帧就有内容, 不再从无到有闪一下
+  // 预拉「我的」页首屏数据(广告 + 我的服务 + 门店支付开关): 进「我的」时首帧就有内容, 不再从无到有闪一下
   MyPreload.start();
   // 预拉赚钱页首屏数据(签到 + 热门任务): 进赚钱页首帧即为真实内容, 不闪现
   EarnPreload.start();
@@ -140,13 +138,10 @@ Future<void> _initSdks() async {
     debugPrint('[main] Content.init 异常(已忽略): $e');
   }
 
-  // 阿里云移动推送(离线推送): 内部按 Config.aliPushAppKey/aliPushAppSecret 是否为空自动跳过
-  // * 要等注册完成才拿得到 deviceId, 所以放在后台初始化里, 不占启动时间
-  try {
-    await PushService.to.init();
-  } catch (e) {
-    debugPrint('[main] 阿里云推送初始化异常(已忽略, 不影响启动): $e');
-  }
+  // 阿里云移动推送: 整体初始化已移到「首页首帧之后」(lib/pages/index/index.dart 的 initState)。
+  // * 华为/鸿蒙等 ROM 上, initPush/创建通知通道/申请通知权限 任一环节都会触发
+  //   「是否允许发送通知」系统弹窗——放在这里会在隐私页一过、首页还没渲染时就弹。
+  // * init() 内部自带 waitAgreed() 兜底与防重入(_inited), 在首页调用是安全的。
 }
 
 class MyApp extends StatelessWidget {

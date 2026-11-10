@@ -49,7 +49,7 @@
             android:launchMode="singleTop"
             android:screenOrientation="behind"
             android:theme="@style/authsdk_activity_dialog" />
-        <!-- 联通 / 电信 授权页 -->
+        <!-- 联通 / 电信 授权页: 用无 dim 遮罩的主题, 保持弹窗布局但看起来是整页 -->
         <activity
             android:name="com.mobile.auth.gatewayauth.LoginAuthActivity"
             android:configChanges="orientation|keyboardHidden|screenSize"
@@ -57,7 +57,7 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:screenOrientation="behind"
-            android:theme="@style/authsdk_activity_dialog" />
+            android:theme="@style/OneKeyAuthPage" />
         <!-- 移动 授权页 -->
         <activity
             android:name="com.cmic.sso.sdk.activity.LoginAuthActivity"
@@ -66,7 +66,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:screenOrientation="behind"
-            android:theme="@style/authsdk_activity_dialog" />
+            android:theme="@style/OneKeyAuthPage" />
 
         <!-- 必须开启 Impeller: media_kit_video 在 Android 用 SurfaceProducer 输出画面,
              这套新纹理 API 只在 Impeller 下工作; 关掉后 surfaceProducer.id() 恒为 0,

@@ -2,6 +2,8 @@
 /// 对齐 H5: pages_promotion/point/payment.vue + public/js/payment.js
 /// * 初始化 /pointexchange/api/ordercreate/payment({ id, sku_id, num })
 /// * 变更(配送/地址/门店/时间)后 /pointexchange/api/ordercreate/calculate 重算
+/// * 默认配送方式快递优先;自提/同城无门店时用 /api/store/getStorePage 补齐门店
+/// * 门店自提展示对齐普通商品下单页(门店卡 + 提货人/预留手机/提货时间)
 /// * 提交 /pointexchange/api/ordercreate/create -> 需付现金时拉起 PopupPay,否则直接完成
 library;
 
@@ -12,8 +14,10 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
 
+import '../../api/order.dart';
 import '../../api/point_exchange.dart';
 import '../../components/popup_pay.dart';
+import '../../controller/auth_store.dart';
 import '../../pages/my/address_list.dart';
 import '../../styles/index.dart';
 
@@ -29,6 +33,8 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
 
   final TextEditingController messageCtrl = TextEditingController();
   final TextEditingController mobileCtrl = TextEditingController();
+  /// 提货人(门店自提,对齐普通商品下单页)
+  final TextEditingController nameCtrl = TextEditingController();
 
   bool loading = true;
   bool submitting = false;
@@ -41,13 +47,12 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
 
   /// 配送方式列表(delivery.express_type)
   List<Map<String, dynamic>> expressType = <Map<String, dynamic>>[];
-  /// 门店列表 + 当前门店(自提 / 同城配送)
-  List<Map<String, dynamic>> storeList = <Map<String, dynamic>>[];
+  /// 当前提货门店(自提 / 同城配送,由结算数据指定,不允许切换)
   Map<String, dynamic> currStore = <String, dynamic>{};
   /// 收货地址(快递) / 自提人信息(门店)
   Map<String, dynamic> memberAddress = <String, dynamic>{};
-  /// 选中的自提 / 送达时间 { title, start_date, end_date }
-  Map<String, dynamic> selectedTime = <String, dynamic>{};
+  /// 选中的自提 / 送达时间文案(与普通商品下单页一致)
+  String deliveryTime = '';
 
   @override
   void initState() {
@@ -72,6 +77,7 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
   void dispose() {
     messageCtrl.dispose();
     mobileCtrl.dispose();
+    nameCtrl.dispose();
     super.dispose();
   }
 
@@ -88,6 +94,9 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
   bool get isVirtual => '${paymentData['is_virtual'] ?? 0}' == '1';
 
   String get deliveryType => '${(createData['delivery'] is Map ? createData['delivery'] as Map : <String, dynamic>{})['delivery_type'] ?? ''}';
+
+  /// 是否门店自提
+  bool get isStore => deliveryType == 'store';
 
   int get goodsNum => int.tryParse('${paymentData['goods_num'] ?? createData['num'] ?? 1}') ?? 1;
 
@@ -138,9 +147,22 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
           mobileCtrl.text = mobile;
         }
       });
-      // 默认选中第一个配送方式
+      // 兑换结算接口可能不带 store_list,先补齐门店再判断自提是否可用
+      await loadStoreListIfEmpty();
+      if (!mounted) return;
+      // 默认配送方式: 快递优先,无门店的自提/同城不作为默认
+      // H5 默认取 express_type[0],若第一项是无门店的自提,提交时必然提示「没有可提货的门店」
       if (expressType.isNotEmpty) {
-        selectDeliveryType(expressType.first, calculateAfter: false);
+        final List<Map<String, dynamic>> usable = expressType.where(deliveryTypeAvailable).toList();
+        Map<String, dynamic>? chosen;
+        for (final Map<String, dynamic> e in usable) {
+          if ('${e['name'] ?? ''}' == 'express') {
+            chosen = e;
+            break;
+          }
+        }
+        chosen ??= usable.isNotEmpty ? usable.first : expressType.first;
+        selectDeliveryType(chosen, calculateAfter: false);
       }
       await calculate();
       if (!mounted) return;
@@ -154,12 +176,42 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
     }
   }
 
+  /// 补齐自提/同城门店列表
+  /// * 兑换 payment 常不返回 express_type[i].store_list(未传经纬度),
+  ///   用普通商品下单页同一接口 /api/store/getStorePage 拉一次,保证门店信息能展示
+  Future<void> loadStoreListIfEmpty() async {
+    for (int i = 0; i < expressType.length; i++) {
+      final Map<String, dynamic> item = expressType[i];
+      final String name = '${item['name'] ?? ''}';
+      if (name != 'store' && name != 'local') continue;
+      final dynamic stores = item['store_list'];
+      if (stores is List && stores.isNotEmpty) continue;
+      try {
+        final List<Map<String, dynamic>> list = await OrderApi.storePage(type: name);
+        if (!mounted || list.isEmpty) continue;
+        // 已绑定门店优先展示(与普通商品下单页显示的门店一致)
+        final List<Map<String, dynamic>> sorted = <Map<String, dynamic>>[...list];
+        final int boundStoreId = AuthStore.to.storeId.value;
+        if (boundStoreId > 0) {
+          final int index = sorted.indexWhere((Map<String, dynamic> e) => '${e['store_id']}' == '$boundStoreId');
+          if (index > 0) {
+            final Map<String, dynamic> bound = sorted.removeAt(index);
+            sorted.insert(0, bound);
+          }
+        }
+        setState(() {
+          expressType[i] = <String, dynamic>{...item, 'store_list': sorted};
+        });
+      } catch (_) {}
+    }
+  }
+
   /// 提交给后端的 member_address(H5: 虚拟商品 / 门店自提用表单手机号,快递用选中地址)
   Map<String, dynamic> get addressParams {
     if (isVirtual) return <String, dynamic>{'mobile': mobileCtrl.text.trim()};
-    if (deliveryType == 'store') {
+    if (isStore) {
       return <String, dynamic>{
-        'name': '${memberAddress['name'] ?? ''}',
+        'name': nameCtrl.text.trim(),
         'mobile': mobileCtrl.text.trim(),
       };
     }
@@ -200,47 +252,47 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
     }
   }
 
+  /// 配送方式是否可用:门店自提/同城配送必须有门店列表
+  bool deliveryTypeAvailable(Map<String, dynamic> item) {
+    final String name = '${item['name'] ?? ''}';
+    if (name != 'store' && name != 'local') return true;
+    final dynamic stores = item['store_list'];
+    return stores is List && stores.isNotEmpty;
+  }
+
+  /// 是否还有其它可用配送方式(无门店时引导用户切换)
+  bool get hasOtherDelivery => expressType.any(
+        (Map<String, dynamic> e) => '${e['name'] ?? ''}' != deliveryType && deliveryTypeAvailable(e),
+      );
+
   /// 选择配送方式(H5 selectDeliveryType)
+  /// * 重建 delivery,避免从自提切到快递时残留 store_id / 自提时间
   void selectDeliveryType(Map<String, dynamic> item, {bool calculateAfter = true}) {
-    final Map<String, dynamic> delivery = (createData['delivery'] is Map
-            ? createData['delivery'] as Map
-            : <String, dynamic>{})
-        .cast<String, dynamic>();
-    delivery['delivery_type'] = '${item['name'] ?? ''}';
-    delivery['delivery_type_name'] = '${item['title'] ?? ''}';
-    setState(() {
-      createData['delivery'] = delivery;
-    });
-    // 门店自提 / 同城配送: 取门店列表与默认门店
-    if ('${item['name']}' == 'store' || '${item['name']}' == 'local') {
-      final dynamic stores = item['store_list'];
-      final List<Map<String, dynamic>> list = stores is List
-          ? stores.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList()
-          : <Map<String, dynamic>>[];
-      setState(() {
-        storeList = list;
-      });
+    final String name = '${item['name'] ?? ''}';
+    final bool needStore = name == 'store' || name == 'local';
+    final dynamic stores = item['store_list'];
+    final List<Map<String, dynamic>> list = needStore && stores is List
+        ? stores.whereType<Map>().map((Map e) => e.cast<String, dynamic>()).toList()
+        : <Map<String, dynamic>>[];
+    final Map<String, dynamic> delivery = <String, dynamic>{
+      'store_id': 0,
+      'delivery_type': name,
+      'delivery_type_name': '${item['title'] ?? ''}',
+      'buyer_ask_delivery_time': <String, dynamic>{'start_date': '', 'end_date': ''},
+    };
+    if (needStore) {
       final dynamic account = paymentData['member_account'];
       if ('${memberAddress['name'] ?? ''}'.isEmpty && account is Map) {
         memberAddress = <String, dynamic>{'name': '${account['nickname'] ?? ''}', 'mobile': '${account['mobile'] ?? ''}'};
       }
       if (mobileCtrl.text.trim().isEmpty && account is Map) mobileCtrl.text = '${account['mobile'] ?? ''}';
-      if (list.isNotEmpty) selectStore(list.first, calculateAfter: false);
+      if (nameCtrl.text.trim().isEmpty) nameCtrl.text = '${memberAddress['name'] ?? ''}'.trim();
+      if (list.isNotEmpty) delivery['store_id'] = int.tryParse('${list.first['store_id'] ?? 0}') ?? 0;
     }
-    if (calculateAfter) calculate();
-  }
-
-  /// 选择门店(H5 selectPickupPoint)
-  void selectStore(Map<String, dynamic> store, {bool calculateAfter = true}) {
-    final Map<String, dynamic> delivery = (createData['delivery'] is Map
-            ? createData['delivery'] as Map
-            : <String, dynamic>{})
-        .cast<String, dynamic>();
-    delivery['store_id'] = int.tryParse('${store['store_id'] ?? 0}') ?? 0;
     setState(() {
-      currStore = store.cast<String, dynamic>();
       createData['delivery'] = delivery;
-      selectedTime = <String, dynamic>{};
+      currStore = list.isNotEmpty ? list.first : <String, dynamic>{};
+      deliveryTime = '';
     });
     if (calculateAfter) calculate();
   }
@@ -255,116 +307,235 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
 
   /* ---------------- 自提 / 送达时间 ---------------- */
 
-  /// 时段: 门店 delivery_time(JSON字符串或数组),元素 { start_time, end_time }(秒或 HH:mm)
-  List<Map<String, dynamic>> get timeSlots {
-    final dynamic raw = currStore['delivery_time'];
-    List<dynamic> slots = <dynamic>[];
-    if (raw is List) {
-      slots = raw;
-    } else if (raw is String && raw.isNotEmpty) {
+  /// 门店可提货时段(与普通商品下单页一致)
+  /// * delivery_time: [{start_time, end_time}],值为当天秒数,可能是 JSON 字符串
+  /// * 未配置时退回门店 start_time / end_time,再兜底 09:00-21:00
+  List<Map<String, int>> timeRangesOf(Map<String, dynamic> store) {
+    dynamic raw = store['delivery_time'];
+    if (raw is String && raw.trim().isNotEmpty) {
       try {
-        final dynamic decoded = jsonDecode(raw);
-        if (decoded is List) slots = decoded;
-      } catch (_) {}
-    }
-    if (slots.isEmpty) {
-      final dynamic start = currStore['start_time'];
-      final dynamic end = currStore['end_time'];
-      if (start != null && end != null) {
-        slots = <dynamic>[<String, dynamic>{'start_time': start, 'end_time': end}];
+        raw = jsonDecode(raw);
+      } catch (_) {
+        raw = null;
       }
     }
-    final List<Map<String, dynamic>> result = <Map<String, dynamic>>[];
-    final DateTime now = DateTime.now();
-    for (int dayOffset = 0; dayOffset < 2; dayOffset++) {
-      final DateTime day = DateTime(now.year, now.month, now.day).add(Duration(days: dayOffset));
-      final String dayTitle = dayOffset == 0 ? '今天' : '明天';
-      for (final dynamic slot in slots) {
-        if (slot is! Map) continue;
-        final int start = _toSeconds(slot['start_time']);
-        final int end = _toSeconds(slot['end_time']);
-        result.add(<String, dynamic>{
-          'title': '$dayTitle(${_hhmm(start)}-${_hhmm(end)})',
-          'start_date': day.millisecondsSinceEpoch ~/ 1000 + start,
-          'end_date': day.millisecondsSinceEpoch ~/ 1000 + end,
-        });
+    final List<Map<String, int>> ranges = <Map<String, int>>[];
+    if (raw is List) {
+      for (final dynamic item in raw) {
+        if (item is! Map) continue;
+        final int start = int.tryParse('${item['start_time'] ?? ''}') ?? -1;
+        final int end = int.tryParse('${item['end_time'] ?? ''}') ?? -1;
+        if (start >= 0 && end > start) ranges.add(<String, int>{'start': start, 'end': end});
       }
     }
-    return result;
-  }
-
-  /// 秒数(H5 getTimeStr 的逆向: 支持秒数 int 与 'HH:mm' 字符串)
-  int _toSeconds(dynamic value) {
-    if (value is int) return value;
-    final String text = '$value';
-    if (text.contains(':')) {
-      final List<String> parts = text.split(':');
-      final int h = int.tryParse(parts[0]) ?? 0;
-      final int m = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
-      return h * 3600 + m * 60;
+    if (ranges.isEmpty) {
+      final int start = int.tryParse('${store['start_time'] ?? ''}') ?? 32400; // 09:00
+      final int end = int.tryParse('${store['end_time'] ?? ''}') ?? 75600; // 21:00
+      if (end > start) ranges.add(<String, int>{'start': start, 'end': end});
     }
-    return int.tryParse(text) ?? 0;
+    return ranges;
   }
 
-  String _hhmm(int seconds) {
+  /// 可提货星期(time_type: 0每天 1按周 time_week)
+  List<int> timeWeekOf(Map<String, dynamic> store) {
+    final int type = int.tryParse('${store['time_type'] ?? ''}') ?? 0;
+    if (type == 0) return <int>[0, 1, 2, 3, 4, 5, 6];
+    dynamic raw = store['time_week'];
+    if (raw is String && raw.trim().isNotEmpty) raw = raw.split(',');
+    final List<int> week = <int>[];
+    if (raw is List) {
+      for (final dynamic item in raw) {
+        final int? day = int.tryParse('$item'.trim());
+        if (day != null) week.add(day);
+      }
+    }
+    return week;
+  }
+
+  /// 秒数转 HH:mm
+  String hm(int seconds) {
     final int h = seconds ~/ 3600;
     final int m = (seconds % 3600) ~/ 60;
     return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}';
   }
 
-  /// 选择自提 / 送达时间
+  /// 某天的可选时段(按门店 time_interval 切分,过滤今天已过时段)
+  List<String> periodsOf(DateTime day, List<Map<String, int>> ranges, int interval, DateTime now, int advanceDay) {
+    final bool isToday = advanceDay == 0 && day.year == now.year && day.month == now.month && day.day == now.day;
+    final int nowSeconds = now.hour * 3600 + now.minute * 60;
+    final List<String> list = <String>[];
+    for (final Map<String, int> range in ranges) {
+      final int start = range['start']!;
+      final int end = range['end']!;
+      int time = start;
+      if (isToday && nowSeconds > start) time = nowSeconds;
+      while (time + interval <= end) {
+        list.add('${hm(time)}-${hm(time + interval)}');
+        time += interval;
+      }
+    }
+    return list;
+  }
+
+  /// 选择提货时间(与普通商品下单页一致): 左日期 + 右时段双栏
+  /// * 按门店 time_interval / advance_day / most_day / time_week 生成可预约日期与时段
+  /// * 提交 "YYYY-M-D HH:mm" 字符串,不是时间戳
   Future<void> pickTime() async {
-    final List<Map<String, dynamic>> slots = timeSlots;
-    if (slots.isEmpty) {
-      MyDialog.toast('暂无可选时间');
+    final Map<String, dynamic> store = currStore;
+    if (store.isEmpty) {
+      MyDialog.toast('暂无可用门店');
       return;
     }
-    final Map<String, dynamic>? picked = await showModalBottomSheet<Map<String, dynamic>>(
+    final List<Map<String, int>> ranges = timeRangesOf(store);
+    if (ranges.isEmpty) {
+      MyDialog.toast('该门店未配置提货时间');
+      return;
+    }
+    final int interval = (int.tryParse('${store['time_interval'] ?? ''}') ?? 20) * 60; // 默认20分钟
+    final int advanceDay = int.tryParse('${store['advance_day'] ?? ''}') ?? 0;
+    final int mostDay = int.tryParse('${store['most_day'] ?? ''}') ?? 0;
+    final List<int> week = timeWeekOf(store);
+    final DateTime now = DateTime.now();
+    final int nowSeconds = now.hour * 3600 + now.minute * 60;
+    final List<DateTime> days = <DateTime>[];
+    final int maxDays = mostDay > 0 ? mostDay : 7;
+    for (int i = 0; i < maxDays; i++) {
+      final DateTime item = DateTime(now.year, now.month, now.day).add(Duration(days: advanceDay + i));
+      if (week.isNotEmpty && !week.contains(item.weekday % 7)) continue;
+      if (i == 0 && advanceDay == 0 && ranges.last['end']! - interval < nowSeconds) continue;
+      days.add(item);
+    }
+    if (days.isEmpty) {
+      MyDialog.toast('该门店暂无可预约时间');
+      return;
+    }
+    int dayIndex = 0;
+    int periodIndex = 0;
+    List<String> periods = periodsOf(days.first, ranges, interval, now, advanceDay);
+    final bool? ok = await showModalBottomSheet<bool>(
       context: context,
       backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12.0))),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(15.0))),
       builder: (BuildContext context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14.0),
-                child: Text('选择时间', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
-              ),
-              const Divider(color: FStyle.dividerColor, height: 1.0, thickness: 0.5),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: slots.length,
-                  itemBuilder: (BuildContext context, int index) {
-                    return ListTile(
-                      dense: true,
-                      title: Text('${slots[index]['title']}', style: const TextStyle(fontSize: 14.0)),
-                      trailing: '${selectedTime['title']}' == '${slots[index]['title']}'
-                          ? const Icon(Icons.check, color: primary, size: 18.0)
-                          : null,
-                      onTap: () => Get.back(result: slots[index]),
-                    );
-                  },
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setSheetState) {
+            return SafeArea(
+              top: false,
+              child: Container(
+                constraints: BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.7),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: <Widget>[
+                    const SizedBox(height: 12.0),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: <Widget>[
+                        const Text('选择提货时间', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close, size: 18.0, color: Colors.grey),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Expanded(
+                      child: Row(
+                        children: <Widget>[
+                          Container(
+                            width: 104.0,
+                            color: const Color(0xFFF8F8F8),
+                            child: ListView.builder(
+                              itemCount: days.length,
+                              itemBuilder: (BuildContext context, int index) {
+                                final DateTime item = days[index];
+                                final bool active = index == dayIndex;
+                                final String title = index == 0
+                                    ? (advanceDay == 0 ? '今天' : '')
+                                    : (index == 1 && advanceDay == 0 ? '明天' : '');
+                                return GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: () => setSheetState(() {
+                                    dayIndex = index;
+                                    periodIndex = 0;
+                                    periods = periodsOf(item, ranges, interval, now, advanceDay);
+                                  }),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(vertical: 12.0),
+                                    color: active ? Colors.white : Colors.transparent,
+                                    alignment: Alignment.center,
+                                    child: Text(
+                                      '${title.isNotEmpty ? '$title\n' : ''}${item.month}月${item.day}日',
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(fontSize: 13.0, height: 1.35, color: active ? primary : Colors.black54),
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                          Expanded(
+                            child: periods.isEmpty
+                                ? const Center(child: Text('当天暂无可预约时段', style: TextStyle(fontSize: 13.0, color: Colors.grey)))
+                                : ListView.builder(
+                                    padding: const EdgeInsets.symmetric(horizontal: 12.0),
+                                    itemCount: periods.length,
+                                    itemBuilder: (BuildContext context, int index) {
+                                      final bool active = index == periodIndex;
+                                      return GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTap: () => setSheetState(() => periodIndex = index),
+                                        child: Container(
+                                          height: 46.0,
+                                          alignment: Alignment.center,
+                                          decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.grey.shade200))),
+                                          child: Text(
+                                            periods[index],
+                                            style: TextStyle(fontSize: 13.0, color: active ? primary : Colors.black87),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(10.0, 0, 10.0, 16.0),
+                      child: FilledButton(
+                        style: ButtonStyle(
+                          backgroundColor: WidgetStateProperty.all(primary),
+                          minimumSize: WidgetStateProperty.all(const Size(double.infinity, 42.0)),
+                          shape: WidgetStateProperty.all(RoundedRectangleBorder(borderRadius: BorderRadius.circular(30.0))),
+                        ),
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: const Text('确定'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
-    if (picked == null || !mounted) return;
+    if (ok != true || periods.isEmpty || !mounted) return;
+    final DateTime day = days[dayIndex];
+    final String period = periods[periodIndex.clamp(0, periods.length - 1)];
+    final List<String> range = period.split('-');
     final Map<String, dynamic> delivery = (createData['delivery'] is Map
             ? createData['delivery'] as Map
             : <String, dynamic>{})
         .cast<String, dynamic>();
-    delivery['buyer_ask_delivery_time'] = <String, dynamic>{
-      'start_date': picked['start_date'],
-      'end_date': picked['end_date'],
+    delivery['buyer_ask_delivery_time'] = <String, String>{
+      'start_date': '${day.year}-${day.month}-${day.day} ${range.first}',
+      'end_date': '${day.year}-${day.month}-${day.day} ${range.last}',
     };
     setState(() {
-      selectedTime = picked;
+      deliveryTime = '${day.month}月${day.day}日($period)';
       createData['delivery'] = delivery;
     });
     await calculate();
@@ -393,7 +564,7 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
     }
     if (deliveryType == 'store') {
       if ((int.tryParse('${(createData['delivery'] as Map)['store_id'] ?? 0}') ?? 0) <= 0) {
-        MyDialog.toast('没有可提货的门店,请选择其他配送方式');
+        MyDialog.toast(hasOtherDelivery ? '附近暂无可提货门店,请选择快递配送' : '暂无可用配送方式,请联系商家');
         return false;
       }
       if (mobileCtrl.text.trim().isEmpty) {
@@ -404,19 +575,19 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
         MyDialog.toast('请输入正确的预留手机');
         return false;
       }
-      if (selectedTime.isEmpty) {
-        MyDialog.toast('请选择自提时间');
+      if (deliveryTime.isEmpty) {
+        MyDialog.toast('请选择提货时间');
         return false;
       }
       return true;
     }
     if (deliveryType == 'local') {
       if ((int.tryParse('${(createData['delivery'] as Map)['store_id'] ?? 0}') ?? 0) <= 0) {
-        MyDialog.toast('没有可配送的门店,请选择其他配送方式');
+        MyDialog.toast(hasOtherDelivery ? '附近暂无可配送门店,请选择其他配送方式' : '暂无可用配送方式,请联系商家');
         return false;
       }
       final bool timeOpen = '${((paymentData['config'] is Map ? paymentData['config'] as Map : <String, dynamic>{})['local'] is Map ? (paymentData['config'] as Map)['local'] as Map : <String, dynamic>{})['is_use'] ?? ''}' == '1';
-      if (timeOpen && selectedTime.isEmpty) {
+      if (timeOpen && deliveryTime.isEmpty) {
         MyDialog.toast('请选择配送时间');
         return false;
       }
@@ -533,6 +704,7 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
       padding: const EdgeInsets.only(bottom: 12.0),
       children: <Widget>[
         if (showDelivery) ...<Widget>[
+          // 只有一种配送方式时不展示切换栏(与普通商品下单页一致)
           if (expressType.length > 1) _buildDeliveryTypes(),
           if (deliveryType == 'store' || deliveryType == 'local') _buildStore(),
           if (deliveryType != 'store') _buildAddress(),
@@ -554,21 +726,33 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
       child: Row(
         children: expressType.map((Map<String, dynamic> item) {
           final bool selected = '${item['name']}' == deliveryType;
+          final bool unavailable = !deliveryTypeAvailable(item);
           return Padding(
             padding: const EdgeInsets.only(right: 10.0),
             child: InkWell(
               borderRadius: BorderRadius.circular(4.0),
-              onTap: () => selectDeliveryType(item),
+              onTap: () {
+                if (unavailable) {
+                  MyDialog.toast('${item['name']}' == 'store' ? '附近暂无可提货门店' : '附近暂无可配送门店');
+                  return;
+                }
+                selectDeliveryType(item);
+              },
               child: Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14.0, vertical: 7.0),
                 decoration: BoxDecoration(
-                  color: selected ? const Color(0xFFFFF3E6) : const Color(0xFFF5F5F5),
-                  border: Border.all(color: selected ? primary : Colors.transparent, width: 0.5),
+                  color: unavailable
+                      ? const Color(0xFFF7F7F7)
+                      : selected ? const Color(0xFFFFF3E6) : const Color(0xFFF5F5F5),
+                  border: Border.all(color: unavailable ? const Color(0xFFE5E5E5) : selected ? primary : Colors.transparent, width: 0.5),
                   borderRadius: BorderRadius.circular(4.0),
                 ),
                 child: Text(
                   '${item['title'] ?? ''}',
-                  style: TextStyle(fontSize: 13.0, color: selected ? primary : const Color(0xFF666666)),
+                  style: TextStyle(
+                    fontSize: 13.0,
+                    color: unavailable ? const Color(0xFFBBBBBB) : selected ? primary : const Color(0xFF666666),
+                  ),
                 ),
               ),
             ),
@@ -613,82 +797,140 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
     );
   }
 
-  /// 门店自提 / 同城配送: 门店 + 预留手机 + 时间
+  /// 门店自提 / 同城配送: 门店卡 + 提货人卡(对齐普通商品下单页)
   Widget _buildStore() {
-    final bool isStore = deliveryType == 'store';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: <Widget>[
+        _buildStoreCard(),
+        const SizedBox(height: 10.0),
+        _buildPickupFormCard(),
+        // 同城配送下面还会接收货地址卡
+        if (!isStore) const SizedBox(height: 10.0),
+      ],
+    );
+  }
+
+  /// 门店卡: 门店名 / 地址 / 营业时间(纯展示,不允许点击切换门店)
+  Widget _buildStoreCard() {
+    final Map<String, dynamic> store = currStore;
     return Container(
       color: Colors.white,
-      padding: const EdgeInsets.fromLTRB(15.0, 14.0, 15.0, 10.0),
+      padding: const EdgeInsets.fromLTRB(15.0, 14.0, 15.0, 14.0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: <Widget>[
-          InkWell(
-            onTap: () => storeList.length > 1 ? openStoreSheet() : null,
-            child: Row(
+          Row(
+            children: <Widget>[
+              const Icon(Icons.storefront_outlined, size: 18.0, color: primary),
+              const SizedBox(width: 6.0),
+              Expanded(
+                child: Text(
+                  store.isEmpty ? '暂无可用门店' : '${store['store_name'] ?? ''}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 15.0,
+                    fontWeight: FontWeight.w700,
+                    color: store.isEmpty ? const Color(0xFF999999) : const Color(0xFF222222),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          if (store.isNotEmpty) ...<Widget>[
+            const SizedBox(height: 8.0),
+            Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: <Widget>[
-                const Icon(Icons.store_outlined, color: primary, size: 20.0),
-                const SizedBox(width: 10.0),
+                const Icon(Icons.location_on_outlined, size: 16.0, color: Colors.grey),
+                const SizedBox(width: 6.0),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
                       Text(
-                        currStore.isEmpty ? '暂无可用门店' : '${currStore['store_name'] ?? ''}',
-                        style: const TextStyle(fontSize: 14.0, fontWeight: FontWeight.w600),
+                        '${store['full_address'] ?? ''}${store['address'] ?? ''}',
+                        style: const TextStyle(fontSize: 13.0),
                       ),
-                      if (currStore.isNotEmpty) ...<Widget>[
-                        const SizedBox(height: 4.0),
+                      if ('${store['open_date'] ?? ''}'.isNotEmpty) ...<Widget>[
+                        const SizedBox(height: 3.0),
                         Text(
-                          '${currStore['full_address'] ?? ''}${currStore['address'] ?? ''}',
-                          style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999)),
+                          '营业时间：${store['open_date']}',
+                          style: const TextStyle(fontSize: 12.0, color: Colors.grey),
                         ),
                       ],
                     ],
                   ),
                 ),
-                if (storeList.length > 1) const Icon(Icons.chevron_right, color: Colors.grey, size: 18.0),
               ],
             ),
-          ),
-          const SizedBox(height: 10.0),
-          Row(
-            children: <Widget>[
-              const SizedBox(width: 30.0, child: Text('手机', style: TextStyle(fontSize: 13.0, color: Color(0xFF666666)))),
-              Expanded(
-                child: TextField(
-                  controller: mobileCtrl,
-                  keyboardType: TextInputType.phone,
-                  maxLength: 11,
-                  decoration: const InputDecoration(
-                    counterText: '',
-                    isDense: true,
-                    hintText: '请输入预留手机',
-                    hintStyle: TextStyle(fontSize: 13.0, color: Color(0xFFBBBBBB)),
-                    border: InputBorder.none,
-                  ),
-                  style: const TextStyle(fontSize: 13.0),
-                ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// 提货人卡: 提货人 / 预留手机 / 提货时间(对齐普通商品下单页)
+  Widget _buildPickupFormCard() {
+    final String timeText = deliveryTime.isEmpty ? '请选择提货时间' : deliveryTime;
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.symmetric(horizontal: 15.0),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: <Widget>[
+          _pickupRow(
+            label: isStore ? '提货人' : '收货人',
+            icon: Icons.person_add_alt,
+            child: TextField(
+              controller: nameCtrl,
+              style: const TextStyle(fontSize: 14.0),
+              decoration: const InputDecoration(
+                hintText: '请输入提货人姓名',
+                hintStyle: TextStyle(fontSize: 14.0, color: Colors.grey),
+                isDense: true,
+                contentPadding: EdgeInsets.all(0.0),
+                border: OutlineInputBorder(borderSide: BorderSide.none),
               ),
-            ],
+            ),
           ),
           const Divider(color: FStyle.dividerColor, height: 1.0, thickness: 0.5),
-          InkWell(
-            onTap: pickTime,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12.0),
-              child: Row(
-                children: <Widget>[
-                  Text(isStore ? '自提时间' : '送达时间', style: const TextStyle(fontSize: 13.0, color: Color(0xFF666666))),
-                  const Spacer(),
-                  Text(
-                    selectedTime.isEmpty ? '请选择时间' : '${selectedTime['title']}',
-                    style: const TextStyle(fontSize: 13.0, color: Color(0xFF999999)),
-                  ),
-                  const Icon(Icons.chevron_right, color: Colors.grey, size: 18.0),
-                ],
+          _pickupRow(
+            label: '预留手机',
+            icon: Icons.phone_android_outlined,
+            child: TextField(
+              controller: mobileCtrl,
+              keyboardType: TextInputType.phone,
+              maxLength: 11,
+              style: const TextStyle(fontSize: 14.0),
+              decoration: const InputDecoration(
+                counterText: '',
+                hintText: '请输入手机号,到店核销使用',
+                hintStyle: TextStyle(fontSize: 14.0, color: Colors.grey),
+                isDense: true,
+                contentPadding: EdgeInsets.all(0.0),
+                border: OutlineInputBorder(borderSide: BorderSide.none),
+              ),
+            ),
+          ),
+          const Divider(color: FStyle.dividerColor, height: 1.0, thickness: 0.5),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () => pickTime(),
+            child: _pickupRow(
+              label: isStore ? '提货时间' : '送达时间',
+              icon: Icons.arrow_forward_ios_rounded,
+              iconColor: Colors.grey,
+              iconSize: 12.0,
+              child: Text(
+                timeText,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 14.0, color: deliveryTime.isEmpty ? Colors.grey : Colors.black87),
               ),
             ),
           ),
@@ -697,48 +939,24 @@ class _PointOrderConfirmPageState extends State<PointOrderConfirmPage> {
     );
   }
 
-  /// 门店列表弹层
-  Future<void> openStoreSheet() async {
-    final Map<String, dynamic>? picked = await showModalBottomSheet<Map<String, dynamic>>(
-      context: context,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(12.0))),
-      builder: (BuildContext context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: <Widget>[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 14.0),
-                child: Text('选择门店', style: TextStyle(fontSize: 15.0, fontWeight: FontWeight.w600)),
-              ),
-              const Divider(color: FStyle.dividerColor, height: 1.0, thickness: 0.5),
-              Flexible(
-                child: ListView.builder(
-                  shrinkWrap: true,
-                  itemCount: storeList.length,
-                  itemBuilder: (BuildContext context, int index) {
-                    final Map<String, dynamic> item = storeList[index];
-                    final bool selected = '${item['store_id']}' == '${currStore['store_id']}';
-                    return ListTile(
-                      dense: true,
-                      title: Text('${item['store_name'] ?? ''}',
-                          style: TextStyle(fontSize: 14.0, color: selected ? primary : const Color(0xFF333333))),
-                      subtitle: Text('${item['full_address'] ?? ''}${item['address'] ?? ''}',
-                          style: const TextStyle(fontSize: 12.0, color: Color(0xFF999999))),
-                      trailing: selected ? const Icon(Icons.check, color: primary, size: 18.0) : null,
-                      onTap: () => Get.back(result: item),
-                    );
-                  },
-                ),
-              ),
-            ],
-          ),
-        );
-      },
+  /// 提货人卡里的单行
+  Widget _pickupRow({
+    required String label,
+    required IconData icon,
+    required Widget child,
+    Color? iconColor,
+    double iconSize = 16.0,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10.0),
+      child: Row(
+        children: <Widget>[
+          SizedBox(width: 80.0, child: Text(label, style: const TextStyle(fontSize: 14.0))),
+          Expanded(child: child),
+          Icon(icon, color: iconColor ?? primary, size: iconSize),
+        ],
+      ),
     );
-    if (picked == null || !mounted) return;
-    selectStore(picked);
   }
 
   /// 虚拟商品手机号

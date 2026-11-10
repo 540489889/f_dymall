@@ -82,6 +82,14 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.getByName("release")
+            // 混淆规则: 本工程的 minify 由别处开启(全工程搜不到 minifyEnabled), 这里只补规则不改开关。
+            // * 必须保留阿里云推送的 SPI 实现类及其无参构造, 否则 release 包启动即崩:
+            //   "Fail to load ams-spi-services ... InstantiationException"(debug 不混淆, 不复现)。
+            // * 详见 proguard-rules.pro
+            proguardFiles(
+                getDefaultProguardFile("proguard-android.txt"),
+                "proguard-rules.pro",
+            )
         }
     }
 }
@@ -109,9 +117,18 @@ kotlin {
 // * mediation-sdk 不 force, 保持插件原生态 7.1.1.4, 避免破坏 GroMore 广告。
 configurations.all {
     resolutionStrategy {
-        // DP SDK 5.8.1.0(与 djx 3.0.0.2 同批次配套): 只会 init, 不会 start(startVideo=false), 故不会崩
+        // DP SDK 5.8.1.0: 只会 init, 不会 start(startVideo=false), 故不会崩
         force("com.pangle.cn:pangrowth-dpsdk:5.8.1.0")
-        // DJX 基础库: 修 DJX 侧 TLSv1, 且是这台 Android 16 上唯一能初始化成功的版本
+        // DJX 基础库: 二分定位「能播 + 比例正常」的版本。真机已验证:
+        //   2.6.0.0 -> 比例正常, 但这台 Android16 初始化失败(未修 TLSv1)
+        //   2.9.0.9 -> 能播, 视频比例失真
+        //   3.0.0.2 -> 能播, 视频比例失真(与 2.9.0.9 一致)
+        // 说明「修 TLSv1」和「比例失真」是两次独立的改动, 中间应存在两者兼得的版本:
+        //   2.8.0.6(当前值, Volcengine 仓库 2.8.x 线最后一版)
+        //     * 能播且比例正常 -> 定它
+        //     * 初始化失败(未修 TLSv1) -> 往上试 2.9.0.0, 再逐步二分 2.9.0.x
+        //     * 能播但仍失真 -> 说明失真在更早版本引入, 往下试 2.8.0.4
+        // 注: 播放器 ttsdk-player_premium 各版本均为 1.42.3.5, 与比例无关, 问题在 DJX 自身渲染。
         force("com.pangle.cn:pangrowth-djx-sdk-lite:3.0.0.2")
         force("com.pangle.cn:pangrowth-base:3.0.0.2")
         // 注意: 绝不要 exclude ttsdk-player_premium —— 它是火山引擎播放器, DJX(短剧)播视频依赖它

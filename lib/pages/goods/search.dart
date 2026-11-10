@@ -2,12 +2,12 @@
 /// * 入口: 首页顶部搜索框 -> Get.toNamed('/search')
 /// * 对齐 H5 pages_tool/goods/search.vue: 历史搜索 + 热门搜索,搜索后跳商品列表页 /goods/list
 /// * 历史搜索存本地(GetStorage,最多 10 条,新搜的排最前)
-/// * 热门搜索 /api/goods/hotSearchWords,默认搜索词 /api/goods/defaultSearchWords(作 placeholder)
+/// * 热门搜索 /api/goods/hotSearchWords,默认搜索词 /api/goods/defaultSearchWords(仅作 placeholder)
+/// * 空输入点「搜索」也跳商品列表页(keyword 为空, 接口允许), 不拿默认搜索词兜底
 library;
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:shirne_dialog/shirne_dialog.dart';
 
 import '../../api/goods.dart';
 import '../../components/common_empty.dart';
@@ -33,7 +33,10 @@ class _SearchPageState extends State<SearchPage> {
   List<String> history = <String>[];
   /// 热门搜索
   List<String> hotList = <String>[];
-  /// 默认搜索词(placeholder)
+  /// 默认搜索词: 仅作输入框 placeholder, 不参与搜索
+  /// * 后端可能把它配成「搜索商品名称」这类说明性文案, 若拿来当 keyword 兜底,
+  ///   商品列表页会把这句提示文字回填进输入框(变成黑色输入内容), 还会拿它发请求/存历史。
+  /// * 空关键词是合法的: /api/goodssku/page 的 keyword 允许为空, 表示不过滤、返回全部商品。
   String defaultWord = '';
 
   @override
@@ -90,18 +93,13 @@ class _SearchPageState extends State<SearchPage> {
   }
 
   /// 搜索(回车 / 点搜索按钮 / 点历史词或热词)
+  /// * keyword 允许为空: 不输入也跳商品列表页, 传空字符串让接口返回全部商品。
+  /// * defaultWord 只是 placeholder 文案, 绝不能拿来当 keyword 兜底, 否则会被回填成输入内容。
+  /// * 空词不写历史搜索, 避免产生一条空白记录。
   void search(String word) {
-    String text = word.trim();
-    if (text.isEmpty) {
-      // 没输入就搜索时,用默认搜索词(与 H5 一致)
-      if (defaultWord.isEmpty) {
-        MyDialog.toast('请输入搜索关键词');
-        return;
-      }
-      text = defaultWord;
-    }
+    final String text = word.trim();
+    if (text.isNotEmpty) _saveHistory(text);
     focusNode.unfocus();
-    _saveHistory(text);
     Get.toNamed('/goods/list', arguments: <String, String>{'keyword': text});
   }
 

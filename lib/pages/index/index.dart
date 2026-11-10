@@ -24,6 +24,7 @@ import '../../components/backtop.dart';
 import '../../components/custom_pageview_indicator.dart';
 import '../../utils/player_config.dart';
 import '../../utils/index.dart';
+import '../../utils/push.dart';
 import '../../api/goods.dart';
 import '../../api/live.dart';
 import '../../pages/live/index.dart';
@@ -936,6 +937,13 @@ Widget liveBg() {
 @override
 void initState() {
   super.initState();
+  // 推送初始化 + 通知授权: 等首页首帧渲染完成后再做。
+  // 阿里云推送 init / 厂商通道注册 / 本地通知通道创建 / 通知权限申请
+  // 在华为/鸿蒙上都会触发「是否允许发送通知」系统弹窗, 统一延到这里,
+  // 保证弹窗一定出现在「用户同意隐私政策并进入首页」之后。
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    PushService.to.init();
+  });
   // 首页商品列表默认排版跟随 /api/config/init 的 goods_format:
   // "1"=单排一个商品(横向单列, 默认); 其余取值(如 "2")=双列瀑布流
   // * config 可能在首屏渲染后才返回, 故用 ever 监听而非一次性读取

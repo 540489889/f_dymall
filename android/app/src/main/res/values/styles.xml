@@ -17,4 +17,14 @@
         <!-- 状态栏颜色由 Flutter 侧 AnnotatedRegion 控制,这里先兜底透明 -->
         <item name="android:statusBarColor">@android:color/transparent</item>
     </style>
+
+    <!-- 一键登录授权页: 继承 SDK 的浮窗主题, 但关掉背景 dim 遮罩。
+         authsdk_activity_dialog 默认 android:backgroundDimEnabled=true,
+         会让弹窗外的区域压一层灰色半透明蒙版, 看起来不像整页。
+         窗口改为不透明白底; 配合 Dart 侧 dialogPort 铺满状态栏以下的尺寸即为全屏观感。 -->
+    <style name="OneKeyAuthPage" parent="authsdk_activity_dialog">
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
 </resources>

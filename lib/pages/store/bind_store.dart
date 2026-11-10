@@ -22,6 +22,11 @@ class BindStorePage extends StatelessWidget {
       ),
       child: Scaffold(
         backgroundColor: const Color(0xFFFFF9F6),
+        // 弹窗里点输入框唤起键盘时, 不让底层页面跟着压缩重排:
+        // 本页是「固定高度元素 + Spacer」的 Column, 键盘压缩后固定元素总高会略超可用高度,
+        // 报 bottom overflowed by 11。弹窗盖在上面时底层页面无需响应键盘,
+        // 弹窗自身的键盘避让仍由 dialog route 负责, 不受此设置影响。
+        resizeToAvoidBottomInset: false,
         body: Container(
           width: double.infinity,
           height: double.infinity,
@@ -254,7 +259,19 @@ class BindStorePage extends StatelessWidget {
       validator: (BarcodeCapture capture) => _firstRawValue(capture).isNotEmpty,
     );
 
+    // 打印扫码原始数据, 便于排查二维码内容/格式
+    debugPrint('[bindStore] 扫码返回 capture: $capture');
+    if (capture != null) {
+      debugPrint('[bindStore] 扫码 barcodes 数量: ${capture.barcodes.length}');
+      for (int i = 0; i < capture.barcodes.length; i++) {
+        final Barcode barcode = capture.barcodes[i];
+        debugPrint('[bindStore] barcode[$i] rawValue=${barcode.rawValue} '
+            'format=${barcode.format} type=${barcode.type} '
+            'displayValue=${barcode.displayValue}');
+      }
+    }
     final String code = _firstRawValue(capture);
+    debugPrint('[bindStore] 扫码最终内容 code=$code (长度 ${code.length})');
     if (code.isEmpty) return;
     if (!context.mounted) return;
     await Get.dialog(BindScanNameDialog(scanResult: code));
@@ -392,21 +409,26 @@ Widget _bindDialogShell({required String title, required String desc, required L
         surfaceTintColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.0)),
         contentPadding: const EdgeInsets.fromLTRB(22.0, 28.0, 22.0, 24.0),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: <Widget>[
-            Text(
-              title,
-              style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.w700, color: Colors.black87),
-            ),
-            const SizedBox(height: 8.0),
-            Text(
-              desc,
-              style: const TextStyle(fontSize: 13.0, color: Colors.black45),
-            ),
-            const SizedBox(height: 22.0),
-            ...children,
-          ],
+        // 键盘弹起后 dialog route 的可用高度变小, 而本弹窗垂直仍受父级约束
+        // (UnconstrainedBox 的 constrainedAxis: vertical), 内容会差十几像素而报 bottom overflowed。
+        // 包一层滚动视图: 高度够时与原来完全一致, 不够时可滚动, 不再溢出。
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: <Widget>[
+              Text(
+                title,
+                style: const TextStyle(fontSize: 18.0, fontWeight: FontWeight.w700, color: Colors.black87),
+              ),
+              const SizedBox(height: 8.0),
+              Text(
+                desc,
+                style: const TextStyle(fontSize: 13.0, color: Colors.black45),
+              ),
+              const SizedBox(height: 22.0),
+              ...children,
+            ],
+          ),
         ),
       ),
     ),
@@ -568,11 +590,14 @@ class _BindScanNameDialogState extends State<BindScanNameDialog> {
 
     if (!mounted) return;
     setState(() => _submitting = true);
+    final String encoded = Uri.encodeComponent(widget.scanResult);
+    debugPrint('[bindStore] 提交绑定: type=scan nickname=$name '
+        'scanResult=${widget.scanResult} value(编码后)=$encoded');
     try {
       await MemberApi.bindStore(
         type: 'scan',
         nickname: name,
-        value: Uri.encodeComponent(widget.scanResult),
+        value: encoded,
       );
       if (!mounted) return;
       setState(() => _submitting = false);

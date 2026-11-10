@@ -175,8 +175,8 @@ class _DramaModuleState extends State<DramaModule> {
                 child: DramaSwipeFlowNativeView(
                   config: DramaSwipeFlowConfig(
                     channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
-                    detailFree: 3, // 免费观看集数
-                    unlockCount: 2, // 每次看激励广告解锁集数
+                    detailFree: 10, // 免费观看集数
+                    unlockCount: 10, // 每次看激励广告解锁集数
                     unlockAdMode: 0, // 0=SDK内置广告解锁
                     autoPlay: true,
                     hideTopInfo: false, // 显示顶部频道Tab
@@ -184,7 +184,7 @@ class _DramaModuleState extends State<DramaModule> {
                     hideEnter: false, // 显示「下一集」按钮
                     hideLikeButton: false, // 显示点赞
                     hideFavorButton: false, // 显示收藏
-                    showChangeBtn: false, // 不显示换一换
+                    showChangeBtn: true, // 显示换一换
                     hideBack: true, // 主Tab页无需返回按钮
                     // 同时给详情/播放页顶部留状态栏高度(单位dp)
                     setTopOffset: MediaQuery.of(context).padding.top.round(),

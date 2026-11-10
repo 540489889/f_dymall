@@ -120,7 +120,7 @@ Future<void> launchStringUrl(String url) async {
   ///       SECKILL_PREFECTURE  -> /seckill
   ///       SIGN_IN             -> /my/signin
   ///       MEMBER_CENTER       -> /my/wallet
-  ///       GOODS_CATEGORY_PAGE -> /goods?category_id=xx
+  ///       GOODS_CATEGORY_PAGE -> /goods/list?categoryId=xx (category_id 为一级分类id)
   ///       CUSTOM_LINK         -> 取 wap_url(已是 Flutter 路径, 如 /goods/detail?id=80)
   ///     带参时参数会同时塞进 Get.arguments 与 Get.parameters, 兼容两种取参方式
   static Future<void> openAppLink(String link) async {
@@ -139,7 +139,8 @@ Future<void> launchStringUrl(String url) async {
         info = null;
       }
       if (info == null) return;
-      name = '${info['name'] ?? ''}';
+      // 后台可能存成小写 / 带空格, 统一成大写再匹配(与「我的服务」页一致)
+      name = '${info['name'] ?? ''}'.trim().toUpperCase();
       final String? wap = info['wap_url']?.toString();
       switch (name) {
         case 'LIVE_LIST':
@@ -156,8 +157,17 @@ Future<void> launchStringUrl(String url) async {
           target = '/my/wallet';
           break;
         case 'GOODS_CATEGORY_PAGE':
+          // 商品分类页 = 商品列表页(/goods/list); /goods 是商品详情, 不能用。
+          // 后台 nav_url 里字段名是 category_id, 列表页读的是驼峰 categoryId。
+          // category_name(若后台给了)只作标题兜底, 列表页拿到分类树后以 category_name 为准。
+          // 空值也跳列表页(不过滤分类, 接口允许), 不再落到 /goods。
           final String cid = '${info['category_id'] ?? ''}'.trim();
-          target = cid.isEmpty ? '/goods' : '/goods?category_id=$cid';
+          final String cname = '${info['category_name'] ?? ''}'.trim();
+          final List<String> parts = <String>[
+            if (cid.isNotEmpty) 'categoryId=${Uri.encodeQueryComponent(cid)}',
+            if (cname.isNotEmpty) 'categoryName=${Uri.encodeQueryComponent(cname)}',
+          ];
+          target = parts.isEmpty ? '/goods/list' : '/goods/list?${parts.join('&')}';
           break;
         case 'CUSTOM_LINK':
         default:

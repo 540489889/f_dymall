@@ -8,6 +8,8 @@ import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
+// 观看直播任务倒计时暂时关闭,恢复时放开下面两处(import + body 里的 Positioned)
+// import '../../components/task_countdown.dart';
 import '../../components/backtop.dart';
 import '../../components/live_playing_bars.dart';
 import '../../api/live.dart';
@@ -234,7 +236,10 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
           ),
         ),
       ),
-      body: ScrollConfiguration(
+      body: Stack(
+        children: <Widget>[
+          Positioned.fill(
+            child: ScrollConfiguration(
         behavior: CustomScrollBehavior().copyWith(scrollbars: false),
         child: RefreshIndicator(
           backgroundColor: const Color(0xFFFCF7EE),
@@ -279,6 +284,16 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
             ],
           ),
         ),
+      ),
+          ),
+          // 观看直播任务倒计时: 暂时关闭(不显示,也不在本页触发完成上报)
+          // const Positioned(
+          //   left: 0.0,
+          //   right: 0.0,
+          //   bottom: 16.0,
+          //   child: Center(child: TaskCountdownBanner()),
+          // ),
+        ],
       ),
       // 右下角悬浮组: 回到首页在上(仅从首页"全部"进来时显示),返回顶部在下(滚动超过阈值才出现)
       floatingActionButton: Column(

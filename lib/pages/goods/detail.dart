@@ -20,6 +20,7 @@ import '../../api/goods_evaluate.dart';
 import '../../api/store.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/backtop.dart';
+import '../../components/task_countdown.dart';
 import '../../components/loading.dart';
 import '../../styles/index.dart';
 import '../../config/index.dart';
@@ -503,9 +504,22 @@ num get couponPrice {
   Widget build(BuildContext context) {
   return Scaffold(
     backgroundColor: Colors.grey[50],
-    body: loading
-      ? const Center(child: Loading(title: '加载中...'))
-      : (errorMsg.isNotEmpty ? _buildError() : _buildContent()),
+    body: Stack(
+      children: <Widget>[
+        Positioned.fill(
+          child: loading
+            ? const Center(child: Loading(title: '加载中...'))
+            : (errorMsg.isNotEmpty ? _buildError() : _buildContent()),
+        ),
+        // 浏览商品任务倒计时(仅从赚钱页任务入口进来时显示)
+        const Positioned(
+          left: 0.0,
+          right: 0.0,
+          bottom: 86.0,
+          child: Center(child: TaskCountdownBanner()),
+        ),
+      ],
+    ),
     // 商品导航栏(加载失败时不显示)
     bottomNavigationBar: (loading || errorMsg.isNotEmpty) ? null : _buildBottomBar(context),
   // 返回顶部

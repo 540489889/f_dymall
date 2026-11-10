@@ -93,6 +93,7 @@ import '../pages/point/goods_detail.dart';
 import '../pages/point/order_confirm.dart';
 import '../pages/point/result.dart';
 import '../pages/point/order_list.dart';
+import '../pages/point/order_detail.dart';
 
 // 路由地址集合
 final Map<String, Widget> routes = {
@@ -158,6 +159,7 @@ final Map<String, Widget> routes = {
   '/point/confirm': const PointOrderConfirmPage(),
   '/point/result': const PointResultPage(),
   '/point/order_list': const PointOrderListPage(),
+  '/point/order_detail': const PointOrderDetailPage(),
   // 直播连麦(观众/嘉宾端: 输连麦码 -> 等主播同意 -> TRTC 同屏), 从「我的服务」后台入口进
   '/live/link_mic': const LinkMicPage(),
   // 邀请好友(我的服务入口, 需登录)
@@ -193,6 +195,7 @@ const Set<String> authRoutes = {
   '/point/confirm',
   '/point/result',
   '/point/order_list',
+  '/point/order_detail',
   '/order',
   '/order/detail',
   '/order/pay_result',
