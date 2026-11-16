@@ -1986,6 +1986,11 @@ void initState() {
                           // 封面: 进房先拿首页这张, 避免等 getRoomInfo 返回期间露出黑底
                           'cover': liveCover,
                         })?.then((dynamic _) {
+                          if (!mounted) return;
+                          // 从直播间返回首页: 重新拉直播板块接口(主播下播/换房/在线人数变化)。
+                          // * 首页被保活, Get.back() 退栈不会重走 initState, 必须在这里主动刷;
+                          //   play=1 自动进房那条路径已有同样的刷新(见 _autoEnterLiveRoom)
+                          loadLiveRoom();
                           // 返回首页后恢复预览,若卡片已滚出视口则下一次滚动时再暂停
                           livePlayer?.play();
                           syncLivePlayState();
