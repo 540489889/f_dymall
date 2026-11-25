@@ -48,7 +48,7 @@ class Config {
   static const String aliAndroidSk =
       'pt222/WED5urUhGlZOc0f682X6jxBT2SG/AChkceC81OYMR9Wh6CKNpOPYtyFfxXQYbWbionGlvatXfuk037e+knNrUjulYsmMJj/2kLZefh0QO9xe0qxD6/ZGcODMwE4ppW0JEK0AglTx6x+NsH+2tdppKhCMvGmUPaV8F96pwv+d58mJDkqEbz+8IDCLsyjnGgrrNHMhYw/zA0CeROJjHFoTJb6dD/68XQcSdVkqE9EfEbLSKv6VX/3snADe38nfHYKdc/GkpdIf8mtTOSUp3GZGcgjsoSrzg3Rof10TiRC8BkkZbbRA==';
   /// iOS 密钥(同上,取 iOS 端的方案密钥;iOS 端还需配置 BundleId)
-  static const String aliIosSk = '';
+  static const String aliIosSk = 'zKa3BsQxmg6rcAP5Ug08YbeS/au/jpBBKgtOn7DWSoCICAIT+tPBqxAsUywzaa9e0qioO3Mxl880Z0+6vSUeKEHm0yxX1ZR+CYaYrS7A67P0w1oqXkZqqRNy5z6wMu2/kW/Nh1zaO5gWzUwWAV/PHTrfGYdUf6BkqodCbhxp3PwXKwBYe3iLKhYnFZb7yjI66ouVmDiIt7BbVI0WQCMiKx1fJLQfXxd0iwVmocr9QjS17vKB3UikXBKFkTNkt00loOHe7NfYqeM=';
 
   // ===== 阿里云移动推送(离线推送) =====
   /// EMAS 控制台 AppKey(阿里云 EMAS -> 创建应用 -> 按包名 com.chongloutech.lehui)
