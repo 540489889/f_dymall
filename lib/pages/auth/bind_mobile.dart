@@ -1,5 +1,5 @@
-/// 微信登录未绑定账号 -> 绑定手机号(对齐 H5: pages_tool/login/login.vue)
-/// * 微信授权拿到的 openid/unionid/nickname/headimg + 手机号动态码 -> /api/login/appMobileBind
+/// 第三方登录(微信/Apple)未绑定账号 -> 绑定手机号(对齐 H5: pages_tool/login/index.vue)
+/// * 授权拿到的 openid/unionid/nickname/headimg (+ type: wxopen/apple) + 手机号动态码 -> /api/login/appMobileBind
 /// * 绑定成功即视为登录: 存 token -> 拉会员信息 -> 未绑门店去 /bind_store,否则回首页
 /// * 图形验证码由 /api/config/getCaptchaConfig 的 shop_reception_login 控制开关
 library;
@@ -35,7 +35,7 @@ class BindMobilePage extends StatefulWidget {
 class _BindMobilePageState extends State<BindMobilePage> {
   final authStore = AuthStore.to;
 
-  /// 微信用户信息: {openid, unionid, nickname, headimg, type}
+  /// 第三方授权信息: {openid, unionid?, nickname?, headimg?, type: wxopen/apple}
   Map<String, dynamic> wxInfo = <String, dynamic>{};
 
   final TextEditingController mobileController = TextEditingController();
@@ -72,7 +72,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
   @override
   void initState() {
     super.initState();
-    // 登录页 -10016 跳转时传入微信用户信息
+    // 登录页 -10016 跳转时传入第三方授权信息(微信/Apple)
     final dynamic args = Get.arguments;
     if (args is Map) wxInfo = args.cast<String, dynamic>();
     mobileFocus.addListener(() => setState(() {}));
@@ -225,7 +225,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
     if (dynacodeController.text.trim().isEmpty) return const MapEntry<String, String>('dynacode', '请输入动态码');
     if (dynacodeKey.isEmpty) return const MapEntry<String, String>('dynacode', '请先获取动态码');
     if (wxInfo['openid'] == null && wxInfo['unionid'] == null) {
-      return const MapEntry<String, String>('form', '微信信息缺失,请重新授权登录');
+      return const MapEntry<String, String>('form', '授权信息缺失,请重新登录');
     }
     if (captchaOn && vercodeController.text.trim().isEmpty) {
       return const MapEntry<String, String>('vercode', '请输入验证码');
@@ -357,7 +357,7 @@ class _BindMobilePageState extends State<BindMobilePage> {
           ),
           const SizedBox(height: 6.0),
           Text(
-            '该微信未绑定账号,绑定手机号后即可登录',
+            '该账号未绑定手机号,绑定后即可登录',
             style: TextStyle(fontSize: 13.0, color: Colors.white.withValues(alpha: 0.85), height: 1.2),
           ),
         ],

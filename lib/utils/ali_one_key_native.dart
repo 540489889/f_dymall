@@ -133,6 +133,9 @@ class AliOneKey {
       logBtnOffsetY: btnY,
       logBtnMarginLeftAndRight: 28,
       logBtnLayoutGravity: Gravity.centerHorizntal,
+      // 未勾选协议点登录时的提示: 保留 SDK 原生 toast(它盖在授权页之上,层级正确)。
+      // 该参数 Android 独有,iOS 无效果(与 new-f-cat 一致)。默认隐藏会导致点了没反应。
+      logBtnToastHidden: false,
       // 按钮背景: 主题红->暖橙渐变图; SDK 要求逗号分隔的 3 张(正常/按下/禁用),三态复用同一张
       logBtnBackgroundPath: <String>[
         'assets/images/logo_btn_bg.png',

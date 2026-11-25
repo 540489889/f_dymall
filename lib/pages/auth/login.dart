@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shirne_dialog/shirne_dialog.dart';
+import 'package:sign_in_with_apple/sign_in_with_apple.dart';
 import '../../api/auth.dart';
 import '../../utils/ali_one_key.dart';
 import '../../utils/ali_one_key_error.dart';
@@ -76,6 +77,8 @@ class _LoginState extends State<Login> {
   bool submitting = false;
   // 微信登录中
   bool wxSubmitting = false;
+  // 苹果登录中
+  bool appleSubmitting = false;
   // 阿里云一键登录中
   bool aliSubmitting = false;
   // 微信可用: 端上支持(非web) + 已配置AppID + 已安装微信
@@ -527,6 +530,62 @@ class _LoginState extends State<Login> {
       showError(WxAuth.errorMsg(e));
     } finally {
       if (mounted) setState(() => wxSubmitting = false);
+    }
+  }
+
+  /// 苹果登录(Sign in with Apple): 拉起苹果授权 -> 凭证 -> /api/login/appleLogin
+  /// * 接口与 H5 pages_tool/login/index.vue 一致,参数做兼容映射:
+  ///   openid = userIdentifier(后端按 uni-app 的 openid 取),同时带 identityToken/authorizationCode/姓名邮箱
+  /// * 苹果仅在首次授权返回 email/姓名,后续只返回 userIdentifier,后端应以其为准
+  /// * code == -10016 未绑定账号: 与微信同构,type='apple' 跳绑定手机号页
+  Future<void> handleAppleLogin() async {
+    if (agreementShow && !agreed) {
+      await showAgreementDialog(onAgreed: handleAppleLogin);
+      return;
+    }
+    if (appleSubmitting || anySocialBusy) return;
+    setState(() => appleSubmitting = true);
+    try {
+      final AuthorizationCredentialAppleID credential =
+          await SignInWithApple.getAppleIDCredential(
+        scopes: <AppleIDAuthorizationScopes>[
+          AppleIDAuthorizationScopes.email,
+          AppleIDAuthorizationScopes.fullName,
+        ],
+      );
+      final String user = (credential.userIdentifier ?? '').trim();
+      if (user.isEmpty) throw '苹果授权信息不完整(缺少用户标识)';
+
+      final Map<String, dynamic> res = await AuthApi.appleLogin(
+        openid: user,
+        identityToken: credential.identityToken,
+        authorizationCode: credential.authorizationCode,
+        email: credential.email,
+        givenName: credential.givenName,
+        familyName: credential.familyName,
+      );
+      final String resCode = '${res['code'] ?? ''}';
+      final dynamic data = res['data'];
+      final String message = '${res['message'] ?? ''}';
+      final String token = data is Map ? '${data['token'] ?? ''}'.trim() : '';
+
+      if (resCode == '-10016') {
+        if (!mounted) return;
+        final Map<String, dynamic> appleInfo =
+            data is Map ? data.cast<String, dynamic>() : <String, dynamic>{};
+        // 后端返回的 data 里不一定带 openid,补上苹果的用户标识供绑定页校验/提交
+        appleInfo.putIfAbsent('openid', () => user);
+        appleInfo['type'] = 'apple';
+        Get.toNamed('/bind_mobile', arguments: appleInfo);
+        return;
+      }
+      if (token.isEmpty) throw message.isEmpty ? '苹果登录失败' : message;
+      await _finishLogin(token, data);
+    } catch (e) {
+      if (!mounted) return;
+      showError('苹果登录失败: ${WxAuth.errorMsg(e)}');
+    } finally {
+      if (mounted) setState(() => appleSubmitting = false);
     }
   }
 
@@ -1154,9 +1213,9 @@ class _LoginState extends State<Login> {
   /// 是否展示「本机号码一键登录」文字入口(端上支持阿里云一键登录时)
   bool get showOneKeyEntry => AliOneKey.available;
 
-  /// 任一第三方登录入口处于请求中(微信 / 一键登录): 期间禁用其它登录入口,
+  /// 任一第三方登录入口处于请求中(微信 / Apple / 一键登录): 期间禁用其它登录入口,
   /// 避免并发点击(如点微信登录的同时又去点 Apple / 一键登录 / 主登录按钮)
-  bool get anySocialBusy => wxSubmitting || aliSubmitting;
+  bool get anySocialBusy => wxSubmitting || appleSubmitting || aliSubmitting;
 
   /// 其他登录方式: 微信授权登录 / Apple登录
   /// * 没装微信就不显示微信;设备不支持 Apple 登录就不显示 Apple;两个都没有则整块不展示
@@ -1195,8 +1254,8 @@ class _LoginState extends State<Login> {
                   text: 'Apple登录',
                   icon: Icons.apple,
                   bgColor: const Color(0xFF1C1C1E),
-                  onTap: anySocialBusy ? null : () => MyDialog.toast('Apple登录功能开发中'),
-                  loading: false,
+                  onTap: anySocialBusy ? null : handleAppleLogin,
+                  loading: appleSubmitting,
                 ),
               ),
           ],

@@ -1,0 +1,106 @@
+apply plugin: 'com.android.library'
+group 'com.sean.rao.ali_auth'
+version '1.3.9'
+
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+//        google()
+//        jcenter()
+        maven { url 'https://dl.bintray.com/jetbrains/anko'}
+        maven { url 'https://download.flutter.io'}
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:4.1.3'
+    }
+}
+
+// 定义一个方法, 用于获取当前moudle的dir
+def getCurrentProjectDir() {
+    String result = ""
+    rootProject.allprojects { project ->
+        if (project.properties.get("identityPath").toString() == ":ali_auth") { // 这里是flutter的约定, 插件的module名是插件名, :是gradle的约定. project前加:
+            result = project.properties.get("projectDir").toString()
+        }
+    }
+    return result
+}
+
+rootProject.allprojects {
+    def dir = getCurrentProjectDir()
+    repositories {
+        mavenLocal()
+        mavenCentral()
+//        google()
+//        jcenter()
+        maven { url 'https://dl.bintray.com/jetbrains/anko'}
+        maven { url 'https://download.flutter.io'}
+        maven { url 'https://maven.aliyun.com/repository/public' }
+        maven { url 'https://maven.aliyun.com/repository/google' }
+
+        // 一键登录本地依赖
+        flatDir {
+            dirs project(':ali_auth').file('libs')
+        }
+    }
+}
+
+android {
+    if (project.android.hasProperty("namespace")) {
+        namespace = "com.sean.rao.ali_auth"
+    }
+
+    compileSdkVersion 35
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+    }
+
+    aaptOptions {
+        noCompress "mov"  //表示不让aapt压缩的文件后缀
+    }
+
+    buildTypes {
+        release {
+            debuggable false
+            // minifyEnabled true
+            proguardFile file('proguard-rules.pro')
+            zipAlignEnabled false
+            multiDexEnabled true
+        }
+
+        debug {
+            // minifyEnabled false
+            zipAlignEnabled false
+            multiDexEnabled true
+        }
+    }
+
+    dependencies {
+        implementation "androidx.appcompat:appcompat:1.3.0"
+
+        // 兼容安卓版本的fastjson库
+        implementation "com.alibaba.fastjson2:fastjson2:2.0.51.android5"
+        //    implementation 'com.google.code.gson:gson:2.10.1'
+        //    implementation 'com.alibaba:fastjson:1.2.83'
+
+        implementation(name: "auth_number_product-${authLibVersion}-release", ext:'aar')
+        implementation(name: "logger-${loggerVersion}-release", ext:'aar')
+        implementation(name: "main-${mainVersion}-release", ext:'aar')
+
+        // 吐司框架：https://github.com/getActivity/Toaster
+        // implementation 'com.github.getActivity:Toaster:12.2'
+
+        // uc的crash收集库，客户可自行选择是否需要集成
+        // implementation 'com.ucweb.wpk:crashsdk:3.2.2.2'
+    }
+}

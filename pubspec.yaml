@@ -49,6 +49,8 @@ dependencies:
   tencent_rtc_sdk: ^13.5.2
   # 直播连麦: 进房前申请相机 / 麦克风权限
   permission_handler: ^13.0.2
+  # iOS 苹果登录(Sign in with Apple): 接口 /api/login/appleLogin 与 H5 一致
+  sign_in_with_apple: ^8.1.0
   # 直播间/连麦期间保持屏幕常亮(Android 用 FLAG_KEEP_SCREEN_ON, iOS 用 idleTimerDisabled)
   wakelock_plus: ^1.3.3
   # GroMore 聚合广告SDK(穿山甲/巨量引擎): 赚钱页的激励视频/插屏/Banner
@@ -176,3 +178,10 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# 阿里云号码认证插件: 使用本地 fork(基于 pub 1.3.9)
+# 修复 iOS 端「未勾选协议点登录无提示」(pub 原版把 toast 注释掉了),
+# fork 在 iOS 原生层实现了 showProtocolToast,与 new-f-cat 一致。
+dependency_overrides:
+  ali_auth:
+    path: local_patches/ali_auth

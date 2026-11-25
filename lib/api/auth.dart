@@ -176,6 +176,32 @@ class AuthApi {
     );
   }
 
+  /// APP苹果登录(/api/login/appleLogin, 与 H5 pages_tool/login/index.vue 同接口)
+  /// * userInfo 为 uni-app Apple 登录 user info 的等价字段(兼容映射):
+  ///   openid(=userIdentifier) / identityToken / authorizationCode / email / givenName / familyName
+  /// * 返回原始响应 {code, message, data}: code >= 0 成功(data.token);
+  ///   code == -10016 未绑定账号(data 带 openid 等,前端 type='apple' 跳绑定手机号)
+  static Future<Map<String, dynamic>> appleLogin({
+    required String openid,
+    String? identityToken,
+    String? authorizationCode,
+    String? email,
+    String? givenName,
+    String? familyName,
+  }) {
+    return Request().postRaw(
+      '/api/login/appleLogin',
+      data: <String, dynamic>{
+        'openid': openid,
+        if (identityToken != null && identityToken.isNotEmpty) 'identityToken': identityToken,
+        if (authorizationCode != null && authorizationCode.isNotEmpty) 'authorizationCode': authorizationCode,
+        if (email != null && email.isNotEmpty) 'email': email,
+        if (givenName != null && givenName.isNotEmpty) 'givenName': givenName,
+        if (familyName != null && familyName.isNotEmpty) 'familyName': familyName,
+      },
+    );
+  }
+
   /// APP一键登录(阿里云号码认证, /api/login/phoneAuthLogin)
   /// * [accessToken] 阿里云授权页取到的 accessToken,后端用它换手机号再换登录态
   static Future<Map<String, dynamic>> phoneAuthLogin({
