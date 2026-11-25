@@ -20,6 +20,23 @@ class Ads {
   static bool get supported => !kIsWeb;
 
   static bool _inited = false;
+
+  /// 按平台选择广告 ID: iOS 与 Android 是 GroMore 后台两套独立应用/广告位,不能混用。
+  /// * iOS 的 ID 未填(空串)时,currentAppId 为空 -> enabled=false -> 静默跳过广告,不报错
+  static void _applyPlatformIds() {
+    if (Platform.isIOS) {
+      AdsConfig.currentAppId = AdsConfig.iosAppId;
+      AdsConfig.currentRewardVideoId = AdsConfig.iosRewardVideoId;
+      AdsConfig.currentInterstitialId = AdsConfig.iosInterstitialId;
+      AdsConfig.currentBannerId = AdsConfig.iosBannerId;
+    } else {
+      AdsConfig.currentAppId = AdsConfig.androidAppId;
+      AdsConfig.currentRewardVideoId = AdsConfig.androidRewardVideoId;
+      AdsConfig.currentInterstitialId = AdsConfig.androidInterstitialId;
+      AdsConfig.currentBannerId = AdsConfig.androidBannerId;
+    }
+  }
+
   /// SDK 是否初始化成功(失败时请求广告必然报错)
   static bool _sdkReady = false;
   /// 对外只读: 内容SDK(pangrowth_content)初始化前要确认广告SDK已就绪
@@ -35,8 +52,10 @@ class Ads {
       debugPrint('[ads] 当前平台不支持广告SDK(H5/桌面端), 跳过初始化');
       return false;
     }
+    // 先按平台选 ID: iOS/Android 各用各的 appId 与广告位
+    _applyPlatformIds();
     if (!AdsConfig.enabled) {
-      debugPrint('[ads] 未配置 appId, 跳过初始化');
+      debugPrint('[ads] 当前平台(${Platform.isIOS ? 'iOS' : 'Android'})未配置 appId, 跳过初始化');
       return false;
     }
     // 开发调试: 临时关闭穿山甲, 不初始化也不请求广告(见 AdsConfig.debugDisable)
@@ -67,12 +86,12 @@ class Ads {
     // iOS 追踪授权
     if (Platform.isIOS) await GromoreAds.requestIDFA;
     final bool ok = await GromoreAds.initAd(
-      AdsConfig.appId,
+      AdsConfig.currentAppId,
       useMediation: true,
       debugMode: kDebugMode,
     );
     _sdkReady = ok;
-    debugPrint('[ads] SDK初始化 appId=${AdsConfig.appId} useMediation=true result=$ok');
+    debugPrint('[ads] SDK初始化 appId=${AdsConfig.currentAppId} useMediation=true result=$ok');
     // Android 动态权限(定位/存储等)
     if (Platform.isAndroid) await GromoreAds.requestPermissionIfNecessary;
     _inited = true;
@@ -82,7 +101,7 @@ class Ads {
   /// 激励视频: true = 完整看完, 可以发奖励
   /// * GroMore 需要先 load 再 show; 收到奖励回调即算完成, 关闭/跳过/出错都算未完成
   static Future<bool> showRewardVideo({String customData = '', String userId = ''}) async {
-    if (!await init() || AdsConfig.rewardVideoId.isEmpty) return false;
+    if (!await init() || AdsConfig.currentRewardVideoId.isEmpty) return false;
     if (!_sdkReady) {
       debugPrint('[ads] SDK未就绪, 不发起激励视频请求(先看上面的 SDK初始化 result)');
       return false;
@@ -95,7 +114,7 @@ class Ads {
     }
 
     final AdEventSubscription sub = GromoreAds.onRewardVideoEvents(
-      AdsConfig.rewardVideoId,
+      AdsConfig.currentRewardVideoId,
       onRewarded: (AdRewardEvent event) => finish(true),
       onSkipped: (AdEvent event) => finish(false),
       onClosed: (AdEvent event) => finish(false),
@@ -109,24 +128,24 @@ class Ads {
     bool loaded = false;
     try {
       loaded = await GromoreAds.loadRewardVideoAd(
-        AdsConfig.rewardVideoId,
+        AdsConfig.currentRewardVideoId,
         customData: customData,
         userId: userId,
       );
     } catch (e) {
       // 原生侧加载失败会抛 PlatformException(LOAD_ERROR), 这里兜住避免变成未捕获异常
-      debugPrint('[ads] 激励视频加载异常 posId=${AdsConfig.rewardVideoId} err=$e');
+      debugPrint('[ads] 激励视频加载异常 posId=${AdsConfig.currentRewardVideoId} err=$e');
       final String s = e.toString();
       final RegExpMatch? m = RegExp(r'(\d{5})\s*,').firstMatch(s);
       if (m != null) lastErrorCode = int.tryParse(m.group(1)!) ?? -1;
       lastErrorMessage = s;
     }
-    debugPrint('[ads] 激励视频加载 posId=${AdsConfig.rewardVideoId} loaded=$loaded');
+    debugPrint('[ads] 激励视频加载 posId=${AdsConfig.currentRewardVideoId} loaded=$loaded');
     if (loaded) {
       try {
-        await GromoreAds.showRewardVideoAd(AdsConfig.rewardVideoId);
+        await GromoreAds.showRewardVideoAd(AdsConfig.currentRewardVideoId);
       } catch (e) {
-        debugPrint('[ads] 激励视频展示异常 posId=${AdsConfig.rewardVideoId} err=$e');
+        debugPrint('[ads] 激励视频展示异常 posId=${AdsConfig.currentRewardVideoId} err=$e');
         finish(false);
       }
     } else {
@@ -141,11 +160,11 @@ class Ads {
 
   /// 插屏广告: 加载 -> 展示
   static Future<void> showInterstitial() async {
-    if (!await init() || AdsConfig.interstitialId.isEmpty) return;
+    if (!await init() || AdsConfig.currentInterstitialId.isEmpty) return;
     if (!_sdkReady) return;
-    final bool loaded = await GromoreAds.loadInterstitialAd(AdsConfig.interstitialId);
-    debugPrint('[ads] 插屏加载 posId=${AdsConfig.interstitialId} loaded=$loaded');
-    if (loaded) await GromoreAds.showInterstitialAd(AdsConfig.interstitialId);
+    final bool loaded = await GromoreAds.loadInterstitialAd(AdsConfig.currentInterstitialId);
+    debugPrint('[ads] 插屏加载 posId=${AdsConfig.currentInterstitialId} loaded=$loaded');
+    if (loaded) await GromoreAds.showInterstitialAd(AdsConfig.currentInterstitialId);
   }
 }
 

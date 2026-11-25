@@ -381,7 +381,7 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
                 // SliverToBoxAdapter(child: _buildWithdraw()),
                 SliverToBoxAdapter(child: _buildHotTasks()),
                 // 横幅广告位(暂时不需要, 注释掉)
-                // if (AdsConfig.enabled && AdsConfig.bannerId.isNotEmpty)
+                // if (AdsConfig.enabled && AdsConfig.currentBannerId.isNotEmpty)
                 //   SliverToBoxAdapter(child: _buildBanner()),
                 const SliverToBoxAdapter(child: SizedBox(height: 24.0)),
               ],
@@ -1074,7 +1074,7 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
         if (!mounted) return;
         if (!rewarded) {
           // 区分三种 false: 没配广告位 / 广告没拉起来(有 errCode) / 视频没看完
-          final String msg = AdsConfig.rewardVideoId.isEmpty
+          final String msg = AdsConfig.currentRewardVideoId.isEmpty
               ? '激励视频广告位未配置'
               : (Ads.lastErrorCode == 0 && Ads.lastErrorMessage.isEmpty
                   ? '看完视频才能领取奖励'
@@ -1088,7 +1088,7 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
       } else {
         await Ads.showInterstitial();
         if (!mounted) return;
-        if (AdsConfig.interstitialId.isEmpty) MyDialog.toast('插屏广告位未配置');
+        if (AdsConfig.currentInterstitialId.isEmpty) MyDialog.toast('插屏广告位未配置');
         await refreshAll();
       }
     } finally {
@@ -1112,7 +1112,7 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
         borderRadius: BorderRadius.circular(16.0),
       ),
       child: AdsBanner(
-        posId: AdsConfig.bannerId,
+        posId: AdsConfig.currentBannerId,
         width: width,
         height: height,
         refreshSeconds: 30,
