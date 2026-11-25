@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../controller/video_store.dart';
@@ -46,7 +47,27 @@ class _LayoutState extends State<Layout> {
   void dispose() {
     // 解注册, 避免切 tab 回调指向已销毁的 State
     MainTabController.unregister(_switchToType);
+    // 离开主框架时恢复默认系统栏(避免短剧页隐藏状态栏后污染后续页面)
+    _restoreStatusBar();
     super.dispose();
+  }
+
+  /// 短剧 tab 隐藏状态栏(只留底部), 其它 tab 恢复默认边到边。
+  void _applyStatusBarForTab(int index) {
+    final bool isVideo = index < _pageTypes.length && _pageTypes[index] == 'video';
+    if (isVideo) {
+      SystemChrome.setEnabledSystemUIMode(
+        SystemUiMode.manual,
+        overlays: <SystemUiOverlay>[SystemUiOverlay.bottom],
+      );
+    } else {
+      _restoreStatusBar();
+    }
+  }
+
+  /// 恢复默认系统栏(与 main.dart / 连麦页一致的 edgeToEdge)
+  void _restoreStatusBar() {
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
   }
 
   /// 外部(推送/深链)按 type 切底部 tab('home'/'video'/'live'/'earn'/'mine'/diy type)
@@ -247,6 +268,9 @@ class _LayoutState extends State<Layout> {
     });
     _syncHomeTabActive();
     videoStore.updateBottomNavigationIndex(index);
+    // 状态栏: 短剧 tab 全屏隐藏 iOS 顶部电量/信号栏, 其它 tab 恢复默认边到边。
+    // * 短剧页在 PageView 里被保活, 切走不会 dispose, 所以必须在这里按 tab 统一切换。
+    _applyStatusBarForTab(index);
     _jumpSafely(index);
     // 切到直播 tab(包括重复点当前 tab)时让直播列表重新拉一次:
     // * 直播页被 KeepAliveWrapper 保活, 不主动刷新的话列表一直停在首次进 tab 时的数据

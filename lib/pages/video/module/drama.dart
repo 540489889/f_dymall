@@ -160,14 +160,15 @@ class _DramaModuleState extends State<DramaModule> {
   Widget build(BuildContext context) {
     // 内容SDK已就绪: 渲染穿山甲短剧滑滑流(全屏上下滑, 顶部推荐/剧场Tab)
     if (Content.ready) {
-      return Scaffold(
-        backgroundColor: Colors.black,
-        body: SizedBox.expand(
-          // SizedBox.expand 兜底: 确保原生 PlatformView 拿到明确尺寸(否则塌成 0 高度白屏)
-          child: Stack(
-            children: [
-              // 原生短剧滑滑流: 顶部铺满(不加 SafeArea / 不传 setTopOffset), 底部也不加内边距。
-              DramaSwipeFlowNativeView(
+      // 不用嵌套 Scaffold(它会按全屏给 SizedBox.expand 尺寸, 原生 PlatformView 随之铺到
+      // TabBar 下面被遮挡)。直接用 MediaQuery 的 viewInsets/button padding 算出
+      // PageView 实际可用高度, 让 PlatformView 严格贴合, 底部正好停在 TabBar 上沿。
+      return ColoredBox(
+        color: Colors.black,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: DramaSwipeFlowNativeView(
                 config: DramaSwipeFlowConfig(
                   channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
                   detailFree: 10, // 免费观看集数
@@ -184,6 +185,7 @@ class _DramaModuleState extends State<DramaModule> {
                 ),
                 listener: _swipeListener,
               ),
+            ),
               // SDK 报错且尚未就绪时, 直接把错误显示出来, 不再静默空白
               if (_swipeError != null && !_swipeReady)
                 Positioned.fill(
@@ -198,8 +200,7 @@ class _DramaModuleState extends State<DramaModule> {
                     ),
                   ),
                 ),
-            ],
-          ),
+          ],
         ),
       );
     }

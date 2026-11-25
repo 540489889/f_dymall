@@ -139,11 +139,21 @@ class Ads {
 
     bool loaded = false;
     try {
-      loaded = await GromoreAds.loadRewardVideoAd(
-        AdsConfig.currentRewardVideoId,
-        customData: customData,
-        userId: userId,
-      );
+      // 关键: iOS 上原生加载回调(didReceiveAd/didFailWithError)可能不回传,
+      // load 会永久挂起 -> adPlaying 一直为 true -> 赚钱页按钮全锁死。
+      // 用 timeout 兜底: 15s 内没加载成功就当失败返回, 保证调用方一定解锁。
+      loaded = await GromoreAds
+          .loadRewardVideoAd(
+            AdsConfig.currentRewardVideoId,
+            customData: customData,
+            userId: userId,
+          )
+          .timeout(const Duration(seconds: 15), onTimeout: () {
+        debugPrint('[ads] 激励视频加载超时(15s) posId=${AdsConfig.currentRewardVideoId}');
+        lastErrorCode = -1;
+        lastErrorMessage = '广告加载超时';
+        return false;
+      });
     } catch (e) {
       // 原生侧加载失败会抛 PlatformException(LOAD_ERROR), 这里兜住避免变成未捕获异常
       debugPrint('[ads] 激励视频加载异常 posId=${AdsConfig.currentRewardVideoId} err=$e');
@@ -161,7 +171,12 @@ class Ads {
     // show 成功即返回: 广告页是全屏原生 VC, 用户看完/关闭后自然回到赚钱页。
     // 不等待任何回调 —— 回调可能永久丢失, 但"展示成功"本身是同步可确认的。
     try {
-      await GromoreAds.showRewardVideoAd(AdsConfig.currentRewardVideoId);
+      await GromoreAds
+          .showRewardVideoAd(AdsConfig.currentRewardVideoId)
+          .timeout(const Duration(seconds: 10), onTimeout: () {
+        debugPrint('[ads] 激励视频展示调用超时(10s) posId=${AdsConfig.currentRewardVideoId}');
+        return true; // 展示调用超时通常意味着广告已经弹出, 按成功处理让调用方解锁
+      });
       debugPrint('[ads] 激励视频展示成功 posId=${AdsConfig.currentRewardVideoId}');
       // 延迟取消订阅, 给事件回传留一点窗口用于记录日志/错误码
       Future<void>.delayed(const Duration(seconds: 10), sub.cancel);
