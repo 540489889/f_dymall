@@ -166,27 +166,23 @@ class _DramaModuleState extends State<DramaModule> {
           // SizedBox.expand 兜底: 确保原生 PlatformView 拿到明确尺寸(否则塌成 0 高度白屏)
           child: Stack(
             children: [
-              // 原生短剧滑滑流: 顶部铺满(不加 SafeArea / 不传 setTopOffset),
-              // 底部留出主框架 TabBar 的高度, 避免短剧卡片/底部信息栏被 TabBar 盖住。
-              Padding(
-                padding: const EdgeInsets.only(bottom: 52.0),
-                child: DramaSwipeFlowNativeView(
-                  config: DramaSwipeFlowConfig(
-                    channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
-                    detailFree: 10, // 免费观看集数
-                    unlockCount: 10, // 每次看激励广告解锁集数
-                    unlockAdMode: 0, // 0=SDK内置广告解锁
-                    autoPlay: true,
-                    hideTopInfo: false, // 显示顶部频道Tab
-                    hideBottomInfo: false, // 显示底部剧名/集数信息
-                    hideEnter: false, // 显示「下一集」按钮
-                    hideLikeButton: false, // 显示点赞
-                    hideFavorButton: false, // 显示收藏
-                    showChangeBtn: true, // 显示换一换
-                    hideBack: true, // 主Tab页无需返回按钮
-                  ),
-                  listener: _swipeListener,
+              // 原生短剧滑滑流: 顶部铺满(不加 SafeArea / 不传 setTopOffset), 底部也不加内边距。
+              DramaSwipeFlowNativeView(
+                config: DramaSwipeFlowConfig(
+                  channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
+                  detailFree: 10, // 免费观看集数
+                  unlockCount: 10, // 每次看激励广告解锁集数
+                  unlockAdMode: 0, // 0=SDK内置广告解锁
+                  autoPlay: true,
+                  hideTopInfo: false, // 显示顶部频道Tab
+                  hideBottomInfo: false, // 显示底部剧名/集数信息
+                  hideEnter: false, // 显示「下一集」按钮
+                  hideLikeButton: false, // 显示点赞
+                  hideFavorButton: false, // 显示收藏
+                  showChangeBtn: true, // 显示换一换
+                  hideBack: true, // 主Tab页无需返回按钮
                 ),
+                listener: _swipeListener,
               ),
               // SDK 报错且尚未就绪时, 直接把错误显示出来, 不再静默空白
               if (_swipeError != null && !_swipeReady)

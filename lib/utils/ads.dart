@@ -108,26 +108,32 @@ class Ads {
     }
     lastErrorCode = 0;
     lastErrorMessage = '';
-    final Completer<bool> completer = Completer<bool>();
-    void finish(bool value) {
-      if (!completer.isCompleted) completer.complete(value);
-    }
 
+    // 事件订阅仅用于采集错误码/日志, 不再用它阻塞调用方:
+    // iOS 广告页弹出/关闭期间 EventSink 常断开, onRewarded/onCompleted/onClosed
+    // 全部不回传, 之前 await completer 会一直挂到超时, 导致赚钱页按钮锁死。
+    // 奖励的最终判定以服务端 progress_num 为准(看完才加进度), 客户端只负责拉起广告 + 事后刷新。
     final AdEventSubscription sub = GromoreAds.onRewardVideoEvents(
       AdsConfig.currentRewardVideoId,
       onShowed: (AdEvent event) {
         debugPrint('[ads] 激励视频已展示 posId=${AdsConfig.currentRewardVideoId}');
       },
-      onRewarded: (AdRewardEvent event) => finish(true),
-      // 播放完成也算看完: iOS 上广告页返回时 EventSink 可能断开,
-      // ServerRewardDidSucceed / DidClose 事件会丢失, 只等它们会让调用方挂到超时。
-      onCompleted: (AdEvent event) => finish(true),
-      onSkipped: (AdEvent event) => finish(false),
-      onClosed: (AdEvent event) => finish(false),
+      onRewarded: (AdRewardEvent event) {
+        debugPrint('[ads] 激励视频发放奖励 posId=${AdsConfig.currentRewardVideoId}');
+      },
+      onCompleted: (AdEvent event) {
+        debugPrint('[ads] 激励视频播放完成 posId=${AdsConfig.currentRewardVideoId}');
+      },
+      onSkipped: (AdEvent event) {
+        debugPrint('[ads] 激励视频跳过 posId=${AdsConfig.currentRewardVideoId}');
+      },
+      onClosed: (AdEvent event) {
+        debugPrint('[ads] 激励视频关闭 posId=${AdsConfig.currentRewardVideoId}');
+      },
       onError: (AdErrorEvent event) {
         lastErrorCode = event.code ?? 0;
         lastErrorMessage = event.message;
-        finish(false);
+        debugPrint('[ads] 激励视频错误 code=${event.code} msg=${event.message}');
       },
     );
 
@@ -147,34 +153,23 @@ class Ads {
       lastErrorMessage = s;
     }
     debugPrint('[ads] 激励视频加载 posId=${AdsConfig.currentRewardVideoId} loaded=$loaded');
-    if (loaded) {
-      try {
-        await GromoreAds.showRewardVideoAd(AdsConfig.currentRewardVideoId);
-      } catch (e) {
-        debugPrint('[ads] 激励视频展示异常 posId=${AdsConfig.currentRewardVideoId} err=$e');
-        finish(false);
-      }
-    } else {
-      finish(false);
+    if (!loaded) {
+      sub.cancel();
+      return false;
     }
 
-    // iOS 广告页是全屏原生 VC: 弹出时 App 进后台, 关闭时必然回前台。
-    // 事件通道(EventSink)在广告页弹出/关闭期间可能断开, onRewarded/onCompleted/onClosed
-    // 全都不回传 -> 只靠事件会挂到超时。用 AppLifecycleState 作第二路信号兜底。
-    final _AdResumeWatcher watcher = _AdResumeWatcher(() {
-      // 延迟一点让原生事件先到; 若已 finish(true) 则这里被 completer 幂等忽略
-      Future<void>.delayed(const Duration(milliseconds: 300), () => finish(false));
-    });
-    WidgetsBinding.instance.addObserver(watcher);
+    // show 成功即返回: 广告页是全屏原生 VC, 用户看完/关闭后自然回到赚钱页。
+    // 不等待任何回调 —— 回调可能永久丢失, 但"展示成功"本身是同步可确认的。
     try {
-      final bool ok = await completer.future.timeout(const Duration(seconds: 20), onTimeout: () {
-        debugPrint('[ads] 激励视频事件超时(20s), 按未完成处理 posId=${AdsConfig.currentRewardVideoId}');
-        return false;
-      });
-      return ok;
-    } finally {
-      WidgetsBinding.instance.removeObserver(watcher);
+      await GromoreAds.showRewardVideoAd(AdsConfig.currentRewardVideoId);
+      debugPrint('[ads] 激励视频展示成功 posId=${AdsConfig.currentRewardVideoId}');
+      // 延迟取消订阅, 给事件回传留一点窗口用于记录日志/错误码
+      Future<void>.delayed(const Duration(seconds: 10), sub.cancel);
+      return true;
+    } catch (e) {
+      debugPrint('[ads] 激励视频展示异常 posId=${AdsConfig.currentRewardVideoId} err=$e');
       sub.cancel();
+      return false;
     }
   }
 
@@ -185,27 +180,6 @@ class Ads {
     final bool loaded = await GromoreAds.loadInterstitialAd(AdsConfig.currentInterstitialId);
     debugPrint('[ads] 插屏加载 posId=${AdsConfig.currentInterstitialId} loaded=$loaded');
     if (loaded) await GromoreAds.showInterstitialAd(AdsConfig.currentInterstitialId);
-  }
-}
-
-/// 激励视频"回前台"监听器:
-/// * iOS 广告页弹出时 App 进入 inactive/paused, 关闭时回到 resumed
-/// * 事件通道断开时它是唯一的结束信号, 避免调用方一直挂起
-class _AdResumeWatcher with WidgetsBindingObserver {
-  _AdResumeWatcher(this.onResumed);
-  final VoidCallback onResumed;
-  bool _wasAway = false;
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.inactive ||
-        state == AppLifecycleState.paused ||
-        state == AppLifecycleState.hidden) {
-      _wasAway = true;
-    } else if (state == AppLifecycleState.resumed && _wasAway) {
-      _wasAway = false;
-      onResumed();
-    }
   }
 }
 

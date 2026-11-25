@@ -1088,17 +1088,16 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
     if (!mounted) return;
     if (adType == 'reward') {
       if (!rewarded) {
-        // 区分三种 false: 没配广告位 / 广告没拉起来(有 errCode) / 视频没看完
+        // 区分两种 false: 没配广告位 / 广告没拉起来(有 errCode)
         final String msg = AdsConfig.currentRewardVideoId.isEmpty
             ? '激励视频广告位未配置'
-            : (Ads.lastErrorCode == 0 && Ads.lastErrorMessage.isEmpty
-                ? '看完视频才能领取奖励'
-                : '广告加载失败，请稍后再试');
+            : '广告加载失败，请稍后再试';
         MyDialog.toast(msg);
         return;
       }
-      // 完成次数 progress_num 与积分奖励由服务端记录,刷新接口拿最新进度
-      MyDialog.toast('视频已看完，奖励发放中');
+      // showRewardVideo 只确认"广告已拉起", 是否看完由服务端按观看记录判定;
+      // 这里中性提示, 进度/奖励以 refreshAll 拿到的服务端 progress_num 为准。
+      MyDialog.toast('广告已结束，正在更新进度');
     } else if (AdsConfig.currentInterstitialId.isEmpty) {
       MyDialog.toast('插屏广告位未配置');
     }
