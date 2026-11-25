@@ -22,7 +22,7 @@ class AdsConfig {
   // ===== iOS(待填: GroMore 后台 iOS 应用下的 appId 与广告位ID) =====
   // 拿到后替换下面的空串;留空时 iOS 端不初始化广告,不展示广告位,业务照常跑
   static const String iosAppId = '5886132';
-  static const String iosRewardVideoId = '104583846';
+  static const String iosRewardVideoId = '104917073';
   static const String iosInterstitialId = '';
   static const String iosBannerId = '104581575';
 
