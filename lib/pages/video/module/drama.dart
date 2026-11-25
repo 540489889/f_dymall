@@ -166,12 +166,10 @@ class _DramaModuleState extends State<DramaModule> {
           // SizedBox.expand 兜底: 确保原生 PlatformView 拿到明确尺寸(否则塌成 0 高度白屏)
           child: Stack(
             children: [
-              // 用 SafeArea 顶部留白: 原生视图整体下移到状态栏之下,
-              // 其顶部Tab在自身 y=0 处绘制, 自然落在状态栏下方。
-              // 注: setTopOffset 仅作用于播放/详情页, 对滑滑流顶部Tab无效, 故此处用 SafeArea。
-              SafeArea(
-                top: true,
-                bottom: false,
+              // 原生短剧滑滑流: 顶部铺满(不加 SafeArea / 不传 setTopOffset),
+              // 底部留出主框架 TabBar 的高度, 避免短剧卡片/底部信息栏被 TabBar 盖住。
+              Padding(
+                padding: const EdgeInsets.only(bottom: 52.0),
                 child: DramaSwipeFlowNativeView(
                   config: DramaSwipeFlowConfig(
                     channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
@@ -186,10 +184,6 @@ class _DramaModuleState extends State<DramaModule> {
                     hideFavorButton: false, // 显示收藏
                     showChangeBtn: true, // 显示换一换
                     hideBack: true, // 主Tab页无需返回按钮
-                    // 不传 setTopOffset: iOS 原生 DramaSwipeFlowPlatformView 会把它写成
-                    // playletConfig.fromTopMargin, 与外层 SafeArea 的状态栏留白叠加,
-                    // 顶部出现双倍状态栏高度的空白(约 100px)。
-                    // SafeArea 已保证原生 view 在状态栏下方, 这里让 SDK 用默认 0。
                   ),
                   listener: _swipeListener,
                 ),

@@ -158,14 +158,24 @@ class Ads {
       finish(false);
     }
 
-    // 兜底: 用户一直不关闭(或 iOS 广告页返回后事件通道断开)时不要一直挂着。
-    // 3 分钟太长: 广告返回后事件丢了会锁住赚钱页任务按钮整整 3 分钟, 表现为"卡死"。
-    final bool ok = await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {
-      debugPrint('[ads] 激励视频事件超时(30s), 按未完成处理 posId=${AdsConfig.currentRewardVideoId}');
-      return false;
+    // iOS 广告页是全屏原生 VC: 弹出时 App 进后台, 关闭时必然回前台。
+    // 事件通道(EventSink)在广告页弹出/关闭期间可能断开, onRewarded/onCompleted/onClosed
+    // 全都不回传 -> 只靠事件会挂到超时。用 AppLifecycleState 作第二路信号兜底。
+    final _AdResumeWatcher watcher = _AdResumeWatcher(() {
+      // 延迟一点让原生事件先到; 若已 finish(true) 则这里被 completer 幂等忽略
+      Future<void>.delayed(const Duration(milliseconds: 300), () => finish(false));
     });
-    sub.cancel();
-    return ok;
+    WidgetsBinding.instance.addObserver(watcher);
+    try {
+      final bool ok = await completer.future.timeout(const Duration(seconds: 20), onTimeout: () {
+        debugPrint('[ads] 激励视频事件超时(20s), 按未完成处理 posId=${AdsConfig.currentRewardVideoId}');
+        return false;
+      });
+      return ok;
+    } finally {
+      WidgetsBinding.instance.removeObserver(watcher);
+      sub.cancel();
+    }
   }
 
   /// 插屏广告: 加载 -> 展示
@@ -175,6 +185,27 @@ class Ads {
     final bool loaded = await GromoreAds.loadInterstitialAd(AdsConfig.currentInterstitialId);
     debugPrint('[ads] 插屏加载 posId=${AdsConfig.currentInterstitialId} loaded=$loaded');
     if (loaded) await GromoreAds.showInterstitialAd(AdsConfig.currentInterstitialId);
+  }
+}
+
+/// 激励视频"回前台"监听器:
+/// * iOS 广告页弹出时 App 进入 inactive/paused, 关闭时回到 resumed
+/// * 事件通道断开时它是唯一的结束信号, 避免调用方一直挂起
+class _AdResumeWatcher with WidgetsBindingObserver {
+  _AdResumeWatcher(this.onResumed);
+  final VoidCallback onResumed;
+  bool _wasAway = false;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      _wasAway = true;
+    } else if (state == AppLifecycleState.resumed && _wasAway) {
+      _wasAway = false;
+      onResumed();
+    }
   }
 }
 

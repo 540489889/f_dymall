@@ -168,6 +168,10 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
     final AppLifecycleState? previous = lastLifecycleState;
     lastLifecycleState = state;
     if (previous != null && previous != AppLifecycleState.resumed && state == AppLifecycleState.resumed) {
+      // 广告页关闭回前台: 强制解锁按钮。
+      // 双保险: 即使 showRewardVideo 的事件/生命周期信号都丢了还挂着,
+      // 也不能让 `if (adPlaying) return` 把任务按钮锁死。
+      if (adPlaying && mounted) setState(() => adPlaying = false);
       unawaited(refreshAll());
     }
   }
