@@ -71,60 +71,76 @@ class AliOneKey {
     }
   }
 
-  /// 阿里云授权页 UI 配置(对齐 H5 univerifyStyle: 主色 + 协议前置勾选文案)
-  /// * 用弹窗模式: AndroidManifest 里授权页 Activity 是 authsdk_activity_dialog 浮窗主题,
-  ///   配 fullPort 会让内容从 y=0 画起, 顶部「本机号码一键登录」标题被状态栏信息遮挡;
-  ///   SDK 导航栏没有偏移参数, statusBarUIFlag / isStatusBarHidden 实测都无法下移标题。
-  ///   弹窗从状态栏下方开始, 标题物理上不与状态栏重叠(插件文档: 弹窗用该主题)。
+  /// 阿里云授权页 UI 配置: 全屏方案(PageType.fullPort)
+  /// * 参考 new-f-cat: 用原生全屏授权页, navHidden 隐藏 SDK 自带导航栏标题
+  ///   (标题无法下移,会与状态栏重叠),改成按屏幕高度自算 logo/号码/按钮/协议偏移,
+  ///   整页从状态栏下方开始排布,视觉上是完整一页且标题不再被状态栏遮挡。
+  /// * statusBarUIFlag 用 LayoutFullscreen + 透明状态栏色,内容延伸到状态栏但由各 offsetY 避开;
+  /// * 背景 assets/images/bg-c.png 铺满;按钮用换成主题红->橙渐变的 logo_btn_bg.png,
+  ///   勾选框用主题红的 checkbox_checked/unchecked.png;backgroundColor 兜底白底。
   static AliAuthModel _config() {
     final view = PlatformDispatcher.instance.views.first;
     final double dpr = view.devicePixelRatio;
-    final double screenW = view.physicalSize.width / dpr;
     final double screenH = view.physicalSize.height / dpr;
-    // viewPadding 不受 SystemUiMode 影响; 部分机型取到 0, 兜底 24dp 状态栏高度
-    final double paddingTop = view.viewPadding.top / dpr;
-    final double safeTop = paddingTop < 24 ? 24.0 : paddingTop;
+    // 以屏幕高度的 1/8 为基准单位,自上而下分布各区块(相对状态栏顶部)
+    final int unit = (screenH / 8).floor();
+    const int logoH = 70;
+    final int logoY = (unit * 0.9).round();
+    final int sloganY = logoY + logoH + (unit * 0.16).round();
+    final int numY = sloganY + (unit * 0.45).round();
+    const int btnH = 48;
+    final int btnY = numY + (unit * 0.8).round();
+    final int switchY = btnY + btnH + (unit * 0.35).round();
     return AliAuthModel(
       Config.aliAndroidSk.trim(),
       Config.aliIosSk.trim(),
       isDebug: kDebugMode,
-      // 不设背景图: 默认是 assets/background_image.jpeg,项目没有这张图会打 FileNotFoundException
-      pageBackgroundPath: null,
+      // 全屏授权页背景: 竖屏暖橙渐变图(顶部橙、中下部浅色),铺满整页;
+      // backgroundColor 作图片加载失败时的兜底白底
+      pageBackgroundPath: 'assets/images/bg-c.png',
+      backgroundImageContentMode: ContentMode.scaleAspectFill,
+      backgroundColor: '#FFFFFF',
       // false: initSdk 后直接拉起授权页;true 需再调 AliAuth.login()
       isDelay: false,
       // 实测该参数没能关掉授权页,页面拿到 token 后会主动调 quit(),这里保留 true 无害
       autoQuitPage: true,
-      pageType: PageType.dialogPort,
-      // 弹窗从状态栏下方开始并铺满剩余屏幕: 满宽、无边距、无圆角、不透明,
-      // 看起来就是整页; 顶部状态栏由系统绘制, 标题不会被遮挡。
-      // 背后的灰色遮罩来自浮窗主题的 backgroundDimEnabled, 由 styles.xml 的 OneKeyAuthPage 关掉
-      dialogWidth: screenW.round(),
-      dialogHeight: (screenH - safeTop).round(),
-      dialogBottom: false,
-      dialogOffsetX: 0,
-      dialogOffsetY: safeTop.round(),
-      dialogCornerRadiusArray: const <int>[0, 0, 0, 0],
-      dialogAlpha: 1.0,
-      pageBackgroundRadius: 0,
-      tapAuthPageMaskClosePage: false,
-      navColor: '#FFFFFF',
-      navText: '本机号码一键登录',
-      navTextColor: '#202020',
-      navTextSize: 17,
+      pageType: PageType.fullPort,
+      // 隐藏 SDK 自带导航栏: 其标题无法下移会与状态栏重叠,全屏自绘各区块代替
+      navHidden: true,
+      statusBarColor: '#00000000',
+      statusBarUIFlag: UIFAG.systemUiFalgLayoutFullscreen,
+      isStatusBarHidden: false,
+      lightColor: true,
+      bottomNavColor: '#FFFFFF',
       logoImgPath: 'assets/images/logo.png',
       logoWidth: 72,
-      logoHeight: 72,
+      logoHeight: logoH,
+      logoOffsetY: logoY,
+      logoScaleType: ScaleType.fitXy,
+      sloganText: '乐惠商城',
+      sloganHidden: false,
+      sloganOffsetY: sloganY,
+      sloganTextColor: '#BBBBBB',
+      sloganTextSize: 13,
       numberColor: '#202020',
       numberSize: 28,
+      numFieldOffsetY: numY,
+      numberLayoutGravity: Gravity.centerHorizntal,
       logBtnText: '本机号码一键登录',
       logBtnTextSize: 16,
       logBtnTextColor: '#FFFFFF',
-      logBtnHeight: 48,
+      logBtnHeight: btnH,
+      logBtnOffsetY: btnY,
       logBtnMarginLeftAndRight: 28,
-      sloganText: '乐惠商城',
-      sloganTextColor: '#BBBBBB',
-      sloganTextSize: 13,
+      logBtnLayoutGravity: Gravity.centerHorizntal,
+      // 按钮背景: 主题红->暖橙渐变图; SDK 要求逗号分隔的 3 张(正常/按下/禁用),三态复用同一张
+      logBtnBackgroundPath: <String>[
+        'assets/images/logo_btn_bg.png',
+        'assets/images/logo_btn_bg.png',
+        'assets/images/logo_btn_bg.png',
+      ].join(','),
       switchAccText: '其他登录方式',
+      switchOffsetY: switchY,
       switchAccTextColor: '#656565',
       switchAccTextSize: 14,
       // 协议(H5 一致的两份协议地址)
@@ -142,11 +158,13 @@ class AliOneKey {
       privacyOperatorIndex: 0,
       protocolLayoutGravity: Gravity.centerHorizntal,
       protocolGravity: Gravity.centerHorizntal,
-      statusBarColor: '#FFFFFF',
-      lightColor: true,
-      // 弹窗模式下状态栏在弹窗之外, 这两项不影响布局; 保留示例全屏配置的取值
-      isStatusBarHidden: false,
-      statusBarUIFlag: UIFAG.systemUiFalgFullscreen,
+      // 主题色勾选框(选中=红底白勾/未选=红色描边圆)
+      checkBoxWidth: 15,
+      checkBoxHeight: 15,
+      checkboxHidden: false,
+      uncheckedImgPath: 'assets/images/checkbox_unchecked.png',
+      checkedImgPath: 'assets/images/checkbox_checked.png',
+      isHiddenCustom: true,
       webNavColor: '#FFFFFF',
       webNavTextColor: '#202020',
       webSupportedJavascript: true,

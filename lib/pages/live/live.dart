@@ -38,6 +38,10 @@ import './components/popup_more.dart';
 import './components/popup_recharge.dart'; // 充值弹窗: 礼物钻石不足时调用
 import './components/popup_redpacket.dart';
 
+// 直播间轻提示统一居中: 传带 endAlign 的 ToastStyle 后,
+// shirne_dialog 内部 bottomIfNoAlign() 就不会再把它覆盖成底部
+final ToastStyle _centerToastStyle = ToastStyle().center();
+
 // 直播间播放器: 进程内单例, 页面销毁时不释放(只停流, 见 _LiveState.dispose)
 //
 // 为什么不能跟页面一起 dispose:
@@ -592,14 +596,14 @@ Future<void> _onFollowTap(int index, Map<String, dynamic> item) async {
   }
   final String memberId = '${item['anchor_member_id'] ?? ''}'.trim();
   if (memberId.isEmpty) {
-    MyDialog.toast('未获取到主播信息');
+    _toast('未获取到主播信息');
     return;
   }
   final bool before = item['isFollow'] == true;
   final Map<String, dynamic> res = await LiveApi.collectLive(memberId: memberId);
   if (!mounted) return;
   if (res['ok'] != true) {
-    MyDialog.toast('${res['message']}');
+    _toast('${res['message']}');
     return;
   }
   // 服务端没下发关注状态就按"原来取反"处理
@@ -608,7 +612,7 @@ Future<void> _onFollowTap(int index, Map<String, dynamic> item) async {
   setState(() {
     item['isFollow'] = after;
   });
-  MyDialog.toast(after ? '关注成功' : '已取消关注');
+  _toast(after ? '关注成功' : '已取消关注');
 }
 
 // 开播时间(转成"开播时刻"), 接口 start_time 有两种含义:
@@ -1966,10 +1970,10 @@ Future<void> _onForbidden() async {
   if (Get.currentRoute == '/live') Get.back();
 }
 
-// 轻提示(直播页为全屏黑底, 统一用底部snackbar)
+// 轻提示(直播页为全屏黑底, 统一用居中 toast)
 void _toast(String message) {
   if (!mounted) return;
-  Get.snackbar('提示', message, snackPosition: SnackPosition.BOTTOM);
+  MyDialog.toast(message, style: _centerToastStyle);
 }
 
 // 发送弹幕评论: {type:'chat', data:{msg}}(与H5 submitSendMsg 一致)

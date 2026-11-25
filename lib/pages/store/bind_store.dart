@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 
 import '../../api/member.dart';
 import '../../controller/auth_store.dart';
+import '../../utils/camera_permission.dart';
 
 class BindStorePage extends StatelessWidget {
   const BindStorePage({super.key});
@@ -224,6 +225,9 @@ class BindStorePage extends StatelessWidget {
   /// 直接使用成熟扫码组件 ai_barcode_scanner(mobile_scanner 的 UI 封装):
   /// 自带全屏取景框、闪光灯、切换镜头、相册识别、权限引导,无需自己写扫码页
   Future<void> _scanToBind(BuildContext context) async {
+    // 隐私合规: 申请相机权限前先弹应用内说明,用户主动确认后才调起扫码
+    if (!await confirmCameraUse('扫描门店二维码完成绑定')) return;
+    if (!context.mounted) return;
     final BarcodeCapture? capture = await showAiBarcodeScanner(
       context,
       // 组件文案默认是英文,未传的字段会保留英文默认值,所以这里逐项覆盖

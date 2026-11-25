@@ -15,6 +15,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../../api/servicer.dart';
 import '../../config/index.dart';
 import '../../controller/auth_store.dart';
+import '../../utils/camera_permission.dart';
 
 class Chat extends StatefulWidget {
   const Chat({super.key});
@@ -299,6 +300,10 @@ class _ChatState extends State<Chat> with WidgetsBindingObserver {
 
   /// 选择并发送图片/视频(AI 模式发媒体会自动转人工)
   Future<void> _pickMedia(ImageSource source, bool isVideo) async {
+    // 隐私合规: 用相机拍摄前先弹应用内说明,用户主动确认后才调起相机申请权限
+    if (source == ImageSource.camera) {
+      if (!await confirmCameraUse(isVideo ? '拍摄视频发送给客服' : '拍摄照片发送给客服')) return;
+    }
     final ImagePicker picker = ImagePicker();
     XFile? file;
     try {

@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../api/live.dart';
+import '../../utils/camera_permission.dart';
 
 class LiveScanPage extends StatefulWidget {
   const LiveScanPage({super.key});
@@ -47,6 +48,9 @@ class _LiveScanPageState extends State<LiveScanPage> {
   /// 扫一扫: 打开全屏扫码,扫到结果后按直播码处理
   Future<void> scan() async {
     if (entering) return;
+    // 隐私合规: 申请相机权限前先弹应用内说明,用户主动确认后才调起扫码(触发权限申请)
+    if (!await confirmCameraUse('扫描直播二维码')) return;
+    if (!mounted) return;
     // 同上: 键盘开着时点扫一扫,先收起来再进扫码界面
     FocusManager.instance.primaryFocus?.unfocus();
     final BarcodeCapture? capture = await showAiBarcodeScanner(

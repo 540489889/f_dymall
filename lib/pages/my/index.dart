@@ -16,6 +16,7 @@ import '../../styles/index.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import '../../controller/app_config.dart';
 import '../../controller/my_preload.dart';
+import '../../utils/camera_permission.dart';
 
 /// 底部导航切到「我的」tab 的刷新信号(由 lib/layouts/index.dart 的 onNavTap 自增)
 /// * 我的页被 PageView 保活, 不主动刷新的话 memberPageConfig 会停在首次进 tab 时的数据
@@ -402,6 +403,9 @@ class _MyPageState extends State<MyPage> {
       Get.toNamed('/login');
       return;
     }
+    // 隐私合规: 申请相机权限前先弹应用内说明,用户主动确认后才调起扫码
+    if (!await confirmCameraUse('扫描收款二维码完成付款')) return;
+    if (!mounted) return;
     final BarcodeCapture? capture = await showAiBarcodeScanner(
       context,
       labels: const ScannerLabels(

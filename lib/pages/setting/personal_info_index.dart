@@ -16,6 +16,7 @@ import 'package:shirne_dialog/shirne_dialog.dart';
 import '../../api/member.dart';
 import '../../controller/auth_store.dart';
 import '../../styles/index.dart';
+import '../../utils/camera_permission.dart';
 import 'edit_nickname.dart';
 import 'edit_account.dart';
 
@@ -409,6 +410,8 @@ class _PersonalInfoIndexPageState extends State<PersonalInfoIndexPage> {
   /// 拍照
   Future<void> _takePhoto() async {
     if (loading) return;
+    // 隐私合规: 申请相机权限前先弹应用内说明,用户主动确认后才调起拍照
+    if (!await confirmCameraUse('拍摄头像')) return;
     final XFile? file = await _picker.pickImage(
       source: ImageSource.camera,
       imageQuality: 85,
