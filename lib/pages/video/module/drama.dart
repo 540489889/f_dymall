@@ -176,7 +176,10 @@ class _DramaModuleState extends State<DramaModule> {
                   unlockAdMode: 0, // 0=SDK内置广告解锁
                   autoPlay: true,
                   hideTopInfo: false, // 显示顶部频道Tab
-                  hideBottomInfo: false, // 显示底部剧名/集数信息
+                  // 隐藏 SDK 底部信息栏(剧名/字幕/点赞): iOS 上它是 SDK 全屏绘制的,
+                  // 位置固定在整个屏幕底部, 会被主框架 TabBar 切掉一截。
+                  // 隐藏后视频画面仍铺满, 不再出现被切断的信息栏。
+                  hideBottomInfo: true,
                   hideEnter: false, // 显示「下一集」按钮
                   hideLikeButton: false, // 显示点赞
                   hideFavorButton: false, // 显示收藏
