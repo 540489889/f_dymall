@@ -43,6 +43,13 @@ target 'Runner' do
   use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+  # 穿山甲内容SDK(短剧)必须依赖带-premium的点播引擎, 否则 start 阶段报
+  # "未依赖TTSDKFramework的premium版本" START_FAILED(error_code=6), 短剧走兜底。
+  # 插件 podspec 里这条依赖被注释掉了, 必须在工程 Podfile 显式声明;
+  # 版本与 pangrowth_content 插件注释保持一致。
+  pod 'TTSDKFramework/Player-SR', '1.42.3.4-premium'
+
   target 'RunnerTests' do
     inherit! :search_paths
   end

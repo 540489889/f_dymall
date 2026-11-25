@@ -24,7 +24,7 @@ class AdsConfig {
   static const String iosAppId = '5886132';
   static const String iosRewardVideoId = '104583846';
   static const String iosInterstitialId = '';
-  static const String iosBannerId = '';
+  static const String iosBannerId = '104581575';
 
   // 开发调试总开关: 临时关掉穿山甲(GroMore 广告SDK + 内容SDK), 避免调试时被大量广告日志/初始化干扰
   // * 置为 true 时 SDK 不初始化、不请求广告、Banner 不渲染, 业务照常跑
