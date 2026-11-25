@@ -24,9 +24,16 @@ class Content {
   /// 兼容旧读法的 getter
   static bool get ready => readyNotifier.value;
 
-  /// 配置文件名(穿山甲后台下载, 如 SDK_Setting_5609594.json)
-  /// * 放到 assets/ 根目录, 文件名必须跟这里一致, 且已在 pubspec 注册 assets/
-  static const String configPath = 'SDK_Setting.json';
+  /// 配置文件名(穿山甲后台按平台下发, Android/iOS 的 site_id 与代码位不同, 不能共用)
+  /// * Android: assets/SDK_Setting.json (site_id=5888700)
+  /// * iOS:     assets/SDK_Setting_ios.json (site_id=5886132), 同时必须放一份到 ios/Runner/
+  ///           并在 Xcode "Copy Bundle Resources" 引用 —— iOS 插件原生层只读 Bundle.main,
+  ///           不读 Flutter 的 flutter_assets。
+  static const String androidConfigPath = 'SDK_Setting.json';
+  static const String iosConfigPath = 'SDK_Setting_ios.json';
+  static String get configPath => defaultTargetPlatform == TargetPlatform.iOS
+      ? iosConfigPath
+      : androidConfigPath;
 
   /// 开关: Android 16+(API36) 是否跳过整个内容SDK(应急兜底用, 一旦打开连短剧也看不了)。
   /// * false = 放开(当前值): 内容SDK正常初始化, 短剧可播放。

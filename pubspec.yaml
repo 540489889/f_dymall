@@ -147,6 +147,7 @@ flutter:
     - assets/images/newico/
     - assets/images/svg/
     - assets/SDK_Setting.json
+    - assets/SDK_Setting_ios.json
 
   # To add assets to your application, add an assets section, like this:
   # assets:
