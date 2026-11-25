@@ -1064,36 +1064,42 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
     }
     final String adType = '${task['adType'] ?? ''}';
     setState(() => adPlaying = true);
+    bool rewarded = false;
     try {
       if (adType == 'reward') {
         // customData 带上 task_id,便于广告服务端回调关联到具体任务
-        final bool rewarded = await Ads.showRewardVideo(
+        rewarded = await Ads.showRewardVideo(
           customData: 'earn_task_${task['task_id'] ?? ''}',
           userId: '$goldCoin',
         );
-        if (!mounted) return;
-        if (!rewarded) {
-          // 区分三种 false: 没配广告位 / 广告没拉起来(有 errCode) / 视频没看完
-          final String msg = AdsConfig.currentRewardVideoId.isEmpty
-              ? '激励视频广告位未配置'
-              : (Ads.lastErrorCode == 0 && Ads.lastErrorMessage.isEmpty
-                  ? '看完视频才能领取奖励'
-                  : '广告加载失败，请稍后再试');
-          MyDialog.toast(msg);
-          return;
-        }
-        // 完成次数 progress_num 与积分奖励由服务端记录,刷新接口拿最新进度
-        MyDialog.toast('视频已看完，奖励发放中');
-        await refreshAll();
       } else {
         await Ads.showInterstitial();
-        if (!mounted) return;
-        if (AdsConfig.currentInterstitialId.isEmpty) MyDialog.toast('插屏广告位未配置');
-        await refreshAll();
+        rewarded = true;
       }
     } finally {
+      // 广告页一返回就解锁按钮: 不把解锁压在 refreshAll() 之后,
+      // 否则网络请求慢/卡住时用户点任务会被 `if (adPlaying) return` 吞掉, 表现为卡死。
       if (mounted) setState(() => adPlaying = false);
     }
+    if (!mounted) return;
+    if (adType == 'reward') {
+      if (!rewarded) {
+        // 区分三种 false: 没配广告位 / 广告没拉起来(有 errCode) / 视频没看完
+        final String msg = AdsConfig.currentRewardVideoId.isEmpty
+            ? '激励视频广告位未配置'
+            : (Ads.lastErrorCode == 0 && Ads.lastErrorMessage.isEmpty
+                ? '看完视频才能领取奖励'
+                : '广告加载失败，请稍后再试');
+        MyDialog.toast(msg);
+        return;
+      }
+      // 完成次数 progress_num 与积分奖励由服务端记录,刷新接口拿最新进度
+      MyDialog.toast('视频已看完，奖励发放中');
+    } else if (AdsConfig.currentInterstitialId.isEmpty) {
+      MyDialog.toast('插屏广告位未配置');
+    }
+    // 刷新走后台, 不阻塞按钮交互
+    unawaited(refreshAll());
   }
 
   // 底部 Banner 广告位(暂时不展示,见 build 里的注释)

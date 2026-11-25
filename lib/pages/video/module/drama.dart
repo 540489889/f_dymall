@@ -186,8 +186,10 @@ class _DramaModuleState extends State<DramaModule> {
                     hideFavorButton: false, // 显示收藏
                     showChangeBtn: true, // 显示换一换
                     hideBack: true, // 主Tab页无需返回按钮
-                    // 同时给详情/播放页顶部留状态栏高度(单位dp)
-                    setTopOffset: MediaQuery.of(context).padding.top.round(),
+                    // 不传 setTopOffset: iOS 原生 DramaSwipeFlowPlatformView 会把它写成
+                    // playletConfig.fromTopMargin, 与外层 SafeArea 的状态栏留白叠加,
+                    // 顶部出现双倍状态栏高度的空白(约 100px)。
+                    // SafeArea 已保证原生 view 在状态栏下方, 这里让 SDK 用默认 0。
                   ),
                   listener: _swipeListener,
                 ),

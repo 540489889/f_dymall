@@ -115,7 +115,13 @@ class Ads {
 
     final AdEventSubscription sub = GromoreAds.onRewardVideoEvents(
       AdsConfig.currentRewardVideoId,
+      onShowed: (AdEvent event) {
+        debugPrint('[ads] 激励视频已展示 posId=${AdsConfig.currentRewardVideoId}');
+      },
       onRewarded: (AdRewardEvent event) => finish(true),
+      // 播放完成也算看完: iOS 上广告页返回时 EventSink 可能断开,
+      // ServerRewardDidSucceed / DidClose 事件会丢失, 只等它们会让调用方挂到超时。
+      onCompleted: (AdEvent event) => finish(true),
       onSkipped: (AdEvent event) => finish(false),
       onClosed: (AdEvent event) => finish(false),
       onError: (AdErrorEvent event) {
@@ -152,8 +158,12 @@ class Ads {
       finish(false);
     }
 
-    // 兜底: 用户一直不关闭(或事件丢失)时不要一直挂着
-    final bool ok = await completer.future.timeout(const Duration(minutes: 3), onTimeout: () => false);
+    // 兜底: 用户一直不关闭(或 iOS 广告页返回后事件通道断开)时不要一直挂着。
+    // 3 分钟太长: 广告返回后事件丢了会锁住赚钱页任务按钮整整 3 分钟, 表现为"卡死"。
+    final bool ok = await completer.future.timeout(const Duration(seconds: 30), onTimeout: () {
+      debugPrint('[ads] 激励视频事件超时(30s), 按未完成处理 posId=${AdsConfig.currentRewardVideoId}');
+      return false;
+    });
     sub.cancel();
     return ok;
   }
