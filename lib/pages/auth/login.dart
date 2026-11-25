@@ -557,7 +557,7 @@ class _LoginState extends State<Login> {
       if (user.isEmpty) throw '苹果授权信息不完整(缺少用户标识)';
 
       final Map<String, dynamic> res = await AuthApi.appleLogin(
-        openid: user,
+        userIdentifier: user,
         identityToken: credential.identityToken,
         authorizationCode: credential.authorizationCode,
         email: credential.email,
@@ -567,7 +567,10 @@ class _LoginState extends State<Login> {
       final String resCode = '${res['code'] ?? ''}';
       final dynamic data = res['data'];
       final String message = '${res['message'] ?? ''}';
-      final String token = data is Map ? '${data['token'] ?? ''}'.trim() : '';
+      // new-f-cat 口径返回 access_token, H5 口径返回 token,两者都兼容
+      final String token = data is Map
+          ? '${data['access_token'] ?? data['token'] ?? ''}'.trim()
+          : '';
 
       if (resCode == '-10016') {
         if (!mounted) return;

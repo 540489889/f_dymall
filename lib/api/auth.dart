@@ -176,13 +176,13 @@ class AuthApi {
     );
   }
 
-  /// APP苹果登录(/api/login/appleLogin, 与 H5 pages_tool/login/index.vue 同接口)
-  /// * userInfo 为 uni-app Apple 登录 user info 的等价字段(兼容映射):
-  ///   openid(=userIdentifier) / identityToken / authorizationCode / email / givenName / familyName
-  /// * 返回原始响应 {code, message, data}: code >= 0 成功(data.token);
-  ///   code == -10016 未绑定账号(data 带 openid 等,前端 type='apple' 跳绑定手机号)
+  /// APP苹果登录: 参数口径对齐 new-f-cat 的 AuthService.loginByApple
+  /// * 用户标识参数用 userIdentifier(后端 @RequestParam 取值);
+  ///   同时带 openid 兼容 H5 /api/login/appleLogin 的旧口径
+  /// * form-urlencoded 提交(form:true),后端以 @RequestParam 接收,不能放 JSON body
+  /// * 返回原始响应 {code, message, data};成功 token 兼容 data.token / data.access_token
   static Future<Map<String, dynamic>> appleLogin({
-    required String openid,
+    required String userIdentifier,
     String? identityToken,
     String? authorizationCode,
     String? email,
@@ -191,8 +191,10 @@ class AuthApi {
   }) {
     return Request().postRaw(
       '/api/login/appleLogin',
+      form: true,
       data: <String, dynamic>{
-        'openid': openid,
+        'userIdentifier': userIdentifier,
+        'openid': userIdentifier,
         if (identityToken != null && identityToken.isNotEmpty) 'identityToken': identityToken,
         if (authorizationCode != null && authorizationCode.isNotEmpty) 'authorizationCode': authorizationCode,
         if (email != null && email.isNotEmpty) 'email': email,
