@@ -571,8 +571,6 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
             Flexible(
               child: Text('我的${AppConfig.to.pointName()}', style: const TextStyle(color: Colors.white70, fontSize: 11.0), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            const SizedBox(width: 2.0),
-            Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
           ],
         ),
         const SizedBox(height: 6.0),
@@ -601,8 +599,6 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
             Flexible(
               child: Text('可提现（元）', style: const TextStyle(color: Colors.white70, fontSize: 11.0), maxLines: 1, overflow: TextOverflow.ellipsis),
             ),
-            const SizedBox(width: 2.0),
-            Icon(Icons.help_outline, color: Colors.white.withAlpha(180), size: 11.0),
           ],
         ),
         const SizedBox(height: 6.0),
@@ -960,33 +956,48 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
                               ),
                             ),
                             const SizedBox(width: 8.0),
-                            GestureDetector(
-                              onTap: done ? null : () => _onTaskTap(task),
-                              behavior: HitTestBehavior.opaque,
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
-                                decoration: BoxDecoration(
-                                  color: done ? const Color(0xFFF5F5F5) : primary,
-                                  borderRadius: BorderRadius.circular(16.0),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: <Widget>[
-                                    Text(
-                                      done ? '已完成' : '${task['btn']}',
-                                      style: TextStyle(
-                                        color: done ? Colors.black38 : Colors.white,
-                                        fontSize: 12.0,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                            Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: <Widget>[
+                                GestureDetector(
+                                  onTap: done ? null : () => _onTaskTap(task),
+                                  behavior: HitTestBehavior.opaque,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(horizontal: 10.0, vertical: 5.0),
+                                    decoration: BoxDecoration(
+                                      color: done ? const Color(0xFFF5F5F5) : primary,
+                                      borderRadius: BorderRadius.circular(16.0),
                                     ),
-                                    if (!done) ...[
-                                      const SizedBox(width: 2.0),
-                                      const Icon(Icons.chevron_right, color: Colors.white, size: 12.0),
-                                    ],
-                                  ],
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: <Widget>[
+                                        Text(
+                                          done ? '已完成' : '${task['btn']}',
+                                          style: TextStyle(
+                                            color: done ? Colors.black38 : Colors.white,
+                                            fontSize: 12.0,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                        if (!done) ...[
+                                          const SizedBox(width: 2.0),
+                                          const Icon(Icons.chevron_right, color: Colors.white, size: 12.0),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                if ('${task['progress_text'] ?? ''}'.isNotEmpty) ...[
+                                  const SizedBox(height: 4.0),
+                                  Text(
+                                    '${task['progress_text']}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(color: Colors.black38, fontSize: 11.0),
+                                  ),
+                                ],
+                              ],
                             ),
                           ],
                         ),

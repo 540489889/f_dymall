@@ -57,10 +57,10 @@ class MemberTaskApi {
     final int limit = int.tryParse('${e['limit_num'] ?? 0}') ?? 0;
     final int complete = int.tryParse('${e['complete_num'] ?? 0}') ?? 0;
     final int progress = int.tryParse('${e['progress_num'] ?? 0}') ?? 0;
+    final String progressText = limit > 0 ? '已完成 $progress/$limit' : '';
     final List<String> descParts = <String>[
       if ('${e['num_text'] ?? ''}'.isNotEmpty) '${e['num_text']}',
       if ('${e['cycle_text'] ?? ''}'.isNotEmpty) '${e['cycle_text']}',
-      if (limit > 0) '已完成 $progress/$limit',
     ];
     return <String, dynamic>{
       'task_id': e['task_id'],
@@ -69,6 +69,7 @@ class MemberTaskApi {
       'icon': '${e['icon'] ?? ''}',
       'title': '${e['name'] ?? ''}',
       'desc': descParts.join('·'),
+      'progress_text': progressText,
       'reward': '${e['reward_text'] ?? ''}',
       'btn': '去完成',
       'done': limit > 0 && progress >= limit,
