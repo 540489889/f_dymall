@@ -20,14 +20,13 @@ import 'controller/earn_preload.dart';
 // 穿山甲广告SDK / 内容SDK(短剧/小视频): 恢复广告时与本文件里的 Ads.init / Content.init 一起生效
 import 'utils/ads.dart';
 import 'utils/content.dart';
+import 'utils/pointer_guard.dart';
 // 引入路由管理
 import 'router/index.dart';
 import 'components/splash_cover.dart';
 import 'utils/app_splash.dart';
 import 'utils/privacy_agreement.dart';
 import 'utils/shortcut.dart';
-// 全局指针守卫: 补发幽灵指针 CANCEL, 修复广告关闭点击穿透后页面卡死
-import 'utils/pointer_guard.dart';
 
 void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
@@ -92,6 +91,10 @@ void main() async {
   // 首启时该 await 会卡住 / 与系统网络授权框互相干扰, 导致 runApp 迟迟不执行 -> 白屏;
   // 二次启动 ATT 已授权会立即返回才正常。所以必须在 runApp 之后再做这类初始化。
   runApp(const MyApp());
+  // 指针守卫: 原生全屏广告(激励视频/插屏)关闭时, 系统会把"关闭"那一下点击穿透给 Flutter,
+  // 但此时 App 已进入 hidden/paused 且抬起事件不会回传 -> Scrollable 永远停在拖动中
+  // -> 内容层被 IgnorePointer 屏蔽 -> 页面能滚动但所有按钮点不动。这里补发 cancel 收尾。
+  PointerGuard.install();
 
   // 首帧绘制完成后再注册桌面长按快捷方式: 保证 GetMaterialApp 已就绪,
   // 冷启动时快捷方式携带的路由也能正确跳转。
@@ -177,8 +180,7 @@ class MyApp extends StatelessWidget {
             // 这里显式给 textDirection,否则默认 AlignmentDirectional.topStart 会报错
             textDirection: TextDirection.ltr,
             children: <Widget>[
-              PointerGuard(
-                child: GetMaterialApp(
+              GetMaterialApp(
                 // 注意: 这里不能靠换 key 重建来应用新的 initialRoute
                 // * navigatorKey 是同一个 GlobalKey, 重建时旧 NavigatorState 会被"接管",
                 //   路由栈仍是 /privacy_agreement, initialRoute 不会生效
@@ -218,16 +220,17 @@ class MyApp extends StatelessWidget {
                 // * 子 widget 自带手势(按钮/列表项)时会在手势竞技场里赢, 这里的 onTap 不会触发, 不影响正常点击
                 // * 滚动时收起另见各页面 ScrollView 的 keyboardDismissBehavior
                 // 全局禁用 Tooltip: 避免顶部返回图标(AppBar 默认 BackButton 等)长按弹出"返回"提示
-                builder: (BuildContext context, Widget? child) => GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
-                  child: TooltipVisibility(
-                    visible: false,
-                    child: child ?? const SizedBox.shrink(),
+                builder: (BuildContext context, Widget? child) => PointerGuard.wrap(
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+                    child: TooltipVisibility(
+                      visible: false,
+                      child: child ?? const SizedBox.shrink(),
+                    ),
                   ),
                 ),
                 navigatorKey: MyDialog.navigatorKey,
-              ),
               ),
               // 启动图遮罩: 仅已同意时展示, 盖在 App 最上层, 首页首屏数据加载完成后淡出
               if (agreed) const SplashCover(),

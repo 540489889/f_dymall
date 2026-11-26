@@ -48,9 +48,7 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
         let height = params["height"] as? CGFloat ?? frame.height
         self.contentView = UIView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         self.contentView.backgroundColor = .black
-        // 默认选集面板可能超出 PlatformView 容器边界, 不能被裁剪
-        self.contentView.clipsToBounds = false
-        self.contentView.layer.masksToBounds = false
+        self.contentView.clipsToBounds = true
 
         super.init()
 
@@ -71,6 +69,10 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
 
         // 初始化剧场控制器
         initializeSwipeFlowController(params: params)
+
+        // 选集弹窗遮挡修复：详情页「选集 >」弹出的面板是 SDK 私有类，
+        // 无公开配置项，这里用运行时探测修正其位置
+        DramaEpisodePanelFixer.start()
     }
 
     // MARK: - FlutterPlatformView
@@ -101,10 +103,16 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
         let hideFavorButton = config["hideFavorButton"] as? Bool ?? false
         let showChangeBtn = config["showChangeBtn"] as? Bool ?? true
         let hideBack = config["hideBack"] as? Bool ?? true
+        // 滑滑流关闭按钮 与 详情页返回键 拆成两个独立开关。
+        // 原实现只有 hideBack: playletConfig.hideBackButton = hideBack,
+        // 且 config.showCloseButton = !hideBack -> 想藏关闭按钮就必然丢掉详情页返回键。
+        // 未显式传入新参数时回退到 hideBack, 保持旧行为不变。
         let hideFeedBack = config["hideFeedBack"] as? Bool ?? hideBack
         let hideDetailBack = config["hideDetailBack"] as? Bool ?? hideBack
         let autoPlay = config["autoPlay"] as? Bool ?? true
-        print("[DramaSwipeFlow] hideFeedBack=\(hideFeedBack) hideDetailBack=\(hideDetailBack) showCloseButton=\(!hideFeedBack)")
+
+        // 原生侧实参日志: 用于确认 Flutter 传入的参数是否真的到达原生
+        print("[DramaSwipeFlow] hideFeedBack=\(hideFeedBack) hideDetailBack=\(hideDetailBack) hideBack=\(hideBack) hideBottomInfo=\(hideBottomInfo) showChangeBtn=\(showChangeBtn) topOffset=\(String(describing: config["setTopOffset"]))")
 
         // 创建短剧详情配置
         let playletConfig = DJXPlayletConfig()
@@ -151,7 +159,7 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
             // 设置是否显示频道切换
             config.shouldHideTabBarView = !showChangeBtn
 
-            // 设置滑滑流页关闭按钮
+            // 设置关闭按钮
             config.showCloseButton = !hideFeedBack
 
             // 隐藏引导手势
@@ -177,8 +185,6 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
         // 设置视图框架
         viewController.view.frame = contentView.bounds
         viewController.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        viewController.view.clipsToBounds = false
-        viewController.view.layer.masksToBounds = false
 
         // 添加到容器视图
         contentView.addSubview(viewController.view)
@@ -248,6 +254,8 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
     // MARK: - Cleanup
 
     private func dispose() {
+        // 停止选集弹窗观察器，避免平台视图销毁后仍在轮询
+        DramaEpisodePanelFixer.stop()
         guard let vc = swipeFlowController else {
             methodChannel?.setMethodCallHandler(nil)
             methodChannel = nil

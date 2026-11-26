@@ -144,7 +144,6 @@ final class DramaPlayerPlatformView: NSObject, FlutterPlatformView, DJXPlayletIn
     func handleOpenEpisodePanel() -> Bool {
         guard let controller = viewController else { return false }
         controller.chooseEpisode()
-        DramaEpisodePanelFixer.shared.revealAfterChooseEpisode()
         return true
     }
 

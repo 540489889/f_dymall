@@ -1,0 +1,368 @@
+PODS:
+  - Ads-CN/BUAdSDK (6.8.1.3)
+  - Ads-CN/CSJMediation (6.8.1.3):
+    - Ads-CN/BUAdSDK
+  - ali_auth (1.3.9):
+    - Flutter
+    - MJExtension
+    - SDWebImage
+  - AlicloudELS (1.0.4)
+  - AlicloudPush (3.2.4):
+    - AlicloudELS (= 1.0.4)
+    - AlicloudUTDID (= 1.6.1.1)
+  - AlicloudUTDID (1.6.1.1)
+  - aliyun_push (0.0.1):
+    - AlicloudPush (< 4.0, >= 3.2.4)
+    - Flutter
+  - BUAdTestMeasurement (6.8.1.3):
+    - Ads-CN/BUAdSDK (= 6.8.1.3)
+  - connectivity_plus (0.0.1):
+    - Flutter
+  - device_info_plus (0.0.1):
+    - Flutter
+  - Flutter (1.0.0)
+  - flutter_local_notifications (0.0.1):
+    - Flutter
+  - fluwx (2.0.5):
+    - Flutter
+    - WechatOpenSDK-XCFramework (~> 2.0.7)
+  - FMDB/Core (2.7.12)
+  - FMDB/standard (2.7.12):
+    - FMDB/Core
+  - gromore_ads (0.0.1):
+    - Ads-CN/CSJMediation (= 6.8.1.3)
+    - BUAdTestMeasurement (= 6.8.1.3)
+    - Flutter
+  - image_gallery_saver_plus (0.0.1):
+    - Flutter
+  - image_picker_ios (0.0.1):
+    - Flutter
+  - media_kit_libs_ios_video (1.0.4):
+    - Flutter
+  - media_kit_video (0.0.1):
+    - Flutter
+  - MJExtension (3.4.2)
+  - MMKV (2.4.3):
+    - MMKVCore (~> 2.4.3)
+  - MMKVCore (2.4.3)
+  - mobile_scanner (7.0.0):
+    - Flutter
+    - FlutterMacOS
+  - OneKit/BaseKit (1.4.2):
+    - OneKit/Service
+  - OneKit/ByteDanceKit/Foundation (1.4.2):
+    - OneKit/Service
+  - OneKit/ByteDanceKit/UIKit (1.4.2):
+    - OneKit/ByteDanceKit/Foundation
+    - OneKit/Service
+  - OneKit/Service (1.4.2)
+  - package_info_plus (0.4.5):
+    - Flutter
+  - Pangrowth/media (5.4.0.0):
+    - PangrowthMedia-premium (= 5.7.4.0)
+  - pangrowth_content (0.0.1):
+    - Flutter
+    - Pangrowth/media (= 5.4.0.0)
+    - PangrowthX/ministory (= 2.8.0.0)
+    - PangrowthX/shortplay (= 2.8.0.0)
+  - PangrowthDJX (2.8.0.0):
+    - PGXToolbox (= 2.8.0.0)
+  - PangrowthMedia-premium (5.7.4.0):
+    - RangersAPM/CN (>= 3.10.6)
+    - RangersAPM/Core (>= 3.10.6)
+    - RangersAPM/Crash (>= 3.10.6)
+    - RangersAPM/EventMonitor (>= 3.10.6)
+    - RangersAPM/HMD (>= 3.10.6)
+    - RangersAPM/Public (>= 3.10.6)
+    - RangersAppLog/Core (>= 6.15.1)
+    - RangersAppLog/Host/CN (>= 6.15.1)
+    - RangersAppLog/Log (>= 6.15.1)
+  - PangrowthMiniStory (2.8.0.0):
+    - FMDB/standard
+    - MMKV
+    - OneKit/BaseKit (>= 1.3.8)
+    - OneKit/ByteDanceKit/UIKit (>= 1.3.8)
+    - PGXToolbox (= 2.8.0.0)
+    - YYCache
+    - YYText
+  - PangrowthX/ministory (2.8.0.0):
+    - Ads-CN/BUAdSDK (>= 5.8.0.9)
+    - PangrowthMiniStory (= 2.8.0.0)
+    - PGXToolbox (= 2.8.0.0)
+  - PangrowthX/shortplay (2.8.0.0):
+    - Ads-CN/BUAdSDK (>= 5.8.0.9)
+    - PangrowthDJX (= 2.8.0.0)
+    - PGXToolbox (= 2.8.0.0)
+    - TTSDKFramework/Player-SR (>= 1.42.3.4-premium)
+  - permission_handler_apple (9.4.8):
+    - Flutter
+  - PGXToolbox (2.8.0.0):
+    - RangersAPM/CN (>= 3.10.6)
+    - RangersAPM/Crash (>= 3.10.6)
+    - RangersAPM/EventMonitor (>= 3.10.6)
+    - RangersAppLog/Host/CN (>= 6.16.3)
+    - RangersAppLog/Log (>= 6.16.3)
+  - quick_actions_ios (0.0.1):
+    - Flutter
+  - RangersAPM/Above (5.2.16)
+  - RangersAPM/CN (5.2.16):
+    - RangersAPM/Core
+    - RangersAPM/Public
+  - RangersAPM/Core (5.2.16):
+    - RangersAPM/HMDLite
+  - RangersAPM/Crash (5.2.16):
+    - RangersAPM/Core
+    - RangersAPM/HMD
+    - RangersAPM/Public
+    - RangersAPM/SessionTracker
+    - RangersAPM/Zip
+  - RangersAPM/EventMonitor (5.2.16):
+    - RangersAPM/Core
+    - RangersAPM/HMD
+    - RangersAPM/Public
+  - RangersAPM/HMD (5.2.16):
+    - RangersAPM/Core
+    - RangersAPM/Public
+  - RangersAPM/HMDLite (5.2.16)
+  - RangersAPM/Public (5.2.16):
+    - RangersAPM/Above
+    - RangersAPM/Core
+    - RangersAPM/HMDLite
+    - RangersAPM/Zyone
+  - RangersAPM/SessionTracker (5.2.16):
+    - RangersAPM/Core
+    - RangersAPM/HMD
+    - RangersAPM/Public
+  - RangersAPM/Zip (5.2.16)
+  - RangersAPM/Zyone (5.2.16)
+  - RangersAppLog/Core (6.16.9):
+    - RangersAppLog/Encryptor/VOLC
+  - RangersAppLog/Encryptor/VOLC (6.16.9)
+  - RangersAppLog/Host/CN (6.16.9):
+    - RangersAppLog/Core
+  - RangersAppLog/Log (6.16.9):
+    - RangersAppLog/Core
+  - SDWebImage (5.21.7):
+    - SDWebImage/Core (= 5.21.7)
+  - SDWebImage/Core (5.21.7)
+  - sign_in_with_apple (0.0.1):
+    - Flutter
+    - FlutterMacOS
+  - sqflite_darwin (0.0.4):
+    - Flutter
+    - FlutterMacOS
+  - super_player (13.5.0):
+    - Flutter
+    - super_player/bare (= 13.5.0)
+  - super_player/bare (13.5.0):
+    - Flutter
+  - super_player/professional (13.5.0):
+    - Flutter
+    - TXLiteAVSDK_Professional
+  - tencent_rtc_sdk (0.0.1):
+    - Flutter
+    - super_player/professional
+    - TXCustomBeautyProcesserPlugin (= 1.0.2)
+    - TXLiteAVSDK_Professional (= 13.5.21355)
+  - TTSDKFramework/BMF (1.42.3.4-premium):
+    - TTSDKFramework/Core
+  - TTSDKFramework/Core (1.42.3.4-premium):
+    - RangersAppLog/Core (~> 6.16.2)
+    - RangersAppLog/Host/CN (~> 6.16.2)
+  - TTSDKFramework/HttpDNS (1.42.3.4-premium)
+  - TTSDKFramework/Player (1.42.3.4-premium):
+    - TTSDKFramework/Core
+    - TTSDKFramework/HttpDNS
+    - TTSDKFramework/PlayerCore
+    - TTSDKFramework/Reachability
+    - TTSDKFramework/TopSignature
+    - TTSDKFramework/VCN
+    - TTSDKFramework/VolcLog
+  - TTSDKFramework/Player-SR (1.42.3.4-premium):
+    - TTSDKFramework/BMF
+    - TTSDKFramework/Player
+  - TTSDKFramework/PlayerCore (1.42.3.4-premium):
+    - TTSDKFramework/Core
+    - TTSDKFramework/Tools
+    - TTSDKFramework/TTFFmpeg
+    - TTSDKFramework/VideoProcessor
+  - TTSDKFramework/Reachability (1.42.3.4-premium)
+  - TTSDKFramework/SSL (1.42.3.4-premium)
+  - TTSDKFramework/Tools (1.42.3.4-premium):
+    - TTSDKFramework/SSL
+  - TTSDKFramework/TopSignature (1.42.3.4-premium)
+  - TTSDKFramework/TTFFmpeg (1.42.3.4-premium):
+    - TTSDKFramework/Tools
+  - TTSDKFramework/VCN (1.42.3.4-premium)
+  - TTSDKFramework/VideoProcessor (1.42.3.4-premium)
+  - TTSDKFramework/VolcLog (1.42.3.4-premium):
+    - TTSDKFramework/SSL
+  - TXCustomBeautyProcesserPlugin (1.0.2)
+  - TXLiteAVSDK_Professional (13.5.21355):
+    - TXLiteAVSDK_Professional/Professional (= 13.5.21355)
+  - TXLiteAVSDK_Professional/Professional (13.5.21355)
+  - url_launcher_ios (0.0.1):
+    - Flutter
+  - wakelock_plus (0.0.1):
+    - Flutter
+  - WechatOpenSDK-XCFramework (2.0.9)
+  - YYCache (1.0.4)
+  - YYText (1.0.7)
+
+DEPENDENCIES:
+  - ali_auth (from `.symlinks/plugins/ali_auth/ios`)
+  - aliyun_push (from `.symlinks/plugins/aliyun_push/ios`)
+  - connectivity_plus (from `.symlinks/plugins/connectivity_plus/ios`)
+  - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
+  - Flutter (from `Flutter`)
+  - flutter_local_notifications (from `.symlinks/plugins/flutter_local_notifications/ios`)
+  - fluwx (from `.symlinks/plugins/fluwx/ios`)
+  - gromore_ads (from `.symlinks/plugins/gromore_ads/ios`)
+  - image_gallery_saver_plus (from `.symlinks/plugins/image_gallery_saver_plus/ios`)
+  - image_picker_ios (from `.symlinks/plugins/image_picker_ios/ios`)
+  - media_kit_libs_ios_video (from `.symlinks/plugins/media_kit_libs_ios_video/ios`)
+  - media_kit_video (from `.symlinks/plugins/media_kit_video/ios`)
+  - mobile_scanner (from `.symlinks/plugins/mobile_scanner/darwin`)
+  - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
+  - pangrowth_content (from `.symlinks/plugins/pangrowth_content/ios`)
+  - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
+  - quick_actions_ios (from `.symlinks/plugins/quick_actions_ios/ios`)
+  - sign_in_with_apple (from `.symlinks/plugins/sign_in_with_apple/darwin`)
+  - sqflite_darwin (from `.symlinks/plugins/sqflite_darwin/darwin`)
+  - super_player (from `.symlinks/plugins/super_player/ios`)
+  - tencent_rtc_sdk (from `.symlinks/plugins/tencent_rtc_sdk/ios`)
+  - TTSDKFramework/Player-SR (= 1.42.3.4-premium)
+  - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
+  - wakelock_plus (from `.symlinks/plugins/wakelock_plus/ios`)
+
+SPEC REPOS:
+  https://github.com/aliyun/aliyun-specs.git:
+    - AlicloudELS
+    - AlicloudPush
+    - AlicloudUTDID
+  https://github.com/volcengine/volcengine-specs.git:
+    - OneKit
+    - Pangrowth
+    - PangrowthDJX
+    - PangrowthMedia-premium
+    - PangrowthMiniStory
+    - PangrowthX
+    - PGXToolbox
+    - RangersAPM
+    - RangersAppLog
+    - TTSDKFramework
+  https://mirrors.tuna.tsinghua.edu.cn/git/CocoaPods/Specs.git:
+    - Ads-CN
+    - BUAdTestMeasurement
+    - FMDB
+    - MJExtension
+    - MMKV
+    - MMKVCore
+    - SDWebImage
+    - TXCustomBeautyProcesserPlugin
+    - TXLiteAVSDK_Professional
+    - WechatOpenSDK-XCFramework
+    - YYCache
+    - YYText
+
+EXTERNAL SOURCES:
+  ali_auth:
+    :path: ".symlinks/plugins/ali_auth/ios"
+  aliyun_push:
+    :path: ".symlinks/plugins/aliyun_push/ios"
+  connectivity_plus:
+    :path: ".symlinks/plugins/connectivity_plus/ios"
+  device_info_plus:
+    :path: ".symlinks/plugins/device_info_plus/ios"
+  Flutter:
+    :path: Flutter
+  flutter_local_notifications:
+    :path: ".symlinks/plugins/flutter_local_notifications/ios"
+  fluwx:
+    :path: ".symlinks/plugins/fluwx/ios"
+  gromore_ads:
+    :path: ".symlinks/plugins/gromore_ads/ios"
+  image_gallery_saver_plus:
+    :path: ".symlinks/plugins/image_gallery_saver_plus/ios"
+  image_picker_ios:
+    :path: ".symlinks/plugins/image_picker_ios/ios"
+  media_kit_libs_ios_video:
+    :path: ".symlinks/plugins/media_kit_libs_ios_video/ios"
+  media_kit_video:
+    :path: ".symlinks/plugins/media_kit_video/ios"
+  mobile_scanner:
+    :path: ".symlinks/plugins/mobile_scanner/darwin"
+  package_info_plus:
+    :path: ".symlinks/plugins/package_info_plus/ios"
+  pangrowth_content:
+    :path: ".symlinks/plugins/pangrowth_content/ios"
+  permission_handler_apple:
+    :path: ".symlinks/plugins/permission_handler_apple/ios"
+  quick_actions_ios:
+    :path: ".symlinks/plugins/quick_actions_ios/ios"
+  sign_in_with_apple:
+    :path: ".symlinks/plugins/sign_in_with_apple/darwin"
+  sqflite_darwin:
+    :path: ".symlinks/plugins/sqflite_darwin/darwin"
+  super_player:
+    :path: ".symlinks/plugins/super_player/ios"
+  tencent_rtc_sdk:
+    :path: ".symlinks/plugins/tencent_rtc_sdk/ios"
+  url_launcher_ios:
+    :path: ".symlinks/plugins/url_launcher_ios/ios"
+  wakelock_plus:
+    :path: ".symlinks/plugins/wakelock_plus/ios"
+
+SPEC CHECKSUMS:
+  Ads-CN: 77ba9b983fada89a222faac15554f61f9c355efd
+  ali_auth: e5774371bac5e8fb6a2edb2a35340ea52705bf7f
+  AlicloudELS: 775f227430b3477b75cc9dcdf3072a6ecfc9577e
+  AlicloudPush: 902e627305ad8793bbf3acc2eb4e640917bbf078
+  AlicloudUTDID: f0cde02afb754d7d3591d2a21bfe0cae8c89bce5
+  aliyun_push: 7eb0b680d9c61586a0d71a411b8f2a7263645b87
+  BUAdTestMeasurement: 251daa10ff45366ec5ca7da3383b76a5053bb786
+  connectivity_plus: 2a701ffec2c0ae28a48cf7540e279787e77c447d
+  device_info_plus: bf2e3232933866d73fe290f2942f2156cdd10342
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  flutter_local_notifications: 4cde75091f6327eb8517fa068a0a5950212d2086
+  fluwx: a5a13492110a977ac907aef2dcecc3a743394c2c
+  FMDB: 728731dd336af3936ce00f91d9d8495f5718a0e6
+  gromore_ads: ac2f2f5bf8573fdcf4cbc15754ef675659e20756
+  image_gallery_saver_plus: ea8cdb961259bb0031c020245194a923afcd0f40
+  image_picker_ios: 4f2f91b01abdb52842a8e277617df877e40f905b
+  media_kit_libs_ios_video: a5fe24bc7875ccd6378a0978c13185e1344651c1
+  media_kit_video: 5da63f157170e5bf303bf85453b7ef6971218a2e
+  MJExtension: e97d164cb411aa9795cf576093a1fa208b4a8dd8
+  MMKV: 2d6d4dd9205ea86bf9d5f3cf5fe6796d880d4710
+  MMKVCore: 065b61d4f942d3b6e1c913c378c120934f315ee4
+  mobile_scanner: 77265f3dc8d580810e91849d4a0811a90467ed5e
+  OneKit: 05d59eb122e247640c35ceb28b300ae27e89cb88
+  package_info_plus: c0502532a26c7662a62a356cebe2692ec5fe4ec4
+  Pangrowth: f5ac3531a50e6cf8e1a697cb9d60f22ce672dc46
+  pangrowth_content: cf2913ae8f3e049ad7bee376634372794d0f9c01
+  PangrowthDJX: f59003005eec9804fbfe87c55eb14b6895adc0de
+  PangrowthMedia-premium: caaba9791075eec4392bcb03a6401675d011b699
+  PangrowthMiniStory: 24abeaaad14fd9e9ef248e1fb3c282311a82d238
+  PangrowthX: 010ebe5bd3761bbe00b29dc4f91d84ca54ed2a8b
+  permission_handler_apple: ee2fe0fd04551b304eb002714ff067c371c822ed
+  PGXToolbox: 375641cd97fbdaf5cd4c36ae7b259d4baa46ac66
+  quick_actions_ios: b49ed09d6362da1bf520dacc204661978a8fc5c2
+  RangersAPM: 3fddb0dc265b40f618acd19b2d45048a2cad3b72
+  RangersAppLog: d4fa640a806e5fef583b07bea2f610684e81161e
+  SDWebImage: e9fc87c1aab89a8ab1bbd74eba378c6f53be8abf
+  sign_in_with_apple: fb98447f3dfb81e2926945ea43a8c9c7205eaca9
+  sqflite_darwin: 5a7236e3b501866c1c9befc6771dfd73ffb8702d
+  super_player: 5b67e62fcd645dbdf56e60cfcede2fe5c88730fb
+  tencent_rtc_sdk: dd631342a2cb50eb897ab6bff1bae351d863e040
+  TTSDKFramework: 3cba00b346c4a9adaa014e26fd081bb8ad9c5314
+  TXCustomBeautyProcesserPlugin: 099393b941cb40eda12b3a80bf6c0319957b1cfd
+  TXLiteAVSDK_Professional: 914aa2e59545c8cdff80ab70c1bc8191c683ecfc
+  url_launcher_ios: bb13df5870e8c4234ca12609d04010a21be43dfa
+  wakelock_plus: 76957ab028e12bfa4e66813c99e46637f367fc7e
+  WechatOpenSDK-XCFramework: 996f8fe4f5ca9d75529546f7246da459ef31aa0d
+  YYCache: 8105b6638f5e849296c71f331ff83891a4942952
+  YYText: 5c461d709e24d55a182d1441c41dc639a18a4849
+
+PODFILE CHECKSUM: d3255ceeeaca6dabb91e99c4c09730f9c083f0f9
+
+COCOAPODS: 1.11.3

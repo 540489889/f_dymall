@@ -180,8 +180,11 @@ class _DramaModuleState extends State<DramaModule> {
           hideLikeButton: false, // 显示点赞
           hideFavorButton: false, // 显示收藏
           showChangeBtn: true, // 显示换一换
-          // 短剧主页是底部 Tab, 不需要左上角返回; 详情页保留返回按钮。
-          hideBack: false, // 兼容旧原生端, 实际优先用下面两个独立开关
+          // Android 短剧是底部 tab, 无需顶部返回; iOS 保留以便详情页返回。
+          hideBack: isAndroid,
+          // 关闭按钮与详情页返回键拆开控制(本地补丁 pangrowth_content 提供):
+          // 滑滑流右上角的 X 没有实际用途(外层已有底部 TabBar 可切走), 隐藏;
+          // 但点进短剧详情(播放器页)必须有返回键, 否则无法退出。
           hideFeedBack: true,
           hideDetailBack: false,
         ),

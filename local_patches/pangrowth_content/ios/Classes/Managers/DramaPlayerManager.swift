@@ -247,7 +247,6 @@ class DramaPlayerManager: NSObject {
         }
 
         controller.chooseEpisode()
-        DramaEpisodePanelFixer.shared.revealAfterChooseEpisode()
         result([
             "success": true,
             "playerId": playerId

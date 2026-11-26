@@ -52,13 +52,19 @@ class DramaSwipeFlowConfig {
   /// 是否显示换一换按钮
   final bool showChangeBtn;
 
-  /// 是否隐藏返回按钮（兼容旧配置的统一开关）
+  /// 是否隐藏返回按钮（兼容旧参数：同时作用于滑滑流关闭按钮与详情页返回键）
   final bool hideBack;
 
-  /// 是否隐藏滑滑流主页左上角关闭/返回按钮
+  /// 是否隐藏滑滑流(瀑布流)右上角的关闭按钮
+  ///
+  /// 不传则跟随 [hideBack]；显式传入时以它为准。
+  /// 原生侧 1.0.3 里关闭按钮是从 hideBack 反推的（!hideBack），
+  /// 会导致「想藏关闭按钮 → 详情页也没返回键」，故拆成独立开关。
   final bool? hideFeedBack;
 
-  /// 是否隐藏短剧详情页左上角返回按钮
+  /// 是否隐藏短剧详情页的返回键
+  ///
+  /// 不传则跟随 [hideBack]；显式传入时以它为准。
   final bool? hideDetailBack;
 
   /// 是否自动播放
@@ -117,12 +123,12 @@ class DramaSwipeFlowConfig {
       'hideFavorButton': hideFavorButton,
       'showChangeBtn': showChangeBtn,
       'hideBack': hideBack,
-      'hideFeedBack': hideFeedBack ?? hideBack,
-      'hideDetailBack': hideDetailBack ?? hideBack,
       'hideRewardDialog': true, // 隐藏SDK奖励对话框，使用自定义对话框
       'autoPlay': autoPlay, // 添加自动播放配置
     };
 
+    if (hideFeedBack != null) map['hideFeedBack'] = hideFeedBack;
+    if (hideDetailBack != null) map['hideDetailBack'] = hideDetailBack;
     if (setTopOffset != null) map['setTopOffset'] = setTopOffset;
     if (setBottomOffset != null) map['setBottomOffset'] = setBottomOffset;
 

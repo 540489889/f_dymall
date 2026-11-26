@@ -137,8 +137,6 @@ internal class DramaSwipeFlowPlatformView(
             val hideFavorButton = (config["hideFavorButton"] as? Boolean) ?: false
             val showChangeBtn = (config["showChangeBtn"] as? Boolean) ?: true
             val hideBack = (config["hideBack"] as? Boolean) ?: true
-            val hideFeedBack = (config["hideFeedBack"] as? Boolean) ?: hideBack
-            val hideDetailBack = (config["hideDetailBack"] as? Boolean) ?: hideBack
             val setTopOffset = (config["setTopOffset"] as? Number)?.toInt() ?: 0
             val setBottomOffset = (config["setBottomOffset"] as? Number)?.toInt() ?: 0
             val autoPlay = (config["autoPlay"] as? Boolean) ?: true
@@ -184,7 +182,7 @@ internal class DramaSwipeFlowPlatformView(
                 hideLikeButton(hideLikeButton)
                 hideFavorButton(hideFavorButton)
 
-                if (hideDetailBack) {
+                if (hideBack) {
                     hideBack(true, null)
                 }
 
@@ -208,7 +206,7 @@ internal class DramaSwipeFlowPlatformView(
                         else -> DJXWidgetDrawParams.DRAW_CHANNEL_TYPE_RECOMMEND
                     }
                 )
-                .hideClose(hideFeedBack, null)
+                .hideClose(hideBack, null)
                 .hideChannelName(!showChangeBtn)
                 .detailConfig(detailConfig)
 

@@ -25,9 +25,6 @@ public class PangrowthContentPlugin: NSObject, FlutterPlugin {
     public static func register(with registrar: FlutterPluginRegistrar) {
         let instance = PangrowthContentPlugin()
 
-        // iOS 短剧选集弹窗层级修复: 必须在 PlatformView 创建前安装
-        DramaEpisodePanelFixer.shared.installIfNeeded()
-
         // 方法通道
         let methodChannel = FlutterMethodChannel(name: methodChannelName, binaryMessenger: registrar.messenger())
         registrar.addMethodCallDelegate(instance, channel: methodChannel)
