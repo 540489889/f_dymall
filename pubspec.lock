@@ -823,10 +823,9 @@ packages:
   pangrowth_content:
     dependency: "direct main"
     description:
-      name: pangrowth_content
-      sha256: a887d519bbf68c1490be4a0f761126598c5c3a2a8eccada6c0d105bdb72c8f52
-      url: "https://pub.dev"
-    source: hosted
+      path: "local_patches/pangrowth_content"
+      relative: true
+    source: path
     version: "1.0.3"
   path:
     dependency: transitive

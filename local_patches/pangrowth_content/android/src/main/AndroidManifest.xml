@@ -1,0 +1,35 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+  package="com.zhecent.pangrowth_content">
+
+  <application>
+    <!-- 短剧聚合页展示Activity -->
+    <activity
+      android:name=".DramaHomeActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+      android:configChanges="orientation|keyboardHidden|screenSize"
+      android:screenOrientation="portrait" />
+
+    <activity
+      android:name=".DramaSwipeActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+      android:configChanges="orientation|keyboardHidden|screenSize"
+      android:screenOrientation="portrait" />
+
+    <activity
+      android:name=".DramaCardActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+      android:configChanges="orientation|keyboardHidden|screenSize"
+      android:screenOrientation="portrait" />
+
+    <activity
+      android:name=".StoryHomeActivity"
+      android:exported="false"
+      android:theme="@android:style/Theme.NoTitleBar.Fullscreen"
+      android:configChanges="orientation|keyboardHidden|screenSize"
+      android:screenOrientation="portrait" />
+  </application>
+
+</manifest>

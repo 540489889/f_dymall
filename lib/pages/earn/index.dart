@@ -53,8 +53,6 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
   // * 金币位 = 会员积分(/api/memberaccount/point 的 point)
   double balanceMoney = 0.0;
   int point = 0;
-  // 广告 SDK userId 演示值(真实奖励与完成次数以服务端任务列表为准)
-  int goldCoin = 12700;
   // 广告播放中: 防止连点重复拉广告
   bool adPlaying = false;
   // 上一次应用生命周期(页面在前台创建,初值 resumed): 只在「非前台 -> 前台」时刷新
@@ -1071,10 +1069,18 @@ class _EarnPageState extends State<EarnPage> with WidgetsBindingObserver {
     bool rewarded = false;
     try {
       if (adType == 'reward') {
-        // customData 带上 task_id,便于广告服务端回调关联到具体任务
+        // 广告服务端回调按 userId 识别会员、按 customData 识别任务;
+        // 这里必须传真实 member_id, 不能再传演示金币值。
+        int memberId = AuthStore.to.memberId;
+        if (memberId <= 0) {
+          await AuthStore.to.loadMemberInfo();
+          memberId = AuthStore.to.memberId;
+        }
+        final String taskId = '${task['task_id'] ?? ''}';
+        debugPrint('[赚钱] 激励广告 userId=member_$memberId task=$taskId');
         rewarded = await Ads.showRewardVideo(
-          customData: 'earn_task_${task['task_id'] ?? ''}',
-          userId: '$goldCoin',
+          customData: 'earn_task_$taskId',
+          userId: memberId > 0 ? '$memberId' : '',
         );
       } else {
         await Ads.showInterstitial();

@@ -26,6 +26,8 @@ import 'components/splash_cover.dart';
 import 'utils/app_splash.dart';
 import 'utils/privacy_agreement.dart';
 import 'utils/shortcut.dart';
+// 全局指针守卫: 补发幽灵指针 CANCEL, 修复广告关闭点击穿透后页面卡死
+import 'utils/pointer_guard.dart';
 
 void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
@@ -175,7 +177,8 @@ class MyApp extends StatelessWidget {
             // 这里显式给 textDirection,否则默认 AlignmentDirectional.topStart 会报错
             textDirection: TextDirection.ltr,
             children: <Widget>[
-              GetMaterialApp(
+              PointerGuard(
+                child: GetMaterialApp(
                 // 注意: 这里不能靠换 key 重建来应用新的 initialRoute
                 // * navigatorKey 是同一个 GlobalKey, 重建时旧 NavigatorState 会被"接管",
                 //   路由栈仍是 /privacy_agreement, initialRoute 不会生效
@@ -224,6 +227,7 @@ class MyApp extends StatelessWidget {
                   ),
                 ),
                 navigatorKey: MyDialog.navigatorKey,
+              ),
               ),
               // 启动图遮罩: 仅已同意时展示, 盖在 App 最上层, 首页首屏数据加载完成后淡出
               if (agreed) const SplashCover(),

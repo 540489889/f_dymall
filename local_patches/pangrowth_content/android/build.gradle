@@ -1,0 +1,104 @@
+group = "com.zhecent.pangrowth_content"
+version = "1.0-SNAPSHOT"
+
+buildscript {
+    ext.kotlin_version = "2.1.0"
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url "https://artifact.bytedance.com/repository/Volcengine"
+        }
+        maven {
+            url "https://artifact.bytedance.com/repository/pangle"
+        }
+    }
+
+    dependencies {
+        classpath("com.android.tools.build:gradle:8.9.1")
+        classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version")
+    }
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+        maven {
+            url "https://artifact.bytedance.com/repository/Volcengine"
+        }
+        maven {
+            url "https://artifact.bytedance.com/repository/pangle"
+        }
+    }
+}
+
+apply plugin: "com.android.library"
+apply plugin: "kotlin-android"
+
+android {
+    namespace = "com.zhecent.pangrowth_content"
+
+    compileSdk = 34
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_11
+        targetCompatibility = JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = JavaVersion.VERSION_11
+    }
+
+    sourceSets {
+        main.java.srcDirs += "src/main/kotlin"
+        test.java.srcDirs += "src/test/kotlin"
+    }
+
+    defaultConfig {
+        minSdk = 21
+    }
+}
+
+configurations.all {
+    //若接入流媒体sdk（小视频、直播）需要force constraint-layout版本
+    //由于依赖gromore_ads插件，约束版本由该插件管理，此处无需强制版本
+    resolutionStrategy {
+        // force约束移除，避免与gromore_ads插件的依赖管理冲突
+    }
+}
+
+dependencies {
+    testImplementation("org.jetbrains.kotlin:kotlin-test")
+    testImplementation("org.mockito:mockito-core:5.0.0")
+
+    // 小视频 sdk https://artifact.bytedance.com/repository/pangle/com/pangle/cn/pangrowth-sv-sdk/maven-metadata.xml
+    implementation ('com.pangle.cn:pangrowth-sdk:4.2.1.0'){
+        exclude group: 'com.pangle.cn', module: 'partner-live-sdk'
+        exclude group: 'com.pangle.cn', module: 'pangrowth-novel-sdk'
+        exclude group: 'com.pangle.cn', module: 'pangrowth-game-sdk'
+        exclude group: 'com.pangle.cn', module: 'pangrowth-luckycat-sdk'
+        exclude group: 'com.pangle.cn', module: 'pangrowth-reward-sdk'
+        exclude group: 'com.pangle.cn', module: 'partner-luckycat-api-sdk'
+        exclude group: 'com.pangle.cn', module: 'pangrowth-luckycat-api'
+    }
+    //内容输出基础 sdk https://artifact.bytedance.com/repository/pangle/com/pangle/cn/pangrowth-base/maven-metadata.xml
+    implementation 'com.pangle.cn:pangrowth-base:2.6.0.0'
+    // 短剧 sdk https://artifact.bytedance.com/repository/pangle/com/pangle/cn/pangrowth-djx-sdk/maven-metadata.xml
+    implementation 'com.pangle.cn:pangrowth-djx-sdk-lite:2.6.0.0'
+    // 短故事 sdk https://artifact.bytedance.com/repository/pangle/com/pangle/cn/pangrowth-nov-sdk/maven-metadata.xml
+    implementation 'com.pangle.cn:pangrowth-nov-sdk:2.6.0.0'
+    // 广告插件（用于广告事件的统一）
+    implementation project(':gromore_ads')
+
+    // 内容SDK特有依赖（最小化原则）
+    implementation('com.volcengine:apm_insight_crash:1.4.4')
+    implementation('com.volcengine:apm_insight_sdk:1.1.5')
+
+    // 根据官方demo添加关键依赖
+    implementation('com.squareup.okhttp3:okhttp:3.10.0')        // 核心：OkHttp支持
+    implementation('com.android.support:appcompat-v7:28.0.0')   // Android支持库
+    implementation('com.android.support:support-v4:28.0.0')     // 支持库v4
+    implementation('com.android.support:recyclerview-v7:28.0.0') // RecyclerView
+    implementation('com.android.support:multidex:1.0.3')        // Multidex支持
+}

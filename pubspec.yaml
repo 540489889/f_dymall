@@ -186,3 +186,7 @@ flutter:
 dependency_overrides:
   ali_auth:
     path: local_patches/ali_auth
+  # 穿山甲内容输出插件: 本地 fork(基于 pub 1.0.3)
+  # 修复 iOS 短剧详情页点击「选集」后默认选集面板被 PlatformView 容器遮挡的问题。
+  pangrowth_content:
+    path: local_patches/pangrowth_content
