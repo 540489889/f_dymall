@@ -4,7 +4,7 @@
 # * 注意: 不能低于 15.0 —— Codemagic 上的 Flutter stable 要求更高的 min deployment target,
 #   13.0 时 pod install 报 "could not find compatible versions for pod Flutter ...
 #   required a higher minimum deployment target"
-source 'https://cdn.cocoapods.org/'
+source 'https://mirrors.tuna.tsinghua.edu.cn/git/CocoaPods/Specs.git'
 source 'https://github.com/volcengine/volcengine-specs.git'
 source 'https://github.com/aliyun/aliyun-specs.git'
 
@@ -61,6 +61,8 @@ post_install do |installer|
     # 直播连麦(TRTC)用到的权限: permission_handler 只编译"被打开"的权限,
     # 不加这两个宏, iOS 上申请相机 / 麦克风会直接报权限未注册(Podfile 是唯一配置入口)
     target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
+      config.build_settings['GCC_WARN_ABOUT_PARENTHESES'] = 'NO'
       config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= [
         '$(inherited)',
         ## dart: PermissionGroup.camera
@@ -68,6 +70,27 @@ post_install do |installer|
         ## dart: PermissionGroup.microphone
         'PERMISSION_MICROPHONE=1',
       ]
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # YYText 1.0.7 的定位缺陷: 源码里写成了 `a < b < c` 这种链式比较,
+  # 在 C/ObjC 里等价于 `(a < b) < c`, 结果恒为 0/1 并被直接赋给 position,
+  # 于是 YYLabel / YYTextView 的点击定位永远落在第 0/1 个字符 -> 文字点选错位。
+  # pod install 每次都会重新解包覆盖该文件, 所以在这里幂等地重打补丁。
+  # ---------------------------------------------------------------------------
+  yylayout_path = File.join(installer.sandbox.root.to_s, 'YYText/YYText/Component/YYTextLayout.m')
+  if File.exist?(yylayout_path)
+    yylayout_src = File.read(yylayout_path)
+    yylayout_fixed = yylayout_src
+      .gsub('position = fabs(left - point.y) < fabs(right - point.y) < (right ? prev : next);',
+            'position = (fabs(left - point.y) < fabs(right - point.y)) ? (right ? prev : next) : position;')
+      .gsub('position = fabs(left - point.x) < fabs(right - point.x) < (right ? prev : next);',
+            'position = (fabs(left - point.x) < fabs(right - point.x)) ? (right ? prev : next) : position;')
+    if yylayout_fixed != yylayout_src
+      File.chmod(0644, yylayout_path) rescue nil
+      File.write(yylayout_path, yylayout_fixed)
+      puts '[Podfile] YYTextLayout.m 链式比较缺陷已修复'
     end
   end
 end

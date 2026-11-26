@@ -1,0 +1,35 @@
+name: pangrowth_content
+description: >-
+  穿山甲内容输出Flutter插件，基于PanGrowth SDK实现短剧播放、小视频等内容功能。
+  Flutter plugin for PanGrowth content platform, supporting drama series, short videos with complete
+  content management and playback capabilities for both Android and iOS.
+version: 1.0.3
+homepage: https://www.zhecent.com/sdks/flutter-pangrowth-content
+repository: https://github.com/Xlxinxi/flutter_pangrowth_content
+documentation: https://www.zhecent.com/sdks/flutter-pangrowth-content
+
+environment:
+  sdk: ^3.9.0
+  flutter: '>=3.3.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  plugin_platform_interface: ^2.0.2
+  gromore_ads: ^1.0.2
+  #gromore_ads:
+  #  path: ../gromore_ads
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.zhecent.pangrowth_content
+        pluginClass: PangrowthContentPlugin
+      ios:
+        pluginClass: PangrowthContentPlugin

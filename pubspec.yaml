@@ -186,3 +186,7 @@ flutter:
 dependency_overrides:
   ali_auth:
     path: local_patches/ali_auth
+  # 短剧: 把「滑滑流关闭按钮」与「详情页返回键」拆成两个独立开关
+  # (pub 上 1.0.3 只有 hideBack 一个参数, 两者被绑死 -> 藏关闭按钮就丢返回键)
+  pangrowth_content:
+    path: local_patches/pangrowth_content
