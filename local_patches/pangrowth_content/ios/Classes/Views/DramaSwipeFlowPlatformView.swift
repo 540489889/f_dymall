@@ -104,6 +104,7 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
         let hideFeedBack = config["hideFeedBack"] as? Bool ?? hideBack
         let hideDetailBack = config["hideDetailBack"] as? Bool ?? hideBack
         let autoPlay = config["autoPlay"] as? Bool ?? true
+        print("[DramaSwipeFlow] hideFeedBack=\(hideFeedBack) hideDetailBack=\(hideDetailBack) showCloseButton=\(!hideFeedBack)")
 
         // 创建短剧详情配置
         let playletConfig = DJXPlayletConfig()
