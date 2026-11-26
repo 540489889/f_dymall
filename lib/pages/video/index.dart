@@ -17,8 +17,8 @@ class _VideoPageState extends State<VideoPage> {
   @override
   Widget build(BuildContext context) {
     // 状态栏图标(时间/电量)颜色跟随内容SDK就绪状态:
-    // * 就绪 -> 黑底短剧, 用白色图标(SystemUiOverlayStyle.light)
-    // * 未就绪 -> 米色兜底页, 用深色图标(SystemUiOverlayStyle.dark)
+    // * 就绪 -> 黑底短剧(含安卓让出的顶部状态栏条也是黑底), 用白色图标(light)
+    // * 未就绪 -> 米色兜底页, 用深色图标(dark)
     // 用 ValueListenableBuilder 监听 Content.ready, 隐私同意后延迟初始化完成会自动切换。
     // 放在 VideoPage 这一层: AnnotatedRegion 随 tab 切换自动还原, 不会污染其它页面状态栏。
     return ValueListenableBuilder<bool>(

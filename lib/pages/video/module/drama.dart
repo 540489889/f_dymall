@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -160,49 +161,56 @@ class _DramaModuleState extends State<DramaModule> {
   Widget build(BuildContext context) {
     // 内容SDK已就绪: 渲染穿山甲短剧滑滑流(全屏上下滑, 顶部推荐/剧场Tab)
     if (Content.ready) {
-      // 不用嵌套 Scaffold(它会按全屏给 SizedBox.expand 尺寸, 原生 PlatformView 随之铺到
-      // TabBar 下面被遮挡)。直接用 MediaQuery 的 viewInsets/button padding 算出
-      // PageView 实际可用高度, 让 PlatformView 严格贴合, 底部正好停在 TabBar 上沿。
+      final bool isAndroid = defaultTargetPlatform == TargetPlatform.android;
+      final int statusBarH = MediaQuery.of(context).viewPadding.top.round();
+      // iOS: edgeToEdge 沉浸, 视频铺满状态栏后, setTopOffset 让 Tab 避开图标。
+      // Android: 状态栏正常占位, 插件 setTopOffset 管不到滑滑流 Tab, 故用 Flutter
+      // 顶部 Padding(黑条) 把整个原生视图下移到状态栏下方, Tab 才不会被图标盖住。
+      final DramaSwipeFlowNativeView swipeView = DramaSwipeFlowNativeView(
+        config: DramaSwipeFlowConfig(
+          channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
+          detailFree: 10, // 免费观看集数
+          unlockCount: 10, // 每次看激励广告解锁集数
+          unlockAdMode: 0, // 0=SDK内置广告解锁
+          autoPlay: true,
+          hideTopInfo: false, // 显示顶部频道Tab
+          setTopOffset: statusBarH, // 顶部偏移(iOS fromTopMargin / Android 详情页)
+          hideBottomInfo: false, // 显示底部剧名/集数信息
+          hideEnter: false, // 显示「下一集」按钮
+          hideLikeButton: false, // 显示点赞
+          hideFavorButton: false, // 显示收藏
+          showChangeBtn: true, // 显示换一换
+          // Android 短剧是底部 tab, 无需顶部返回; iOS 保留以便详情页返回。
+          hideBack: isAndroid,
+        ),
+        listener: _swipeListener,
+      );
       return ColoredBox(
         color: Colors.black,
         child: Stack(
           children: [
             Positioned.fill(
-              child: DramaSwipeFlowNativeView(
-                config: DramaSwipeFlowConfig(
-                  channelType: 3, // 1推荐 2剧场 3推荐+剧场(顶部两个Tab)
-                  detailFree: 10, // 免费观看集数
-                  unlockCount: 10, // 每次看激励广告解锁集数
-                  unlockAdMode: 0, // 0=SDK内置广告解锁
-                  autoPlay: true,
-                  hideTopInfo: false, // 显示顶部频道Tab
-                  hideBottomInfo: false, // 显示底部剧名/集数信息
-                  hideEnter: false, // 显示「下一集」按钮
-                  hideLikeButton: false, // 显示点赞
-                  hideFavorButton: false, // 显示收藏
-                  showChangeBtn: true, // 显示换一换
-                  // iOS 插件只有 hideBack 一个参数, 同时控制滑滑流关闭按钮和详情页返回按钮。
-                  // 设 true 会导致点进短剧详情后无返回键, 故设 false 保证详情页能返回;
-                  // 代价是滑滑流顶部会多一个 SDK 关闭按钮。
-                  hideBack: false,
-                ),
-                listener: _swipeListener,
-              ),
+              child: isAndroid
+                  ? Padding(
+                      padding: EdgeInsets.only(top: statusBarH.toDouble()),
+                      child: swipeView,
+                    )
+                  : swipeView,
             ),
-              // SDK 报错且尚未就绪时, 直接把错误显示出来, 不再静默空白
-              if (_swipeError != null && !_swipeReady)
-                Positioned.fill(
-                  child: Container(
-                    color: Colors.black,
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.all(24.0),
-                    child: Text(
-                      '短剧加载失败:\n$_swipeError',
-                      style: const TextStyle(color: Colors.white70, fontSize: 13.0),
-                      textAlign: TextAlign.center,
-                    ),
+            // SDK 报错且尚未就绪时, 直接把错误显示出来, 不再静默空白
+            if (_swipeError != null && !_swipeReady)
+              Positioned.fill(
+                child: Container(
+                  color: Colors.black,
+                  alignment: Alignment.center,
+                  padding: const EdgeInsets.all(24.0),
+                  child: Text(
+                    '短剧加载失败:\n$_swipeError',
+                    style: const TextStyle(color: Colors.white70, fontSize: 13.0),
+                    textAlign: TextAlign.center,
                   ),
                 ),
+              ),
           ],
         ),
       );

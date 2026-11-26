@@ -52,22 +52,29 @@ class _LayoutState extends State<Layout> {
     super.dispose();
   }
 
-  /// 短剧 tab 隐藏状态栏(只留底部), 其它 tab 恢复默认边到边。
+  /// 短剧 tab 状态栏策略(按平台):
+  /// * iOS: edgeToEdge, 内容铺到状态栏后(沉浸式), SDK setTopOffset 让 Tab 避开图标。
+  /// * Android: manual + top/bottom(状态栏正常占位), 配合 drama.dart 顶部黑条 Padding,
+  ///   让 SDK 滑滑流 Tab 落在状态栏下方。安卓插件 setTopOffset 只作用于详情页,
+  ///   无法让滑滑流 Tab 避开状态栏, 故不追求沉浸式(否则 Tab 与状态栏重叠)。
+  /// * 切走短剧 tab 必须 _restoreStatusBar() 恢复 manual。
   void _applyStatusBarForTab(int index) {
     final bool isVideo = index < _pageTypes.length && _pageTypes[index] == 'video';
-    if (isVideo) {
-      SystemChrome.setEnabledSystemUIMode(
-        SystemUiMode.manual,
-        overlays: <SystemUiOverlay>[SystemUiOverlay.bottom],
-      );
+    if (isVideo && defaultTargetPlatform == TargetPlatform.iOS) {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
     } else {
       _restoreStatusBar();
     }
   }
 
-  /// 恢复默认系统栏(与 main.dart / 连麦页一致的 edgeToEdge)
+  /// 恢复项目默认系统栏: manual + top/bottom 都显示。
+  /// 项目基线不是 edgeToEdge(main.dart 只设 AnnotatedRegion 样式, link_mic 退出也恢复 manual),
+  /// 误用 edgeToEdge 会让内容顶进状态栏区域且页面无 padding -> 状态栏变黑。
   void _restoreStatusBar() {
-    SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    SystemChrome.setEnabledSystemUIMode(
+      SystemUiMode.manual,
+      overlays: <SystemUiOverlay>[SystemUiOverlay.top, SystemUiOverlay.bottom],
+    );
   }
 
   /// 外部(推送/深链)按 type 切底部 tab('home'/'video'/'live'/'earn'/'mine'/diy type)
