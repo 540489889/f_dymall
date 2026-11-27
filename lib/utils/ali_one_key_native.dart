@@ -82,6 +82,7 @@ class AliOneKey {
     final view = PlatformDispatcher.instance.views.first;
     final double dpr = view.devicePixelRatio;
     final double screenH = view.physicalSize.height / dpr;
+    final double screenW = view.physicalSize.width / dpr;
     // 以屏幕高度的 1/8 为基准单位,自上而下分布各区块(相对状态栏顶部)
     final int unit = (screenH / 8).floor();
     const int logoH = 70;
@@ -92,6 +93,7 @@ class AliOneKey {
     const int btnH = 48;
     final int btnY = numY + (unit * 0.8).round();
     final int switchY = btnY + btnH + (unit * 0.35).round();
+    final int customBtnW = (screenW - 56).round();
     return AliAuthModel(
       Config.aliAndroidSk.trim(),
       Config.aliIosSk.trim(),
@@ -143,10 +145,13 @@ class AliOneKey {
         'assets/images/logo_btn_bg.png',
         'assets/images/logo_btn_bg.png',
       ].join(','),
-      switchAccText: '其他登录方式',
-      switchOffsetY: switchY,
-      switchAccTextColor: '#656565',
-      switchAccTextSize: 14,
+      // 隐藏 SDK 默认文字按钮，用自定义按钮实现和主登录按钮同款渐变样式
+      switchAccHidden: true,
+      customThirdView: CustomThirdView(
+        switchY, 28, 10, 28, customBtnW, btnH, 0, 16, '#FFFFFF',
+        customBtnW, btnH, const <String>['其他登录方式'],
+        const <String>['assets/images/logo_btn_bg.png'],
+      ),
       // 协议(H5 一致的两份协议地址)
       protocolOneName: '《隐私协议》',
       protocolOneURL: '${Config.baseUrl}/index/index/privacy_agreement.html',
@@ -156,7 +161,7 @@ class AliOneKey {
       protocolCustomColor: '#FF2C55',
       privacyBefore: '我已阅读并同意',
       privacyEnd: '并使用本机号码登录',
-      privacyTextSize: 14,
+      privacyTextSize: 16,
       // 默认不勾选: 让用户主动勾选协议(部分应用商店审核要求协议需用户主动勾选)
       privacyState: false,
       privacyOperatorIndex: 0,
@@ -165,8 +170,8 @@ class AliOneKey {
       // 协议栏从底部上移 24dp，并放大文字/勾选框
       privacyOffsetY_B: 24,
       // 主题色勾选框(选中=红底白勾/未选=红色描边圆)
-      checkBoxWidth: 16,
-      checkBoxHeight: 16,
+      checkBoxWidth: 18,
+      checkBoxHeight: 18,
       checkboxHidden: false,
       uncheckedImgPath: 'assets/images/checkbox_unchecked.png',
       checkedImgPath: 'assets/images/checkbox_checked.png',
@@ -194,8 +199,8 @@ class AliOneKey {
           _finish(data);
           return;
         }
-        // 700000 点击返回 / 700001 点击切换账号: 用户取消
-        if (code == '700000' || code == '700001') {
+        // 700000 点击返回 / 700001 点击切换账号 / 700005 点击自定义其他登录按钮: 用户取消
+        if (code == '700000' || code == '700001' || code == '700005') {
           _fail('已取消一键登录', code: code);
           return;
         }

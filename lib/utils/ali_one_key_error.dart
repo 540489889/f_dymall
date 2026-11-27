@@ -31,8 +31,8 @@ class AliOneKeyFailure implements Exception {
   bool get isEnvError => envCodes.contains(code);
 
   /// 用户主动取消 / 切换账号: 非错误,不打扰用户(也不该在页面上常驻提示)
-  /// * 700000 点击返回 / 700001 点击切换账号
-  static const Set<String> cancelCodes = <String>{'700000', '700001'};
+  /// * 700000 点击返回 / 700001 点击切换账号 / 700005 点击自定义其他登录按钮
+  static const Set<String> cancelCodes = <String>{'700000', '700001', '700005'};
 
   /// 是否为用户取消类(静默处理)
   bool get isCancel => cancelCodes.contains(code);
