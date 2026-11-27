@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../../behavior/custom_scroll_behavior.dart';
 import '../../components/loading.dart';
 // 观看直播任务倒计时暂时关闭,恢复时放开下面两处(import + body 里的 Positioned)
@@ -265,7 +266,7 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Image.asset('assets/images/live-empty.png', width: 120.0),
+                      SvgPicture.asset('assets/images/live-empty.svg', width: 120.0),
                       const SizedBox(height: 12.0),
                       Text(roomStatus == 2 ? '暂无预约直播' : '暂无直播', style: const TextStyle(color: Colors.grey, fontSize: 13.0)),
                     ],

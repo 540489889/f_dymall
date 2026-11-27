@@ -7,7 +7,6 @@ import android.view.Gravity;
 import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
-import android.widget.Button;
 import android.widget.ImageButton;
 import android.widget.LinearLayout;
 import android.widget.Space;
@@ -106,22 +105,8 @@ public abstract class BaseUIConfig extends LoginParams {
                     LinearLayout itemLinearLayout = new LinearLayout(mContext);
                     /// 按钮和文字布局
                     itemLinearLayout.setOrientation(LinearLayout.VERTICAL);
-                    /// 按钮控件: 使用 Button，文字直接显示在按钮内部，与主登录按钮同款
-                    Button itemButton = new Button(mActivity);
-                    Object itemName = customThirdViewName.get(i);
-                    itemButton.setAllCaps(false);
-                    itemButton.setGravity(Gravity.CENTER);
-                    itemButton.setPadding(0, 0, 0, 0);
-                    itemButton.setMinWidth(0);
-                    itemButton.setMinHeight(0);
-                    if (itemName != null && !String.valueOf(itemName).isEmpty()) {
-                        itemButton.setText(String.valueOf(itemName));
-                        itemButton.setTextColor(customThirdView.getString("color") != null && !customThirdView.getString("color").isEmpty() ? Color.parseColor(customThirdView.getString("color")) : Color.WHITE);
-                        itemButton.setTextSize(
-                                TypedValue.COMPLEX_UNIT_SP,
-                                customThirdView.getFloatValue("size") > 0 ? customThirdView.getFloatValue("size") : 14F
-                        );
-                    }
+                    /// 按钮控件
+                    ImageButton itemButton = new ImageButton(mActivity);
                     /// 需要转化路径
                     try {
                         itemButton.setBackground(
@@ -131,6 +116,7 @@ public abstract class BaseUIConfig extends LoginParams {
                                 )
                         );
                     } catch (IOException e) {
+                        // eventSink.success(UtilTool.resultFormatData("500000", null, e.getMessage()));
                         showResult("500000", "出现错误", e.getMessage());
                     }
                     ViewGroup.LayoutParams buttonLayoutParams = new ViewGroup.LayoutParams(
@@ -141,12 +127,33 @@ public abstract class BaseUIConfig extends LoginParams {
 
                     /// 第三方按钮的点击事件
                     itemButton.setOnClickListener(v -> {
+                        // 判断是否隐藏toast
                         showResult("700005", "点击第三方登录按钮", finalI);
+                        // eventSink.success(UtilTool.resultFormatData("600019", null, finalI));
+//                        if (!jsonObject.getBooleanValue("isHideToast") && !isChecked) {
+//                            Toaster.show(jsonObject.getString("toastText"));
+//                            return;
+//                        }
                         if (jsonObject.getBooleanValue("autoQuitPage")) {
                             mAuthHelper.quitLoginPage();
                         }
                     });
                     itemLinearLayout.addView(itemButton);
+
+                    Object itemName = customThirdViewName.get(i);
+                    if (itemName != null && !String.valueOf(itemName).isEmpty()) {
+                        // 按钮下文字控件
+                        TextView textView = new TextView(mContext);
+                        textView.setText(String.valueOf(itemName));
+                        // 文字颜色
+                        textView.setTextColor(customThirdView.getString("color") != null && !customThirdView.getString("color").isEmpty() ? Color.parseColor(customThirdView.getString("color")) : Color.BLACK);
+                        textView.setTextSize(
+                                TypedValue.COMPLEX_UNIT_SP,
+                                customThirdView.getFloatValue("size") > 0 ? customThirdView.getFloatValue("size") : 14F
+                        );
+                        textView.setGravity(Gravity.CENTER);
+                        itemLinearLayout.addView(textView);
+                    }
 
                     /// 新增按钮间距控件
                     if (i > 0 && i < customThirdViewItem.size()) {

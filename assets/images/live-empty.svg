@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200">
+  <defs>
+    <linearGradient id="brand" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF2C55"/>
+      <stop offset="1" stop-color="#FF8A5B"/>
+    </linearGradient>
+    <linearGradient id="screen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFF9F4"/>
+      <stop offset="1" stop-color="#FFE8DE"/>
+    </linearGradient>
+    <linearGradient id="play" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF8A75"/>
+      <stop offset="1" stop-color="#FF2C55"/>
+    </linearGradient>
+  </defs>
+
+  <ellipse cx="120" cy="181" rx="72" ry="9" fill="#FFDCCF" opacity="0.55"/>
+
+  <rect x="58" y="151" width="124" height="20" rx="10" fill="url(#brand)"/>
+  <rect x="72" y="143" width="96" height="12" rx="6" fill="#FFD9C8"/>
+
+  <rect x="77" y="26" width="86" height="128" rx="19" fill="url(#brand)"/>
+  <rect x="83" y="32" width="74" height="116" rx="14" fill="url(#screen)"/>
+  <rect x="106" y="37" width="28" height="4" rx="2" fill="#FFB9A5" opacity="0.9"/>
+
+  <circle cx="120" cy="88" r="25" fill="#FFE2D7"/>
+  <circle cx="120" cy="88" r="19" fill="url(#play)"/>
+  <path d="M115 78 L133 88 L115 98 Z" fill="#FFFFFF"/>
+
+  <g fill="#FF6B81">
+    <path transform="translate(98 112) scale(0.62)" d="M12 21s-8-5.2-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 3.5C20 15.8 12 21 12 21z"/>
+    <path transform="translate(132 111) scale(0.55)" d="M12 21s-8-5.2-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 3.5C20 15.8 12 21 12 21z"/>
+  </g>
+
+  <rect x="157" y="101" width="31" height="35" rx="5" fill="#FF7A59"/>
+  <path d="M164 102 C164 94 181 94 181 102" fill="none" stroke="#FF2C55" stroke-width="3" stroke-linecap="round"/>
+  <rect x="162" y="111" width="21" height="4" rx="2" fill="#FFD9C8" opacity="0.9"/>
+
+  <g fill="#FF6B81">
+    <path transform="translate(43 88) scale(0.75)" d="M12 21s-8-5.2-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 3.5C20 15.8 12 21 12 21z"/>
+    <path transform="translate(194 96) scale(0.65)" d="M12 21s-8-5.2-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 3.5C20 15.8 12 21 12 21z"/>
+    <path transform="translate(65 56) scale(0.42)" d="M12 21s-8-5.2-8-10.5A4.5 4.5 0 0 1 12 7a4.5 4.5 0 0 1 8 3.5C20 15.8 12 21 12 21z"/>
+  </g>
+
+  <g fill="#FFB347" opacity="0.9">
+    <path d="M54 124 l2.5 5.5 5.5 2.5 -5.5 2.5 -2.5 5.5 -2.5 -5.5 -5.5 -2.5 5.5 -2.5z"/>
+    <path d="M186 52 l2 4.5 4.5 2 -4.5 2 -2 4.5 -2 -4.5 -4.5 -2 4.5 -2z"/>
+  </g>
+</svg>

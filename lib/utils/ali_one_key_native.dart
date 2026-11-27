@@ -82,7 +82,6 @@ class AliOneKey {
     final view = PlatformDispatcher.instance.views.first;
     final double dpr = view.devicePixelRatio;
     final double screenH = view.physicalSize.height / dpr;
-    final double screenW = view.physicalSize.width / dpr;
     // 以屏幕高度的 1/8 为基准单位,自上而下分布各区块(相对状态栏顶部)
     final int unit = (screenH / 8).floor();
     const int logoH = 70;
@@ -91,9 +90,10 @@ class AliOneKey {
     final int sloganY = logoY + logoH + (unit * 0.16).round();
     final int numY = sloganY + (unit * 0.45).round();
     const int btnH = 48;
+    // 协议行紧跟手机号下方(手机号栏约 40dp, 再留 8dp 间距)
+    final int privacyY = numY + 48;
     final int btnY = numY + (unit * 0.8).round();
     final int switchY = btnY + btnH + (unit * 0.35).round();
-    final int customBtnW = (screenW - 56).round();
     return AliAuthModel(
       Config.aliAndroidSk.trim(),
       Config.aliIosSk.trim(),
@@ -145,13 +145,11 @@ class AliOneKey {
         'assets/images/logo_btn_bg.png',
         'assets/images/logo_btn_bg.png',
       ].join(','),
-      // 隐藏 SDK 默认文字按钮，用自定义次级按钮：白底+主题红描边+主题红文字
-      switchAccHidden: true,
-      customThirdView: CustomThirdView(
-        switchY, 28, 10, 28, customBtnW, btnH, 0, 16, '#FF2C55',
-        customBtnW, btnH, const <String>['其他登录方式'],
-        const <String>['assets/images/other_login_btn_bg.png'],
-      ),
+      // 使用 SDK 默认「其他登录方式」文字按钮
+      switchAccText: '其他登录方式',
+      switchOffsetY: switchY,
+      switchAccTextColor: '#656565',
+      switchAccTextSize: 14,
       // 协议(H5 一致的两份协议地址)
       protocolOneName: '《隐私协议》',
       protocolOneURL: '${Config.baseUrl}/index/index/privacy_agreement.html',
@@ -167,8 +165,8 @@ class AliOneKey {
       privacyOperatorIndex: 0,
       protocolLayoutGravity: Gravity.centerHorizntal,
       protocolGravity: Gravity.centerHorizntal,
-      // 协议栏从底部上移 24dp，并放大文字/勾选框
-      privacyOffsetY_B: 24,
+      // 协议栏放到手机号下方，不再贴底
+      privacyOffsetY: privacyY,
       // 主题色勾选框(选中=红底白勾/未选=红色描边圆)
       checkBoxWidth: 18,
       checkBoxHeight: 18,
@@ -199,8 +197,8 @@ class AliOneKey {
           _finish(data);
           return;
         }
-        // 700000 点击返回 / 700001 点击切换账号 / 700005 点击自定义其他登录按钮: 用户取消
-        if (code == '700000' || code == '700001' || code == '700005') {
+        // 700000 点击返回 / 700001 点击切换账号: 用户取消
+        if (code == '700000' || code == '700001') {
           _fail('已取消一键登录', code: code);
           return;
         }
