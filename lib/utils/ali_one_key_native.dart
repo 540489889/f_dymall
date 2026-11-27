@@ -85,7 +85,8 @@ class AliOneKey {
     // 以屏幕高度的 1/8 为基准单位,自上而下分布各区块(相对状态栏顶部)
     final int unit = (screenH / 8).floor();
     const int logoH = 70;
-    final int logoY = (unit * 0.9).round();
+    // 整体从 Logo 开始下移 32dp，避免顶部内容显得太靠上。
+    final int logoY = (unit * 0.9).round() + 32;
     final int sloganY = logoY + logoH + (unit * 0.16).round();
     final int numY = sloganY + (unit * 0.45).round();
     const int btnH = 48;
@@ -117,7 +118,7 @@ class AliOneKey {
       logoHeight: logoH,
       logoOffsetY: logoY,
       logoScaleType: ScaleType.fitXy,
-      sloganText: '乐惠商城',
+      sloganText: '私域直播电商平台',
       sloganHidden: false,
       sloganOffsetY: sloganY,
       sloganTextColor: '#BBBBBB',
@@ -155,15 +156,17 @@ class AliOneKey {
       protocolCustomColor: '#FF2C55',
       privacyBefore: '我已阅读并同意',
       privacyEnd: '并使用本机号码登录',
-      privacyTextSize: 12,
+      privacyTextSize: 14,
       // 默认不勾选: 让用户主动勾选协议(部分应用商店审核要求协议需用户主动勾选)
       privacyState: false,
       privacyOperatorIndex: 0,
       protocolLayoutGravity: Gravity.centerHorizntal,
       protocolGravity: Gravity.centerHorizntal,
+      // 协议栏从底部上移 24dp，并放大文字/勾选框
+      privacyOffsetY_B: 24,
       // 主题色勾选框(选中=红底白勾/未选=红色描边圆)
-      checkBoxWidth: 15,
-      checkBoxHeight: 15,
+      checkBoxWidth: 16,
+      checkBoxHeight: 16,
       checkboxHidden: false,
       uncheckedImgPath: 'assets/images/checkbox_unchecked.png',
       checkedImgPath: 'assets/images/checkbox_checked.png',
