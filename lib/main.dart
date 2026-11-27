@@ -32,6 +32,16 @@ void main() async {
   // 必须先初始化绑定, 才能使用插件/存储
   WidgetsFlutterBinding.ensureInitialized();
 
+  // 纯竖屏: 全局锁定为竖屏(与 iOS Info.plist、Android/鸿蒙的竖屏声明保持一致)
+  // * iOS 上 portraitDown(倒置) 仅 iPad 支持, 这里不勾; 也不允许横屏
+  try {
+    await SystemChrome.setPreferredOrientations(const <DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+    ]);
+  } catch (e) {
+    debugPrint('[main] 锁定竖屏异常(已忽略): $e');
+  }
+
   // 全局未捕获错误兜底(含首帧绘制/回调中的异步错误), 至少能打到日志, 不再静默白屏
   PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
     debugPrint('[uncaught] $error\n$stack');
