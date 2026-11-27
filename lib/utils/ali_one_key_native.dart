@@ -86,7 +86,7 @@ class AliOneKey {
     final int unit = (screenH / 8).floor();
     const int logoH = 84;
     // 整体从 Logo 开始下移 32dp，避免顶部内容显得太靠上。
-    final int logoY = (unit * 0.9).round() + 32;
+    final int logoY = (unit * 0.9).round() + 48;
     final int sloganY = logoY + logoH + (unit * 0.16).round();
     final int numY = sloganY + (unit * 0.45).round();
     const int btnH = 48;
@@ -124,7 +124,7 @@ class AliOneKey {
       sloganText: '私域直播电商平台',
       sloganHidden: false,
       sloganOffsetY: sloganY,
-      sloganTextColor: '#FF2C55',
+      sloganTextColor: '#656565',
       sloganTextSize: 16,
       numberColor: '#202020',
       numberSize: 28,
@@ -150,7 +150,7 @@ class AliOneKey {
       switchAccText: '其他登录方式',
       switchOffsetY: switchY,
       switchAccTextColor: '#656565',
-      switchAccTextSize: 14,
+      switchAccTextSize: 16,
       // 协议(H5 一致的两份协议地址)
       protocolOneName: '《隐私协议》',
       protocolOneURL: '${Config.baseUrl}/index/index/privacy_agreement.html',
