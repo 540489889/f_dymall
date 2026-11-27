@@ -92,8 +92,9 @@ class AliOneKey {
     const int btnH = 48;
     // 协议行紧跟手机号下方(手机号栏约 40dp, 再留 8dp 间距)
     final int privacyY = numY + 48;
-    final int btnY = numY + (unit * 0.8).round();
-    final int switchY = btnY + btnH + (unit * 0.35).round();
+    // 协议行可能折成两行，登录按钮下移留出间距，避免与协议挤在一起。
+    final int btnY = numY + (unit * 1.5).round();
+    final int switchY = btnY + btnH + (unit * 0.45).round();
     return AliAuthModel(
       Config.aliAndroidSk.trim(),
       Config.aliIosSk.trim(),
