@@ -84,14 +84,14 @@ class AliOneKey {
     final double screenH = view.physicalSize.height / dpr;
     // 以屏幕高度的 1/8 为基准单位,自上而下分布各区块(相对状态栏顶部)
     final int unit = (screenH / 8).floor();
-    const int logoH = 70;
+    const int logoH = 84;
     // 整体从 Logo 开始下移 32dp，避免顶部内容显得太靠上。
     final int logoY = (unit * 0.9).round() + 32;
     final int sloganY = logoY + logoH + (unit * 0.16).round();
     final int numY = sloganY + (unit * 0.45).round();
     const int btnH = 48;
     // 协议行紧跟手机号下方(手机号栏约 40dp, 再留 8dp 间距)
-    final int privacyY = numY + 48;
+    final int privacyY = numY + 64;
     // 协议行可能折成两行，登录按钮下移留出间距，避免与协议挤在一起。
     final int btnY = numY + (unit * 1.5).round();
     final int switchY = btnY + btnH + (unit * 0.45).round();
@@ -117,15 +117,15 @@ class AliOneKey {
       lightColor: true,
       bottomNavColor: '#FFFFFF',
       logoImgPath: 'assets/images/logo.png',
-      logoWidth: 72,
+      logoWidth: 88,
       logoHeight: logoH,
       logoOffsetY: logoY,
       logoScaleType: ScaleType.fitXy,
       sloganText: '私域直播电商平台',
       sloganHidden: false,
       sloganOffsetY: sloganY,
-      sloganTextColor: '#BBBBBB',
-      sloganTextSize: 13,
+      sloganTextColor: '#FF2C55',
+      sloganTextSize: 16,
       numberColor: '#202020',
       numberSize: 28,
       numFieldOffsetY: numY,
