@@ -110,9 +110,10 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
         let hideFeedBack = config["hideFeedBack"] as? Bool ?? hideBack
         let hideDetailBack = config["hideDetailBack"] as? Bool ?? hideBack
         let autoPlay = config["autoPlay"] as? Bool ?? true
+        let bottomOffset = config["setBottomOffset"] as? Int ?? 0
 
         // 原生侧实参日志: 用于确认 Flutter 传入的参数是否真的到达原生
-        print("[DramaSwipeFlow] hideFeedBack=\(hideFeedBack) hideDetailBack=\(hideDetailBack) hideBack=\(hideBack) hideBottomInfo=\(hideBottomInfo) showChangeBtn=\(showChangeBtn) topOffset=\(String(describing: config["setTopOffset"]))")
+        print("[DramaSwipeFlow] hideFeedBack=\(hideFeedBack) hideDetailBack=\(hideDetailBack) hideBack=\(hideBack) hideBottomInfo=\(hideBottomInfo) showChangeBtn=\(showChangeBtn) topOffset=\(String(describing: config["setTopOffset"])) bottomOffset=\(bottomOffset)")
 
         // 创建短剧详情配置
         let playletConfig = DJXPlayletConfig()
@@ -143,6 +144,10 @@ class DramaSwipeFlowPlatformView: NSObject, FlutterPlatformView {
             config.customAppear = true
             config.viewSize = self.contentView.bounds.size
             config.playletConfig = playletConfig
+            if bottomOffset > 0 {
+                // iOS 滑滑流底部控件(进度/下一集)上移，避开外层 App TabBar
+                config.out_bottomOffset = CGFloat(bottomOffset)
+            }
 
             // 设置频道类型 - 使用正确的枚举值
             switch channelType {
