@@ -18,8 +18,9 @@ final class DramaEpisodePanelFixer: NSObject {
     private var lastPanelId: ObjectIdentifier?
     private var lastPanelName: String = ""
     private var repairedPanelId: ObjectIdentifier?
-    private var panelWindow: UIWindow?
+    private var panelWindow: EpisodeOverlayWindow?
     private weak var panelHost: UIViewController?
+    private weak var baseWindow: UIWindow?
     private var tapLogger: EpisodeTapLogger?
     private weak var observedWindow: UIWindow?
 
@@ -35,10 +36,14 @@ final class DramaEpisodePanelFixer: NSObject {
         shared.lastPanelId = nil
         shared.repairedPanelId = nil
         shared.removeTapLogger()
+        shared.panelWindow?.acceptsTouches = false
+        shared.panelWindow?.isUserInteractionEnabled = false
         shared.panelWindow?.isHidden = true
         shared.panelWindow?.rootViewController = nil
         shared.panelWindow = nil
         shared.panelHost = nil
+        shared.baseWindow?.makeKeyAndVisible()
+        shared.baseWindow = nil
     }
 
     private func startWatching() {
@@ -54,20 +59,27 @@ final class DramaEpisodePanelFixer: NSObject {
     // MARK: - 轮询
 
     private func tick() {
-        guard let win = Self.keyWindow() else { return }
-
         var panelVC: UIViewController?
+        var panelWin: UIWindow?
         var panelName = ""
-        for vc in Self.vcTree(from: win.rootViewController) {
-            let name: String = NSStringFromClass(type(of: vc))
-            if name.contains("Choose") || name.contains("Episode") {
+
+        // 遍历所有 window，避免浮层自己成为 keyWindow 后误判为「弹窗一直存在」。
+        for win in Self.allWindows() {
+            for vc in Self.vcTree(from: win.rootViewController) {
+                let name: String = NSStringFromClass(type(of: vc))
+                guard (name.contains("Choose") || name.contains("Episode")),
+                      !vc.view.isHidden,
+                      vc.view.alpha >= 0.01,
+                      vc.view.window != nil else { continue }
                 panelVC = vc
+                panelWin = win
                 panelName = name
                 break
             }
+            if panelVC != nil { break }
         }
 
-        guard let vc = panelVC else {
+        guard let vc = panelVC, let win = panelWin else {
             lastPanelId = nil
             recycleOverlayIfNeeded()
             return
@@ -204,15 +216,18 @@ final class DramaEpisodePanelFixer: NSObject {
             return
         }
 
-        let overlay = UIWindow(windowScene: scene)
+        let overlay = EpisodeOverlayWindow(windowScene: scene)
         overlay.windowLevel = .alert + 1
         overlay.frame = win.bounds
         overlay.backgroundColor = .clear
+        overlay.isUserInteractionEnabled = true
+        overlay.acceptsTouches = true
 
         let host = UIViewController()
         host.view.backgroundColor = .clear
         overlay.rootViewController = host
         overlay.isHidden = false
+        overlay.makeKeyAndVisible()
 
         let oldParent = vc.parent.map { NSStringFromClass(type(of: $0)) } ?? "nil"
 
@@ -229,6 +244,7 @@ final class DramaEpisodePanelFixer: NSObject {
 
         panelWindow = overlay
         panelHost = host
+        baseWindow = win
 
         // 触摸现在落在浮层 window 上，探针要跟过去
         installTapLogger(window: overlay)
@@ -244,12 +260,19 @@ final class DramaEpisodePanelFixer: NSObject {
     private func recycleOverlayIfNeeded() {
         guard let overlay = panelWindow else { return }
         let panelView = panelHost?.children.first?.view
-        let stillVisible = panelView != nil && panelView?.superview != nil && panelView?.window != nil
+        let stillVisible = panelView.map {
+            !$0.isHidden && $0.alpha >= 0.01 && $0.superview != nil && $0.window != nil
+        } ?? false
         if !stillVisible {
+            overlay.acceptsTouches = false
+            overlay.isUserInteractionEnabled = false
             overlay.isHidden = true
             overlay.rootViewController = nil
             panelWindow = nil
             panelHost = nil
+            baseWindow?.makeKeyAndVisible()
+            baseWindow = nil
+            removeTapLogger()
             // 下次打开时 VC 可能被复用、view 会重新挂回 FlutterView，必须重新判断与迁移
             repairedPanelId = nil
             print("[EpisodePanel][修复] 浮层 window 已回收")
@@ -410,6 +433,17 @@ final class DramaEpisodePanelFixer: NSObject {
             result.append(contentsOf: vcTree(from: presented))
         }
         return result
+    }
+}
+
+/// 选集弹窗浮层：弹窗关闭/未完成迁移时必须允许触摸穿透，
+/// 否则透明的 alert window 会吞掉短剧播放器和下一集手势。
+private final class EpisodeOverlayWindow: UIWindow {
+    var acceptsTouches: Bool = true
+
+    override func hitTest(_ point: CGPoint, with event: UIEvent?) -> UIView? {
+        guard acceptsTouches else { return nil }
+        return super.hitTest(point, with: event)
     }
 }
 

@@ -163,6 +163,10 @@ class _DramaModuleState extends State<DramaModule> {
     if (Content.ready) {
       final bool isAndroid = defaultTargetPlatform == TargetPlatform.android;
       final int statusBarH = MediaQuery.of(context).viewPadding.top.round();
+      // iOS 短剧页外层还有 App 底部 TabBar，edgeToEdge 下原生 PlatformView 会顶到
+      // TabBar 后面，SDK 底部的「下一集」按钮被盖住。给原生视图底部预留 TabBar 高度。
+      final double bottomTabBarH =
+          kBottomNavigationBarHeight + MediaQuery.of(context).viewPadding.bottom;
       // iOS: edgeToEdge 沉浸, 视频铺满状态栏后, setTopOffset 让 Tab 避开图标。
       // Android: 状态栏正常占位, 插件 setTopOffset 管不到滑滑流 Tab, 故用 Flutter
       // 顶部 Padding(黑条) 把整个原生视图下移到状态栏下方, Tab 才不会被图标盖住。
@@ -195,6 +199,8 @@ class _DramaModuleState extends State<DramaModule> {
         child: Stack(
           children: [
             Positioned.fill(
+              // iOS 用底部留白把 SDK 的下一集按钮抬到 TabBar 上方；Android 保持原状。
+              bottom: isAndroid ? 0.0 : bottomTabBarH,
               child: isAndroid
                   ? Padding(
                       padding: EdgeInsets.only(top: statusBarH.toDouble()),
