@@ -265,7 +265,7 @@ class _LivePageState extends State<LivePage> with TickerProviderStateMixin {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: <Widget>[
-                      Image.asset('assets/images/common-empty.png', width: 120.0),
+                      Image.asset('assets/images/live-empty.png', width: 120.0),
                       const SizedBox(height: 12.0),
                       Text(roomStatus == 2 ? '暂无预约直播' : '暂无直播', style: const TextStyle(color: Colors.grey, fontSize: 13.0)),
                     ],

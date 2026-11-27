@@ -145,12 +145,12 @@ class AliOneKey {
         'assets/images/logo_btn_bg.png',
         'assets/images/logo_btn_bg.png',
       ].join(','),
-      // 隐藏 SDK 默认文字按钮，用自定义按钮实现和主登录按钮同款渐变样式
+      // 隐藏 SDK 默认文字按钮，用自定义次级按钮：白底+主题红描边+主题红文字
       switchAccHidden: true,
       customThirdView: CustomThirdView(
-        switchY, 28, 10, 28, customBtnW, btnH, 0, 16, '#FFFFFF',
+        switchY, 28, 10, 28, customBtnW, btnH, 0, 16, '#FF2C55',
         customBtnW, btnH, const <String>['其他登录方式'],
-        const <String>['assets/images/logo_btn_bg.png'],
+        const <String>['assets/images/other_login_btn_bg.png'],
       ),
       // 协议(H5 一致的两份协议地址)
       protocolOneName: '《隐私协议》',
